@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../onboarding_screen.dart';
 
@@ -60,83 +61,100 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
           _selectedItems.add(item.title);
         }
       }),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: isSelected ? item.primary.withOpacity(0.50) : Colors.transparent,
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 16,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? item.primary.withOpacity(0.15)
-                    : const Color(0xFFF3F4F6),
-                shape: BoxShape.circle,
+                    ? Colors.white.withOpacity(0.72)
+                    : Colors.white.withOpacity(0.52),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: isSelected
+                      ? item.primary.withOpacity(0.45)
+                      : Colors.white.withOpacity(0.70),
+                  width: 1.5,
+                ),
               ),
-              child: Icon(
-                item.icon,
-                color: isSelected ? item.primary : const Color(0xFF6B7280),
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    item.title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F111A),
+                  // Glass icon circle
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? item.primary.withOpacity(0.15)
+                          : Colors.white.withOpacity(0.50),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected
+                            ? item.primary.withOpacity(0.25)
+                            : Colors.white.withOpacity(0.80),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      item.icon,
+                      color: isSelected ? item.primary : const Color(0xFF6B7280),
+                      size: 22,
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    item.description,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF6B7280),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0F111A),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          item.description,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                  // Glass checkmark indicator
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected ? item.primary : Colors.white.withOpacity(0.40),
+                      border: Border.all(
+                        color: isSelected
+                            ? Colors.transparent
+                            : Colors.white.withOpacity(0.80),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: isSelected
+                        ? const Icon(Icons.check, color: Colors.white, size: 16)
+                        : null,
                   ),
                 ],
               ),
             ),
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isSelected ? item.primary : Colors.transparent,
-                border: Border.all(
-                  color: isSelected ? Colors.transparent : const Color(0xFFD1D5DB),
-                  width: 2,
-                ),
-              ),
-              child: isSelected
-                  ? const Icon(Icons.check, color: Colors.white, size: 16)
-                  : null,
-            ),
-          ],
+          ),
         ),
       ),
     );
