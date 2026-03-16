@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../onboarding_screen.dart';
+import '../widgets/goal_category_card.dart';
 
 class OnboardingPage1 extends StatefulWidget {
   const OnboardingPage1({super.key});
@@ -11,13 +12,49 @@ class OnboardingPage1 extends StatefulWidget {
 class _OnboardingPage1State extends State<OnboardingPage1> {
   final Set<String> _selectedItems = {'Health', 'Recovery'};
 
-  final List<Map<String, dynamic>> _items = [
-    {'title': 'Health', 'icon': Icons.favorite},
-    {'title': 'Career', 'icon': Icons.work},
-    {'title': 'Skill', 'icon': Icons.school},
-    {'title': 'Recovery', 'icon': Icons.spa},
-    {'title': 'Growth', 'icon': Icons.self_improvement},
-    {'title': 'Focus', 'icon': Icons.center_focus_strong},
+  static const List<_CategoryData> _items = [
+    _CategoryData(
+      title: 'Health',
+      icon: Icons.favorite_rounded,
+      description: 'Body, sleep & nutrition',
+      primary: Color(0xFFEF4444),
+      secondary: Color(0xFFF97316),
+    ),
+    _CategoryData(
+      title: 'Career',
+      icon: Icons.rocket_launch_rounded,
+      description: 'Goals & professional growth',
+      primary: Color(0xFF6366F1),
+      secondary: Color(0xFF8B5CF6),
+    ),
+    _CategoryData(
+      title: 'Skill',
+      icon: Icons.bolt_rounded,
+      description: 'Learn & level up fast',
+      primary: Color(0xFFF59E0B),
+      secondary: Color(0xFFEF4444),
+    ),
+    _CategoryData(
+      title: 'Recovery',
+      icon: Icons.spa_rounded,
+      description: 'Rest, mindset & calm',
+      primary: Color(0xFF10B981),
+      secondary: Color(0xFF06B6D4),
+    ),
+    _CategoryData(
+      title: 'Growth',
+      icon: Icons.trending_up_rounded,
+      description: 'Habits & self-improvement',
+      primary: Color(0xFF3B82F6),
+      secondary: Color(0xFF6366F1),
+    ),
+    _CategoryData(
+      title: 'Focus',
+      icon: Icons.center_focus_strong_rounded,
+      description: 'Deep work & flow state',
+      primary: Color(0xFFEC4899),
+      secondary: Color(0xFF8B5CF6),
+    ),
   ];
 
   @override
@@ -64,73 +101,21 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
             delegate: SliverChildBuilderDelegate(
               (context, index) {
                 final item = _items[index];
-                final isSelected = _selectedItems.contains(item['title']);
-                return GestureDetector(
+                final isSelected = _selectedItems.contains(item.title);
+                return GoalCategoryCard(
+                  title: item.title,
+                  icon: item.icon,
+                  description: item.description,
+                  primaryColor: item.primary,
+                  secondaryColor: item.secondary,
+                  isSelected: isSelected,
                   onTap: () => setState(() {
-                    if (isSelected) _selectedItems.remove(item['title']);
-                    else _selectedItems.add(item['title']);
+                    if (isSelected) {
+                      _selectedItems.remove(item.title);
+                    } else {
+                      _selectedItems.add(item.title);
+                    }
                   }),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: isSelected ? const Color(0xFF89F4DD) : Colors.transparent,
-                        width: 2.0,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 52,
-                                height: 52,
-                                decoration: BoxDecoration(
-                                  color: isSelected ? const Color(0xFFE0FDF7) : const Color(0xFFF3F4F6),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  item['icon'],
-                                  color: isSelected ? const Color(0xFF0D9488) : const Color(0xFF9CA3AF),
-                                  size: 26,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                item['title'],
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1F2937),
-                                ),
-                              ),
-                              if (isSelected) ...[
-                                const SizedBox(height: 4),
-                                const Text('Selected', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0D9488))),
-                              ]
-                            ],
-                          ),
-                        ),
-                        if (isSelected)
-                          const Positioned(
-                            top: 12,
-                            right: 12,
-                            child: Icon(Icons.check_circle, color: Color(0xFF0D9488), size: 20),
-                          ),
-                      ],
-                    ),
-                  ),
                 );
               },
               childCount: _items.length,
@@ -146,4 +131,22 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
       ],
     );
   }
+}
+
+/// Immutable data model holding the display properties for a single
+/// goal category tile rendered by [GoalCategoryCard] in the onboarding grid.
+class _CategoryData {
+  final String title;
+  final IconData icon;
+  final String description;
+  final Color primary;
+  final Color secondary;
+
+  const _CategoryData({
+    required this.title,
+    required this.icon,
+    required this.description,
+    required this.primary,
+    required this.secondary,
+  });
 }
