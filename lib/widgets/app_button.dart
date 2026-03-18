@@ -167,18 +167,17 @@ class _AppButtonState extends State<AppButton> with TickerProviderStateMixin {
                   );
                   return Transform.scale(
                      scale: scaleVal,
-                    // ── Outer glass rim — visible against white background ─
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(3),
+                    child: Stack(
+                      children: [
+                        // ── Outer glass rim — visible against white background ─
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(3),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(33),
                         // Slightly tinted so it shows against the white screen
                         color: const Color(0xFFD8E8EF).withOpacity(0.45),
-                        border: Border.all(
-                          color: const Color(0xFFB0C8D4).withOpacity(0.70),
-                          width: 1.4,
-                        ),
+                        // gradient border applied via CustomPaint above
                         boxShadow: [
                           // Pastel blue drop shadow — separates from background
                           BoxShadow(
@@ -282,14 +281,69 @@ class _AppButtonState extends State<AppButton> with TickerProviderStateMixin {
                           ),
                         ),
                       ),
+                    ), // End of inner liquid container
+                    // Foreground gradient border
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(
+                          painter: _GradientBorderPainter(
+                            radius: 33,
+                            strokeWidth: 1.4,
+                            gradient: const SweepGradient(
+                              colors: [
+                                Color(0xFFFF6B6B), // Home
+                                Color(0xFFA3FF91), // Routine
+                                Color(0xFF78FDFF), // Tracker
+                                Color(0xFFC084FC), // Coach
+                                Color(0xFFFF8CC2), // Goals
+                                Color(0xFFFFB830), // Profile
+                                Color(0xFFFF6B6B), // Wrap around to first color
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  );
-                },
+                  ],
+                ),
+              );
+            },
               ),
             ),
           ),
         );
       },
     );
+  }
+}
+
+class _GradientBorderPainter extends CustomPainter {
+  final double radius;
+  final double strokeWidth;
+  final Gradient gradient;
+
+  _GradientBorderPainter({
+    required this.radius,
+    required this.strokeWidth,
+    required this.gradient,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+    final paint = Paint()
+      ..shader = gradient.createShader(rect)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawRRect(rrect, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GradientBorderPainter oldDelegate) {
+    return oldDelegate.radius != radius ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.gradient != gradient;
   }
 }

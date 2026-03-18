@@ -4,6 +4,7 @@ import 'login_screen.dart';
 import 'signup_screen.dart';
 import 'widgets/glass_logo.dart';
 import 'widgets/app_button.dart';
+import 'widgets/animated_bot_avatar.dart';
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
@@ -100,17 +101,7 @@ class WelcomeScreen extends StatelessWidget {
                             ),
                         child: Row(
                           children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFFFEFA6),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Center(
-                                child: _AnimatedBotIcon(),
-                              ),
-                            ),
+                            const AnimatedBotAvatar(),
                             const SizedBox(width: 16),
                             Expanded(
                               child: Column(
@@ -228,153 +219,6 @@ class WelcomeScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _AnimatedBotIcon extends StatefulWidget {
-  const _AnimatedBotIcon();
-
-  @override
-  State<_AnimatedBotIcon> createState() => _AnimatedBotIconState();
-}
-
-class _AnimatedBotIconState extends State<_AnimatedBotIcon> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _bounceAnimation;
-  late Animation<double> _moodAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      // 1.5 seconds for a full cycle (sad to happy and back)
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-    
-    // Bouncing up and down as it gets happy/sad
-    _bounceAnimation = Tween<double>(begin: 0, end: -4).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOutSine,
-      ),
-    );
-
-    // 0.0 (sad) to 1.0 (happy)
-    _moodAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(0, _bounceAnimation.value),
-          child: CustomPaint(
-            size: const Size(26, 26),
-            painter: _RobotPainter(_moodAnimation.value),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _RobotPainter extends CustomPainter {
-  final double animationValue;
-
-  _RobotPainter(this.animationValue);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFE5B500) // Bot gold/yellow color
-      ..style = PaintingStyle.fill;
-
-    final center = Offset(size.width / 2, size.height / 2);
-
-    // Head
-    final headWidth = size.width * 0.75;
-    final headHeight = size.height * 0.65;
-    final headCenter = center + Offset(0, size.height * 0.05);
-    final headRect = Rect.fromCenter(center: headCenter, width: headWidth, height: headHeight);
-    canvas.drawRRect(RRect.fromRectAndRadius(headRect, Radius.circular(size.width * 0.12)), paint);
-
-    // Ears
-    final earWidth = size.width * 0.15;
-    final earHeight = size.height * 0.28;
-    final leftEarRect = Rect.fromCenter(center: Offset(headRect.left - earWidth / 2 + 1, headCenter.dy), width: earWidth, height: earHeight);
-    final rightEarRect = Rect.fromCenter(center: Offset(headRect.right + earWidth / 2 - 1, headCenter.dy), width: earWidth, height: earHeight);
-    canvas.drawRRect(RRect.fromRectAndRadius(leftEarRect, Radius.circular(earWidth / 2)), paint);
-    canvas.drawRRect(RRect.fromRectAndRadius(rightEarRect, Radius.circular(earWidth / 2)), paint);
-
-    // Top parts (like gears/nodes)
-    final nodeWidth = size.width * 0.16;
-    final nodeHeight = size.height * 0.15;
-    final nodeSpacing = size.width * 0.22;
-    final nodeY = headRect.top - nodeHeight / 2 + 2;
-    
-    for (int i = -1; i <= 1; i++) {
-       final nodeRect = Rect.fromCenter(
-         center: Offset(headCenter.dx + (i * nodeSpacing), nodeY), 
-         width: nodeWidth, 
-         height: nodeHeight
-       );
-       canvas.drawRRect(RRect.fromRectAndRadius(nodeRect, Radius.circular(nodeWidth * 0.3)), paint);
-    }
-
-    // Cutout Paint for eyes and mouth
-    final cutoutPaint = Paint()
-      ..color = const Color(0xFFFFEFA6) // Circle background color to look like cutouts
-      ..style = PaintingStyle.fill;
-    
-    // Eyes
-    final eyeRadius = size.width * 0.08;
-    // Eyes move slightly based on mood
-    final eyeYOffset = lerpDouble(size.height * 0.02, -size.height * 0.02, animationValue)!;
-    final eyeY = headCenter.dy - size.height * 0.1 + eyeYOffset;
-    final eyeSpacing = size.width * 0.18;
-    
-    canvas.drawCircle(Offset(headCenter.dx - eyeSpacing, eyeY), eyeRadius, cutoutPaint);
-    canvas.drawCircle(Offset(headCenter.dx + eyeSpacing, eyeY), eyeRadius, cutoutPaint);
-
-    // Mouth
-    final mouthPaint = Paint()
-      ..color = const Color(0xFFFFEFA6)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.08
-      ..strokeCap = StrokeCap.round;
-
-    final mouthY = headCenter.dy + size.height * 0.12;
-    final mouthWidth = size.width * 0.28;
-    
-    final path = Path();
-    path.moveTo(headCenter.dx - mouthWidth / 2, mouthY);
-    
-    // Control point Y offset: negative for sad (up), positive for happy (down)
-    final controlDy = lerpDouble(-size.height * 0.12, size.height * 0.15, animationValue)!;
-    
-    path.quadraticBezierTo(
-      headCenter.dx, mouthY + controlDy, 
-      headCenter.dx + mouthWidth / 2, mouthY
-    );
-    
-    canvas.drawPath(path, mouthPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RobotPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
   }
 }
 

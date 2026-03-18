@@ -3,42 +3,119 @@ import '../onboarding_screen.dart';
 
 class OnboardingPage7 extends StatefulWidget {
   const OnboardingPage7({super.key});
+
   @override
   State<OnboardingPage7> createState() => _OnboardingPage7State();
 }
 
 class _OnboardingPage7State extends State<OnboardingPage7> {
-  String _selectedCoach = 'Challenging';
+  String _selectedCoach = 'Strict'; // Default match to image
 
-  Widget _buildCoachCard({required String title, required String description, required String imageUrl, required bool isSelected}) {
+  Widget _buildAccountabilityCard({
+    required String title,
+    required String description,
+    required String emojiIcon,
+    required bool isSelected,
+  }) {
     return GestureDetector(
       onTap: () => setState(() => _selectedCoach = title),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(isSelected ? 1.0 : 0.65),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: isSelected ? const Color(0xFF89F4DD) : Colors.transparent, width: 2),
-          boxShadow: [if (!isSelected) BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 12, offset: const Offset(0, 5))],
-        ),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.only(bottom: 20),
         child: Stack(
           children: [
-            Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Container(
-                width: 68, height: 68,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: isSelected ? Border.all(color: const Color(0xFF89F4DD), width: 2.5) : null,
-                  image: DecorationImage(image: NetworkImage(imageUrl), fit: BoxFit.cover),
+            // ── Outer Glowing Gradient Rim (visible when selected) ──
+            if (isSelected)
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(28),
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFF4D8D), // Pink
+                        Color(0xFF40C4FF), // Cyan
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF4D8D).withAlpha(100),
+                        blurRadius: 20,
+                        offset: const Offset(-4, 0),
+                      ),
+                      BoxShadow(
+                        color: const Color(0xFF40C4FF).withAlpha(100),
+                        blurRadius: 20,
+                        offset: const Offset(4, 0),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: isSelected ? const Color(0xFF0D6A58) : const Color(0xFF0F111A))),
-              const SizedBox(height: 5),
-              Text(description, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: Colors.blueGrey.shade600, height: 1.4)),
-            ]),
-            if (isSelected) const Positioned(top: 0, right: 0, child: Icon(Icons.check_circle, color: Color(0xFF0D9488), size: 20)),
+
+            // ── Inner Frosted Card ──
+            Container(
+              margin: EdgeInsets.all(isSelected ? 3.0 : 0.0), // Space for the gradient rim
+              padding: EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: isSelected ? 17 : 20, // Adjust padding to keep height stable
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(isSelected ? 26 : 28),
+                color: Colors.white.withAlpha(isSelected ? 230 : 160), // Frosted glass look
+                border: !isSelected
+                    ? Border.all(color: Colors.white.withAlpha(180), width: 1.5)
+                    : null,
+                boxShadow: !isSelected
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(10),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        )
+                      ]
+                    : [],
+              ),
+              child: Row(
+                children: [
+                  // Icon Area
+                  Text(
+                    emojiIcon,
+                    style: const TextStyle(fontSize: 40),
+                  ),
+                  const SizedBox(width: 18),
+                  // Text Area
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF0F111A),
+                          height: 1.35,
+                          letterSpacing: -0.3,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: '$title. ',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          TextSpan(
+                            text: description,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: Colors.blueGrey.shade800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -49,29 +126,76 @@ class _OnboardingPage7State extends State<OnboardingPage7> {
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top + kIndicatorOverlayH;
     final bottom = MediaQuery.of(context).padding.bottom + kButtonOverlayH;
+
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(24, top + 20, 24, bottom + 16),
+        padding: EdgeInsets.fromLTRB(24, top + 10, 24, bottom + 16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            RichText(text: const TextSpan(
-              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFF0F111A), height: 1.15, letterSpacing: -1),
-              children: [TextSpan(text: 'Choose Your '), TextSpan(text: 'AI Coach', style: TextStyle(color: Color(0xFF3B82F6)))],
-            )),
-            const SizedBox(height: 10),
-            Text('Select the personality that best fits your growth style.', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.blueGrey.shade600, height: 1.4)),
-            const SizedBox(height: 24),
-            GridView.count(
-              shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2, crossAxisSpacing: 14, mainAxisSpacing: 14, childAspectRatio: 0.85,
-              children: [
-                _buildCoachCard(title: 'Supportive', description: 'Gentle nudges and positive reinforcement.', imageUrl: 'https://i.pravatar.cc/150?img=47', isSelected: _selectedCoach == 'Supportive'),
-                _buildCoachCard(title: 'Challenging', description: 'Tough love and high standards.', imageUrl: 'https://i.pravatar.cc/150?img=53', isSelected: _selectedCoach == 'Challenging'),
-                _buildCoachCard(title: 'Calm', description: 'Mindful guidance to reduce stress.', imageUrl: 'https://i.pravatar.cc/150?img=34', isSelected: _selectedCoach == 'Calm'),
-                _buildCoachCard(title: 'Strategic', description: 'Data-driven logic and efficiency.', imageUrl: 'https://i.pravatar.cc/150?img=60', isSelected: _selectedCoach == 'Strategic'),
-              ],
+            // ── Small Header ──
+            const Opacity(
+              opacity: 0.6,
+              child: Text(
+                'Accountability',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: Color(0xFF0F111A),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Main Title ──
+            const Text(
+              'How should we\nhandle slip-ups?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1,
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // ── Subtitle ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                'Choose your level of accountability when you miss a daily target.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.blueGrey.shade700,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // ── Cards ListView ──
+            _buildAccountabilityCard(
+              title: 'Forgiving',
+              description: 'Gently roll missed tasks over to tomorrow. Focus on the comeback, not the failure.',
+              emojiIcon: '🪶',
+              isSelected: _selectedCoach == 'Forgiving',
+            ),
+            _buildAccountabilityCard(
+              title: 'Strict',
+              description: 'Call me out. Force me to explain why I missed it before letting me reschedule.',
+              emojiIcon: '📋',
+              isSelected: _selectedCoach == 'Strict',
+            ),
+            _buildAccountabilityCard(
+              title: 'Ruthless',
+              description: 'Zero excuses. Strip away pleasantries, give me a harsh truth pill, and demand immediate action.',
+              emojiIcon: '🔒',
+              isSelected: _selectedCoach == 'Ruthless',
             ),
           ],
         ),

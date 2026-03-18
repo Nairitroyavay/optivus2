@@ -1,9 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../onboarding_screen.dart';
-<<<<<<< Updated upstream
-=======
 import '../widgets/liquid_glass_card.dart';
->>>>>>> Stashed changes
 import '../widgets/liquid_category_card.dart';
 
 class OnboardingPage1 extends StatefulWidget {
@@ -15,56 +13,28 @@ class OnboardingPage1 extends StatefulWidget {
 
 class _OnboardingPage1State extends State<OnboardingPage1> {
   final Set<String> _selectedCategories = {'Health', 'Recovery'};
-
-<<<<<<< Updated upstream
-  static const List<_CategoryData> _items = [
-    _CategoryData(
-      title: 'Health',
-      icon: Icons.favorite_rounded,
-      primary: Color(0xFFEF4444),
-    ),
-    _CategoryData(
-      title: 'Career',
-      icon: Icons.rocket_launch_rounded,
-      primary: Color(0xFF6366F1),
-    ),
-    _CategoryData(
-      title: 'Skill',
-      icon: Icons.bolt_rounded,
-      primary: Color(0xFFF59E0B),
-    ),
-    _CategoryData(
-      title: 'Recovery',
-      icon: Icons.spa_rounded,
-      primary: Color(0xFF10B981),
-    ),
-    _CategoryData(
-      title: 'Growth',
-      icon: Icons.trending_up_rounded,
-      primary: Color(0xFF3B82F6),
-    ),
-    _CategoryData(
-      title: 'Focus',
-      icon: Icons.center_focus_strong_rounded,
-      primary: Color(0xFFEC4899),
-    ),
+  final List<String> _allCategories = [
+    'Health', 'Career', 'Skill', 'Recovery', 'Growth', 'Focus'
   ];
 
-  void _toggleCategory(_CategoryData item) {
-    setState(() {
-      if (_selectedItems.contains(item.title)) {
-        _selectedItems.remove(item.title);
-      } else {
-        _selectedItems.add(item.title);
-      }
-    });
-=======
+  bool get _isAllSelected => _selectedCategories.containsAll(_allCategories);
+
   void _toggleCategory(String title) {
     setState(() {
       if (_selectedCategories.contains(title)) {
         _selectedCategories.remove(title);
       } else {
         _selectedCategories.add(title);
+      }
+    });
+  }
+
+  void _toggleAll() {
+    setState(() {
+      if (_isAllSelected) {
+        _selectedCategories.clear();
+      } else {
+        _selectedCategories.addAll(_allCategories);
       }
     });
   }
@@ -81,25 +51,6 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
     );
   }
 
-  // ── Ambient iridescent orb blob (placed behind the glass card) ─────────────
-  Widget _ambientOrb(double w, double h, List<Color> colors, Alignment center) {
-    return Container(
-      width: w,
-      height: h,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          center: center,
-          radius: 0.8,
-          colors: [
-            ...colors.map((c) => c.withValues(alpha: 0.55)),
-            colors.last.withValues(alpha: 0.0),
-          ],
-        ),
-      ),
-    );
->>>>>>> Stashed changes
-  }
 
   // Custom card — same folder shape as the rest
   Widget _buildCustomCard() {
@@ -146,75 +97,8 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
               letterSpacing: -1,
             ),
           ),
-          const SizedBox(height: 10),
-
-          // ── Subtitle — liquid glass pill chip ─────────────────────
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.70),
-                    width: 1.2,
-                  ),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.50),
-                      Colors.white.withValues(alpha: 0.22),
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  'Select all that apply',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blueGrey.shade600,
-                    letterSpacing: -0.1,
-                  ),
-                ),
-              ),
-            ),
-          ),
-<<<<<<< Updated upstream
           const SizedBox(height: 32),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 32, // More space for the folder tab overlap
-              childAspectRatio: 0.9,
-            ),
-            itemCount: _items.length,
-            itemBuilder: (context, index) {
-              final item = _items[index];
-              return LiquidCategoryCard(
-                title: item.title,
-                icon: item.icon,
-                primaryColor: item.primary,
-                isSelected: _selectedItems.contains(item.title),
-                onTap: () => _toggleCategory(item),
-              );
-            },
-          ),
-          const SizedBox(height: 40),
-=======
-          const SizedBox(height: 24),
+
 
           // ── Outer liquid glass board (fills remaining space) ───────
           Expanded(
@@ -223,43 +107,6 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    // ── Ambient iridescent glow orbs behind the card ──
-                    Positioned(
-                      top: -30,
-                      left: -20,
-                      child: _ambientOrb(
-                        180, 180,
-                        [const Color(0xFFF9A8D4), const Color(0xFFC084FC)],
-                        Alignment.center,
-                      ),
-                    ),
-                    Positioned(
-                      top: 40,
-                      right: -30,
-                      child: _ambientOrb(
-                        160, 160,
-                        [const Color(0xFF7DD3FC), const Color(0xFF818CF8)],
-                        Alignment.center,
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 20,
-                      left: -10,
-                      child: _ambientOrb(
-                        140, 140,
-                        [const Color(0xFF6EE7B7), const Color(0xFF34D399)],
-                        Alignment.center,
-                      ),
-                    ),
-                    Positioned(
-                      bottom: -20,
-                      right: -10,
-                      child: _ambientOrb(
-                        150, 150,
-                        [const Color(0xFFFDE68A), const Color(0xFFFBAF72)],
-                        Alignment.center,
-                      ),
-                    ),
 
                     // ── Frosted glass card ────────────────────────────
                     LiquidGlassCard(
@@ -269,18 +116,37 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
                       tabDrop: 44,
                       child: Padding(
                         padding: const EdgeInsets.only(
-                          top: 26, left: 12, right: 12, bottom: 12,
+                          top: 50, left: 12, right: 12, bottom: 12,
                         ),
-                        child: GridView.builder(
-                          physics: const BouncingScrollPhysics(),
-                          itemCount: 7,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 16,
-                            crossAxisSpacing: 16,
-                            childAspectRatio: 1.6,
-                          ),
+                        child: ShaderMask(
+                          shaderCallback: (Rect bounds) {
+                            return const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              // transparent → opaque (top) and opaque → transparent (bottom)
+                              colors: [
+                                Colors.transparent,
+                                Colors.white,
+                                Colors.white,
+                                Colors.transparent,
+                              ],
+                              stops: [0.0, 0.06, 0.92, 1.0],
+                            ).createShader(bounds);
+                          },
+                          blendMode: BlendMode.dstIn,
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                          child: GridView.builder(
+                            physics: const NeverScrollableScrollPhysics(),
+                            shrinkWrap: true,
+                            itemCount: 7,
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              mainAxisSpacing: 16,
+                              crossAxisSpacing: 16,
+                              childAspectRatio: 1.6,
+                            ),
                           itemBuilder: (context, index) {
                             switch (index) {
                               // ── Health — coral red (Home tab) ───────────
@@ -402,6 +268,74 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
                                 return _buildCustomCard();
                             }
                           },
+                        ),  // GridView.builder
+                        ),  // SingleChildScrollView
+                        ),  // ShaderMask
+                      ),    // Padding
+                    ),      // LiquidGlassCard
+
+                    // ── Select All Button in Folder Cutout ─────────────
+                    Positioned(
+                      top: 4,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: _toggleAll,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutCubic,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOutCubic,
+                                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: _isAllSelected 
+                                        ? const Color(0xFF2196F3).withValues(alpha: 0.6)
+                                        : Colors.white.withValues(alpha: 0.85),
+                                    width: 1.5,
+                                  ),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: _isAllSelected
+                                        ? [
+                                            const Color(0xFF64B5F6).withValues(alpha: 0.35),
+                                            const Color(0xFF2196F3).withValues(alpha: 0.15),
+                                          ]
+                                        : [
+                                            Colors.white.withValues(alpha: 0.65),
+                                            Colors.white.withValues(alpha: 0.35),
+                                          ],
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _isAllSelected
+                                          ? const Color(0xFF2196F3).withValues(alpha: 0.15)
+                                          : Colors.black.withValues(alpha: 0.05),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  _isAllSelected ? 'Deselect all' : 'Select all',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isAllSelected
+                                        ? const Color(0xFF1976D2)
+                                        : const Color(0xFF4A5568),
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -410,24 +344,8 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
               },
             ),
           ),
->>>>>>> Stashed changes
         ],
       ),
     );
   }
 }
-<<<<<<< Updated upstream
-
-class _CategoryData {
-  final String title;
-  final IconData icon;
-  final Color primary;
-
-  const _CategoryData({
-    required this.title,
-    required this.icon,
-    required this.primary,
-  });
-}
-=======
->>>>>>> Stashed changes

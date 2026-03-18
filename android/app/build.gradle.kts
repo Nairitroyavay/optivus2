@@ -38,6 +38,13 @@ android {
         }
     }
 
+    lint {
+        // Workaround for AGP lint crash: ArrayIndexOutOfBoundsException in PositionXmlParser
+        // (a known Android Lint bug with certain XML resource files)
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     // Workaround for AGP 8.y bug where stripDebugDebugSymbols fails if directory doesn't exist
     tasks.configureEach {
         if (name == "stripDebugDebugSymbols" || name == "stripProfileDebugSymbols" || name == "stripReleaseDebugSymbols") {
