@@ -64,25 +64,33 @@ class _OnboardingPage5State extends State<OnboardingPage5> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // ── Title ─────────────────────────────────────────────────
-          const Text(
-            'Pick how your\ncoach should guide you.',
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF0F111A), // Dark slate
-              height: 1.15,
-              letterSpacing: -1,
-            ),
+          RichText(
             textAlign: TextAlign.center,
+            text: const TextSpan(
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1.0,
+              ),
+              children: [
+                TextSpan(text: 'Pick how your\n'),
+                TextSpan(
+                  text: 'coach',
+                  style: TextStyle(color: Color(0xFF8B5CF6)),
+                ),
+                TextSpan(text: ' should guide you?'),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            'Choose a coaching style that matches your goals.',
+          const SizedBox(height: 12),
+          const Text(
+            'Choose a coaching style that matches your goals',
             style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Colors.blueGrey.shade700,
-              height: 1.4,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
             textAlign: TextAlign.center,
           ),

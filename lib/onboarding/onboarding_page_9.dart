@@ -25,30 +25,40 @@ class OnboardingPage9 extends StatelessWidget {
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(20, top + 16, 20, bottom + 12),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // ── Hero title ─────────────────────────────────────────────────
+          RichText(
+            textAlign: TextAlign.center,
+            text: const TextSpan(
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1.0,
+              ),
+              children: [
+                TextSpan(text: 'Your '),
+                TextSpan(
+                  text: 'AI Plan',
+                  style: TextStyle(color: Color(0xFF6366F1)),
+                ),
+                TextSpan(text: ' is Ready'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           const Text(
-            'Your AI Plan is Ready',
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF0F111A),
-              height: 1.12,
-              letterSpacing: -1.0,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
             'Based on your inputs, Optvus has\ndesigned your optimal flow.',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Colors.blueGrey.shade700,
-              height: 1.45,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 24),
 
           // ──────────────────────────────────────────────────────────────
           // Daily Routine card

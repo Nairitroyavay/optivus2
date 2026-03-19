@@ -379,33 +379,32 @@ class _OnboardingPage3State extends State<OnboardingPage3> {
             textAlign: TextAlign.center,
             text: const TextSpan(
               style: TextStyle(
-                fontSize: 34,
+                fontSize: 32,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF1C2333),
-                height: 1.1,
-                letterSpacing: -1.2,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1.0,
                 fontFamily: 'Poppins', // falls back gracefully if not available
               ),
               children: [
                 TextSpan(text: 'Build Good '),
                 TextSpan(
                   text: 'Habits',
-                  style: TextStyle(color: Color(0xFF22C55E)),
+                  style: TextStyle(color: Color(0xFF4ADE80)),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
           // ── Subtitle ─────────────────────────────────────────────────────
           const Text(
             'Select the habits you want to track daily to\nbuild a better version of yourself.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF8499A8),
-              height: 1.55,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
           ),
           const SizedBox(height: 28),

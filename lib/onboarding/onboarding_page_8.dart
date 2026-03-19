@@ -532,7 +532,36 @@ class _OnboardingPage8State extends State<OnboardingPage8> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _buildTopPill(),
+            // ── Title ───────────────────────────────────────────────────────
+            RichText(
+              textAlign: TextAlign.center,
+              text: const TextSpan(
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F111A),
+                  height: 1.15,
+                  letterSpacing: -1.0,
+                ),
+                children: [
+                  TextSpan(text: 'Set Your '),
+                  TextSpan(
+                    text: 'Fixed Schedule',
+                    style: TextStyle(color: Color(0xFF3B82F6)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Align your daily routine with your goals.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF374151),
+              ),
+            ),
             const SizedBox(height: 24),
             SizedBox(
               height: 24 * kHourHeight,

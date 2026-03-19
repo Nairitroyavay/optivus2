@@ -86,15 +86,33 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // ── Title ─────────────────────────────────────────────────
+          RichText(
+            textAlign: TextAlign.center,
+            text: const TextSpan(
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1.0,
+              ),
+              children: [
+                TextSpan(text: 'What do you want\nto '),
+                TextSpan(
+                  text: 'improve?',
+                  style: TextStyle(color: Color(0xFF00BCD4)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           const Text(
-            'What do you want\nto improve?',
+            'Select your focus areas for growth',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 31,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF0F111A),
-              height: 1.15,
-              letterSpacing: -1,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
           ),
           const SizedBox(height: 32),
@@ -277,63 +295,53 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
                     // ── Select All Button in Folder Cutout ─────────────
                     Positioned(
                       top: 4,
-                      right: 0,
+                      right: 12,
                       child: GestureDetector(
                         onTap: _toggleAll,
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeOutCubic,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeOutCubic,
-                                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: _isAllSelected 
-                                        ? const Color(0xFF2196F3).withValues(alpha: 0.6)
-                                        : Colors.white.withValues(alpha: 0.85),
-                                    width: 1.5,
-                                  ),
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: _isAllSelected
-                                        ? [
-                                            const Color(0xFF64B5F6).withValues(alpha: 0.35),
-                                            const Color(0xFF2196F3).withValues(alpha: 0.15),
-                                          ]
-                                        : [
-                                            Colors.white.withValues(alpha: 0.65),
-                                            Colors.white.withValues(alpha: 0.35),
-                                          ],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _isAllSelected
-                                          ? const Color(0xFF2196F3).withValues(alpha: 0.15)
-                                          : Colors.black.withValues(alpha: 0.05),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  _isAllSelected ? 'Deselect all' : 'Select all',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    color: _isAllSelected
-                                        ? const Color(0xFF1976D2)
-                                        : const Color(0xFF4A5568),
-                                    letterSpacing: -0.2,
-                                  ),
-                                ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: _isAllSelected 
+                                  ? const Color(0xFF2196F3).withValues(alpha: 0.4)
+                                  : Colors.white.withValues(alpha: 0.6),
+                              width: 1,
+                            ),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: _isAllSelected
+                                  ? [
+                                      const Color(0xFF64B5F6).withValues(alpha: 0.25),
+                                      const Color(0xFF2196F3).withValues(alpha: 0.10),
+                                    ]
+                                  : [
+                                      Colors.white.withValues(alpha: 0.45),
+                                      Colors.white.withValues(alpha: 0.15),
+                                    ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _isAllSelected
+                                    ? const Color(0xFF2196F3).withValues(alpha: 0.1)
+                                    : Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 10,
+                                offset: const Offset(0, 2),
                               ),
+                            ],
+                          ),
+                          child: Text(
+                            _isAllSelected ? 'Deselect all' : 'Select all',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _isAllSelected
+                                  ? const Color(0xFF1976D2)
+                                  : const Color(0xFF4A5568).withValues(alpha: 0.8),
+                              letterSpacing: -0.1,
                             ),
                           ),
                         ),

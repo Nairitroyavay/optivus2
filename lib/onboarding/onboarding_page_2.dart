@@ -578,27 +578,36 @@ class _OnboardingPage2State extends State<OnboardingPage2> {
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(24, top + 20, 24, bottom + 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // ── Title ──────────────────────────────────────────────────────────
-          const Text(
-            'Drop Bad Habits',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF0F111A),
-              height: 1.15,
-              letterSpacing: -1,
+          RichText(
+            textAlign: TextAlign.center,
+            text: const TextSpan(
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1.0,
+              ),
+              children: [
+                TextSpan(
+                  text: 'Drop ',
+                  style: TextStyle(color: Color(0xFFF97316)),
+                ),
+                TextSpan(text: 'Bad Habits'),
+              ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           Text(
             'Select habits you want Optivus to help you eliminate.',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Colors.blueGrey.shade600,
-              height: 1.4,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
           ),
           const SizedBox(height: 28),

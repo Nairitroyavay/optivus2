@@ -372,17 +372,36 @@ class _OnboardingPage6State extends State<OnboardingPage6> {
       physics: const BouncingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(26, top + 16, 26, bottom + 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // ── Title ───────────────────────────────────────────────────────────
+          RichText(
+            textAlign: TextAlign.center,
+            text: const TextSpan(
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1.0,
+              ),
+              children: [
+                TextSpan(text: 'What Should We\nCall Your '),
+                TextSpan(
+                  text: 'Coach?',
+                  style: TextStyle(color: Color(0xFFF43F5E)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           const Text(
-            'What Should We\nCall Your Coach?',
+            'Give your AI guide a name that inspires you.',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF0F111A),
-              height: 1.15,
-              letterSpacing: -1,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
           ),
           const SizedBox(height: 32),

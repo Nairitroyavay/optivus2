@@ -71,32 +71,31 @@ class _OnboardingPage4State extends State<OnboardingPage4> {
             textAlign: TextAlign.center,
             text: const TextSpan(
               style: TextStyle(
-                fontSize: 31,
+                fontSize: 32,
                 fontWeight: FontWeight.w900,
                 color: Color(0xFF0F111A),
                 height: 1.15,
-                letterSpacing: -1,
+                letterSpacing: -1.0,
               ),
               children: [
                 TextSpan(text: 'Long-Term\n'),
                 TextSpan(
                   text: 'Identity Goals',
-                  style: TextStyle(color: Color(0xFFA07412)),
+                  style: TextStyle(color: Color(0xFFF59E0B)),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
           // ── Subtitle ────────────────────────────────────────────────────
           Text(
             'Select the identities you want to embody\nor create your own path.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: Colors.blueGrey.shade700,
-              height: 1.4,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
           ),
           const SizedBox(height: 24),

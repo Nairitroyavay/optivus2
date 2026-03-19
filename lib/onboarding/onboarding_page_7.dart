@@ -149,30 +149,37 @@ class _OnboardingPage7State extends State<OnboardingPage7> {
             const SizedBox(height: 16),
 
             // ── Main Title ──
-            const Text(
-              'How should we\nhandle slip-ups?',
+            RichText(
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0F111A),
-                height: 1.15,
-                letterSpacing: -1,
+              text: const TextSpan(
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F111A),
+                  height: 1.15,
+                  letterSpacing: -1.0,
+                ),
+                children: [
+                  TextSpan(text: 'How should we\nhandle '),
+                  TextSpan(
+                    text: 'slip-ups?',
+                    style: TextStyle(color: Color(0xFFEF4444)),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
 
             // ── Subtitle ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
               child: Text(
                 'Choose your level of accountability when you miss a daily target.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.blueGrey.shade700,
-                  height: 1.4,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF374151),
                 ),
               ),
             ),
