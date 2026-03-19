@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../core/liquid_ui.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA MODELS
@@ -142,7 +143,7 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   Widget _header({double topPad = 0}) {
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 16 + topPad, 20, 12),
-      child: _GlassCard(
+      child: LiquidCard(
         padding: const EdgeInsets.fromLTRB(18, 14, 14, 14),
         radius: 22,
         child: Row(
@@ -204,7 +205,7 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   Widget _missionCard() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-      child: _GlassCard(
+      child: LiquidCard(
         radius: 28,
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
         child: Column(
@@ -246,11 +247,10 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   }
 
   Widget _statPill(String label, String value) {
-    return _GlassCard(
+    return LiquidCard.solid(
       radius: 16,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      blurSigma: 8,
-      child: Column(
+            child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(label,
@@ -286,10 +286,10 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.5), width: 1),
+                          color: Colors.white.withOpacity(0.5), width: 1),
                     ),
                     child: const Text('View All',
                         style: TextStyle(
@@ -374,10 +374,10 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 9, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
+                          color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.5), width: 1),
+                              color: Colors.white.withOpacity(0.5), width: 1),
                         ),
                         child: const Text('Open Cal',
                             style: TextStyle(
@@ -388,7 +388,7 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                   ],
                 ),
                 const SizedBox(height: 10),
-                _GlassCard(
+                LiquidCard(
                   radius: 20,
                   padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
                   child: _InlineCalendar(
@@ -418,66 +418,45 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   }) {
     final textColor = light ? Colors.white : const Color(0xFF1A0800);
     final subtextColor =
-        light ? Colors.white70 : Colors.black.withValues(alpha: 0.55);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          width: 110,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                gradColors[0].withValues(alpha: 0.45),
-                gradColors[1].withValues(alpha: 0.25),
+        light ? Colors.white70 : Colors.black.withOpacity(0.55);
+    return SizedBox(
+      width: 110,
+      child: LiquidCard.solid(
+        radius: 20,
+        padding: const EdgeInsets.all(12),
+        tint: gradColors[0].withOpacity(0.3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 22)),
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(value,
+                    style: TextStyle(
+                        fontSize: 20, fontWeight: FontWeight.w900,
+                        color: textColor, letterSpacing: -0.5)),
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(badge,
+                      style: const TextStyle(
+                          fontSize: 9, fontWeight: FontWeight.w700,
+                          color: Colors.white)),
+                ),
               ],
             ),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25), width: 1.2),
-            boxShadow: [
-              BoxShadow(
-                  color: gradColors[0].withValues(alpha: 0.15),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6)),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 22)),
-              const SizedBox(height: 4),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(value,
-                      style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.w900,
-                          color: textColor, letterSpacing: -0.5)),
-                  const SizedBox(width: 5),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.25),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(badge,
-                        style: const TextStyle(
-                            fontSize: 9, fontWeight: FontWeight.w700,
-                            color: Colors.white)),
-                  ),
-                ],
-              ),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w500,
-                      color: subtextColor)),
-            ],
-          ),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w500,
+                    color: subtextColor)),
+          ],
         ),
       ),
     );
@@ -506,60 +485,6 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED GLASS CARD  (BackdropFilter + frosted white container)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-  final EdgeInsets padding;
-  final double radius;
-  final double blurSigma;
-
-  const _GlassCard({
-    required this.child,
-    this.padding = const EdgeInsets.all(18),
-    this.radius = 24,
-    this.blurSigma = 14,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.35), width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6)),
-            ],
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.25),
-                Colors.white.withValues(alpha: 0.02),
-              ],
-            ),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3-D GLASS ORB  (radial gradient + specular highlight)
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _GlassOrb extends StatelessWidget {
   final double size;
   final List<Color> colors;
@@ -578,17 +503,17 @@ class _GlassOrb extends StatelessWidget {
           center: const Alignment(-0.3, -0.4),
           radius: 0.85,
           colors: [
-            Colors.white.withValues(alpha: 0.90),
-            colors[0].withValues(alpha: 0.70),
+            Colors.white.withOpacity(0.90),
+            colors[0].withOpacity(0.70),
             colors[1],
           ],
           stops: const [0.0, 0.45, 1.0],
         ),
         border: Border.all(
-            color: Colors.white.withValues(alpha: 0.80), width: 1.2),
+            color: Colors.white.withOpacity(0.80), width: 1.2),
         boxShadow: [
           BoxShadow(
-              color: colors[1].withValues(alpha: 0.28),
+              color: colors[1].withOpacity(0.28),
               blurRadius: 14,
               offset: const Offset(0, 5)),
         ],
@@ -608,55 +533,30 @@ class _HabitPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(30),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.40), width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                  color: h.color.withValues(alpha: 0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4)),
+    return LiquidCard.solid(
+      radius: 30,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      tint: Colors.white.withOpacity(0.15),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 3-D orb icon
+          _GlassOrb(
+            size: 36,
+            colors: [
+              h.color.withOpacity(0.55),
+              h.color,
             ],
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.35),
-                Colors.white.withValues(alpha: 0.05),
-              ],
+            child: Center(
+              child: Text(h.emoji, style: const TextStyle(fontSize: 18)),
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 3-D orb icon
-              _GlassOrb(
-                size: 36,
-                colors: [
-                  h.color.withValues(alpha: 0.55),
-                  h.color,
-                ],
-                child: Center(
-                  child: Text(h.emoji,
-                      style: const TextStyle(fontSize: 18)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(h.label,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700,
-                      color: _kInk)),
-            ],
-          ),
-        ),
+          const SizedBox(width: 10),
+          Text(h.label,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w700,
+                  color: _kInk)),
+        ],
       ),
     );
   }
@@ -672,7 +572,7 @@ class _RoutineRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _GlassCard(
+    return LiquidCard.solid(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       radius: 22,
       child: Row(
@@ -680,7 +580,7 @@ class _RoutineRow extends StatelessWidget {
           _GlassOrb(
             size: 44,
             colors: [
-              r.orbColor.withValues(alpha: 0.50),
+              r.orbColor.withOpacity(0.50),
               r.orbColor,
             ],
             child: Center(
@@ -762,7 +662,7 @@ class _RingPainter extends CustomPainter {
     // Track
     canvas.drawCircle(c, r,
       Paint()
-        ..color = const Color(0xFFDDDDDD).withValues(alpha: 0.60)
+        ..color = const Color(0xFFDDDDDD).withOpacity(0.60)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 13
         ..strokeCap = StrokeCap.round,

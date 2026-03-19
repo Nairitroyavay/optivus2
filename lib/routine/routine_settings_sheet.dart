@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'routine_tab_v2.dart';
+import 'routine_tab.dart';
 
 const _kInk  = Color(0xFF0F111A);
 const _kSub  = Color(0xFF6B7280);

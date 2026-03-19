@@ -43,12 +43,7 @@ class AiSuggestion {
 // PROVIDER  — premium status + custom tasks + AI panel state
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Custom tasks keyed by date string "yyyy-MM-dd"
-final customTasksProvider = StateProvider<Map<String, List<CustomTask>>>(
-    (_) => {});
-
-// Premium flag (wire to your real auth/subscription check)
-final isPremiumProvider = StateProvider<bool>((_) => false);
+// (Providers moved to routine_provider.dart)
 
 // AI panel open/closed
 final aiPanelOpenProvider = StateProvider<bool>((_) => false);

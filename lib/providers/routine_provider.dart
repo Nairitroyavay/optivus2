@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,6 +130,24 @@ class ClassItem {
   });
 }
 
+class CustomTask {
+  final String id;
+  final String title;
+  final String emoji;
+  final String time;   // "HH:MM"
+  final DateTime date;
+  final Color color;
+
+  const CustomTask({
+    required this.id,
+    required this.title,
+    required this.emoji,
+    required this.time,
+    required this.date,
+    required this.color,
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE CLASSES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,7 +229,9 @@ class RoutineState {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class RoutineNotifier extends StateNotifier<RoutineState> {
-  RoutineNotifier() : super(const RoutineState());
+  RoutineNotifier() : super(const RoutineState()) {
+    Future.microtask(() => setFixedBlocks(kDefaultFixedBlocks));
+  }
 
   // ── Fixed schedule ───────────────────────────────────────────────────────
 
@@ -278,6 +299,12 @@ final routineProvider =
     StateNotifierProvider<RoutineNotifier, RoutineState>(
   (_) => RoutineNotifier(),
 );
+
+final customTasksProvider =
+    StateProvider<Map<String, List<CustomTask>>>((ref) => {});
+
+final isPremiumProvider =
+    StateProvider<bool>((ref) => false);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFAULT SEED DATA  (used when app is demoed without going through onboarding)

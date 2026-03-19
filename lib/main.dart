@@ -7,6 +7,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'firebase_options.dart';
 import 'welcome_screen.dart';
+import 'login_screen.dart';
+import 'signup_screen.dart';
+import 'onboarding_screen.dart';
+import 'home_screen.dart';
+
+final _router = GoRouter(
+  initialLocation: '/',
+  routes: [
+    GoRoute(path: '/', builder: (_, __) => const WelcomeScreen()),
+    GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+    GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
+    GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
+    GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+  ],
+);
 
 void main() async {
   runZonedGuarded(() async {
@@ -38,7 +53,7 @@ class OptivusApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Optivus',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -46,7 +61,7 @@ class OptivusApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFFB830)),
       ),
-      home: const WelcomeScreen(),
+      routerConfig: _router,
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'widgets/liquid_glass_tabbar.dart';
 import 'tabs/home_tab.dart';
+import 'routine/routine_tab.dart' as rt;
 
 // Per-tab gradient definitions
 const List<List<Color>> _tabGradients = [
@@ -49,7 +50,9 @@ class _HomeScreenState extends State<HomeScreen> {
           bottom: false,
           child: _currentIndex == 0
               ? const HomeTab()
-              : Center(
+              : _currentIndex == 1
+                  ? const rt.RoutineTab()
+                  : Center(
                   child: Text(
                     '${_tabLabels[_currentIndex]} Screen',
                     style: const TextStyle(

@@ -10,9 +10,7 @@ import 'fixed_schedule_screen.dart';
 import 'add_task_sheet.dart';
 import 'ai_routine_panel.dart';
 import 'routine_settings_sheet.dart';
-import 'routine_tab_v2.dart' show RoutineFilter;
-
-enum RoutineFilter2 { all, skinCare, classes, eating }
+enum RoutineFilter { all, skinCare, classes, eating }
 
 class _FM {
   final String label, emoji; final Color color;

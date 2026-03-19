@@ -93,7 +93,7 @@ class _GlassLiquidButtonState extends State<GlassLiquidButton>
                         // Dark top/left inner shadow simulation (a bit darker above)
                         BoxShadow(
                           color: const Color(0xFF9EADC1).withOpacity(0.6),
-                          inset: true,
+                          
                           offset: const Offset(0, 4),
                           blurRadius: 10,
                           spreadRadius: -2,
@@ -101,7 +101,7 @@ class _GlassLiquidButtonState extends State<GlassLiquidButton>
                         // Light bottom/right inner highlight simulation
                         const BoxShadow(
                           color: Colors.white,
-                          inset: true,
+                          
                           offset: Offset(0, -3),
                           blurRadius: 6,
                           spreadRadius: -2,
@@ -141,14 +141,14 @@ class _GlassLiquidButtonState extends State<GlassLiquidButton>
                           // Top bright highlight (rim light)
                           BoxShadow(
                             color: Colors.white.withOpacity(0.9),
-                            inset: true,
+                            
                             offset: const Offset(0, 3),
                             blurRadius: 4,
                           ),
                           // Bottom soft highlight
                           BoxShadow(
                             color: Colors.white.withOpacity(0.2),
-                            inset: true,
+                            
                             offset: const Offset(0, -2),
                             blurRadius: 4,
                           ),

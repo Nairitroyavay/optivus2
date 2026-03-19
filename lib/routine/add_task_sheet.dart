@@ -12,27 +12,7 @@ const _kCard  = Colors.white;
 const _kAmber = Color(0xFFFFB830);
 const _kShad  = Color(0x0D000000);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM TASK MODEL  (stored per-day in provider)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class CustomTask {
-  final String id;
-  final String title;
-  final String emoji;
-  final String time;   // "HH:MM"
-  final DateTime date;
-  final Color color;
-
-  const CustomTask({
-    required this.id,
-    required this.title,
-    required this.emoji,
-    required this.time,
-    required this.date,
-    required this.color,
-  });
-}
+// (CustomTask model moved to routine_provider.dart)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ADD TASK BOTTOM SHEET
