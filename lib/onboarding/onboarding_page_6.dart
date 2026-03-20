@@ -1,17 +1,19 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 import '../widgets/animated_bot_avatar.dart';
 
-class OnboardingPage6 extends StatefulWidget {
+class OnboardingPage6 extends ConsumerStatefulWidget {
   const OnboardingPage6({super.key});
 
   @override
-  State<OnboardingPage6> createState() => _OnboardingPage6State();
+  ConsumerState<OnboardingPage6> createState() => _OnboardingPage6State();
 }
 
-class _OnboardingPage6State extends State<OnboardingPage6> {
+class _OnboardingPage6State extends ConsumerState<OnboardingPage6> {
   final TextEditingController _nameController = TextEditingController();
 
   String get coachName =>
@@ -26,6 +28,17 @@ class _OnboardingPage6State extends State<OnboardingPage6> {
     _SuggestionChip('Bro',    Color(0xFFF59E0B)), // 5: Friendly (Amber Gold)
     _SuggestionChip('Sir',    Color(0xFFEF4444)), // 1: Tough Love (Red)
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final name = ref.read(onboardingProvider).coachName;
+      if (name.isNotEmpty) {
+        _nameController.text = name;
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -99,7 +112,10 @@ class _OnboardingPage6State extends State<OnboardingPage6> {
               // Text Field Content
               TextField(
                 controller: _nameController,
-                onChanged: (_) => setState(() {}),
+                onChanged: (val) {
+                  setState(() {});
+                  ref.read(onboardingProvider.notifier).updateCoachName(val.trim());
+                },
                 style: const TextStyle(
                   color: Color(0xFF92400E),
                   fontWeight: FontWeight.w600,
@@ -143,6 +159,7 @@ class _OnboardingPage6State extends State<OnboardingPage6> {
       onTap: () {
         HapticFeedback.lightImpact();
         setState(() => _nameController.text = chip.label);
+        ref.read(onboardingProvider.notifier).updateCoachName(chip.label);
       },
       child: Container(
         decoration: BoxDecoration(

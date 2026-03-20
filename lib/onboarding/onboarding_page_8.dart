@@ -1,5 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 
 class ScheduleItem {
@@ -26,20 +28,50 @@ class ScheduleItem {
     this.isMini = false,
     this.isAdd = false,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'title': title,
+      'start': start,
+      'duration': duration,
+      'icon': icon?.codePoint,
+      'color': color?.toARGB32(),
+      'hasTopTape': hasTopTape,
+      'hasBottomTape': hasBottomTape,
+      'isMini': isMini,
+      'isAdd': isAdd,
+    };
+  }
+
+  factory ScheduleItem.fromMap(Map<String, dynamic> map) {
+    return ScheduleItem(
+      id: map['id'] ?? '',
+      title: map['title'] ?? '',
+      start: (map['start'] ?? 0.0).toDouble(),
+      duration: (map['duration'] ?? 0.0).toDouble(),
+      icon: map['icon'] != null ? IconData(map['icon'], fontFamily: 'MaterialIcons') : null,
+      color: map['color'] != null ? Color((map['color'] as num).toInt()) : null,
+      hasTopTape: map['hasTopTape'] ?? false,
+      hasBottomTape: map['hasBottomTape'] ?? false,
+      isMini: map['isMini'] ?? false,
+      isAdd: map['isAdd'] ?? false,
+    );
+  }
 }
 
-class OnboardingPage8 extends StatefulWidget {
+class OnboardingPage8 extends ConsumerStatefulWidget {
   const OnboardingPage8({super.key});
 
   @override
-  State<OnboardingPage8> createState() => _OnboardingPage8State();
+  ConsumerState<OnboardingPage8> createState() => _OnboardingPage8State();
 }
 
-class _OnboardingPage8State extends State<OnboardingPage8> {
+class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
   final double kHourHeight = 44.0;
   final double kLeftOffset = 64.0;
 
-  late List<ScheduleItem> items;
+  late List<ScheduleItem> items = [];
 
   final List<Color> _cycleColors = [
     const Color(0xFFF43F5E), // Rose
@@ -52,17 +84,33 @@ class _OnboardingPage8State extends State<OnboardingPage8> {
   @override
   void initState() {
     super.initState();
-    items = [
-      ScheduleItem(id: 'sleep', title: 'Sleep', start: 0, duration: 6.5, icon: Icons.bed_rounded, color: const Color(0xFF8B5CF6), hasTopTape: true, hasBottomTape: true),
-      ScheduleItem(id: 'add1', title: '', start: 7.75, isAdd: true),
-      ScheduleItem(id: 'classes', title: 'Classes', start: 9, duration: 3, icon: Icons.school_rounded, color: const Color(0xFF3B82F6), hasTopTape: true, hasBottomTape: true),
-      ScheduleItem(id: 'add2', title: '', start: 12.5, isAdd: true),
-      ScheduleItem(id: 'work', title: 'Work', start: 13, duration: 4, icon: Icons.work_rounded, color: const Color(0xFFF59E0B), hasTopTape: true, hasBottomTape: true),
-      ScheduleItem(id: 'gym', title: 'Gym', start: 17.5, duration: 1.5, icon: Icons.fitness_center_rounded, color: const Color(0xFF10B981), hasTopTape: true, hasBottomTape: true),
-      ScheduleItem(id: 'dinner', title: 'Dinner', start: 19.5, duration: 1.0, isMini: true),
-      ScheduleItem(id: 'leisure', title: 'Leisure', start: 20.75, duration: 1.0, isMini: true),
-      ScheduleItem(id: 'end', title: 'End of Day', start: 22.0, duration: 1.0, isMini: true),
-    ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final savedItems = ref.read(onboardingProvider).scheduleItems;
+      if (savedItems.isNotEmpty) {
+        setState(() {
+          items = savedItems.map((m) => ScheduleItem.fromMap(m)).toList();
+        });
+      } else {
+        setState(() {
+          items = [
+            ScheduleItem(id: 'sleep', title: 'Sleep', start: 0, duration: 6.5, icon: Icons.bed_rounded, color: const Color(0xFF8B5CF6), hasTopTape: true, hasBottomTape: true),
+            ScheduleItem(id: 'add1', title: '', start: 7.75, isAdd: true),
+            ScheduleItem(id: 'classes', title: 'Classes', start: 9, duration: 3, icon: Icons.school_rounded, color: const Color(0xFF3B82F6), hasTopTape: true, hasBottomTape: true),
+            ScheduleItem(id: 'add2', title: '', start: 12.5, isAdd: true),
+            ScheduleItem(id: 'work', title: 'Work', start: 13, duration: 4, icon: Icons.work_rounded, color: const Color(0xFFF59E0B), hasTopTape: true, hasBottomTape: true),
+            ScheduleItem(id: 'gym', title: 'Gym', start: 17.5, duration: 1.5, icon: Icons.fitness_center_rounded, color: const Color(0xFF10B981), hasTopTape: true, hasBottomTape: true),
+            ScheduleItem(id: 'dinner', title: 'Dinner', start: 19.5, duration: 1.0, isMini: true),
+            ScheduleItem(id: 'leisure', title: 'Leisure', start: 20.75, duration: 1.0, isMini: true),
+            ScheduleItem(id: 'end', title: 'End of Day', start: 22.0, duration: 1.0, isMini: true),
+          ];
+        });
+        _updateProvider();
+      }
+    });
+  }
+
+  void _updateProvider() {
+    ref.read(onboardingProvider.notifier).updateScheduleItems(items.map((e) => e.toMap()).toList());
   }
 
   String _formatTime(double hour) {
@@ -87,6 +135,7 @@ class _OnboardingPage8State extends State<OnboardingPage8> {
       items[index].start += deltaHours;
       items[index].duration -= deltaHours;
     });
+    _updateProvider();
   }
 
   void _onBottomTapeDrag(int index, DragUpdateDetails details) {
@@ -100,6 +149,7 @@ class _OnboardingPage8State extends State<OnboardingPage8> {
       }
       items[index].duration += deltaHours;
     });
+    _updateProvider();
   }
 
   Future<void> _showEditDialog(int index) async {
@@ -208,6 +258,7 @@ class _OnboardingPage8State extends State<OnboardingPage8> {
                         _colorIndex++;
                       }
                     });
+                    _updateProvider();
                     Navigator.pop(ctx);
                   }, 
                   child: Text(item.isAdd ? 'Create Task' : 'Save Fixed Time')

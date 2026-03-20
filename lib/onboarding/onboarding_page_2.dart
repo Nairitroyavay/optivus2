@@ -1,6 +1,8 @@
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -329,17 +331,42 @@ class _GlassOrb extends StatelessWidget {
 // ═════════════════════════════════════════════════════════════════════════════
 // Main page
 // ═════════════════════════════════════════════════════════════════════════════
-class OnboardingPage2 extends StatefulWidget {
+class OnboardingPage2 extends ConsumerStatefulWidget {
   const OnboardingPage2({super.key});
   @override
-  State<OnboardingPage2> createState() => _OnboardingPage2State();
+  ConsumerState<OnboardingPage2> createState() => _OnboardingPage2State();
 }
 
-class _OnboardingPage2State extends State<OnboardingPage2> {
+class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
   bool _cigarettes = false;
-  bool _doomScrolling = true;
+  bool _doomScrolling = false;
   bool _junkFood = false;
   bool _procrastination = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final habits = ref.read(onboardingProvider).badHabits;
+      if (habits.isNotEmpty) {
+        setState(() {
+          _cigarettes = habits.contains('Cigarettes');
+          _doomScrolling = habits.contains('Doom Scrolling');
+          _junkFood = habits.contains('Junk Food');
+          _procrastination = habits.contains('Procrastination');
+        });
+      }
+    });
+  }
+
+  void _updateHabits() {
+    final List<String> current = [];
+    if (_cigarettes) current.add('Cigarettes');
+    if (_doomScrolling) current.add('Doom Scrolling');
+    if (_junkFood) current.add('Junk Food');
+    if (_procrastination) current.add('Procrastination');
+    ref.read(onboardingProvider.notifier).updateBadHabits(current);
+  }
 
   // ── Single frosted-glass habit row with iridescent background ─────────────
   Widget _buildHabitRow({
@@ -689,7 +716,10 @@ class _OnboardingPage2State extends State<OnboardingPage2> {
                             rowTint: [const Color(0xFFFFC9A0), const Color(0xFFFFA0B0)],
                             title: 'Cigarettes',
                             value: _cigarettes,
-                            onChanged: (v) => setState(() => _cigarettes = v),
+                            onChanged: (v) {
+                              setState(() => _cigarettes = v);
+                              _updateHabits();
+                            },
                           ),
 
                           // Doom Scrolling — sky blue with cyan iridescence
@@ -701,7 +731,10 @@ class _OnboardingPage2State extends State<OnboardingPage2> {
                             rowTint: [const Color(0xFFB0E8FF), const Color(0xFFB0C8FF)],
                             title: 'Doom Scrolling',
                             value: _doomScrolling,
-                            onChanged: (v) => setState(() => _doomScrolling = v),
+                            onChanged: (v) {
+                              setState(() => _doomScrolling = v);
+                              _updateHabits();
+                            },
                           ),
 
                           // Junk Food — golden yellow / peach iridescence
@@ -713,7 +746,10 @@ class _OnboardingPage2State extends State<OnboardingPage2> {
                             rowTint: [const Color(0xFFFFE9A0), const Color(0xFFFFD0A0)],
                             title: 'Junk Food',
                             value: _junkFood,
-                            onChanged: (v) => setState(() => _junkFood = v),
+                            onChanged: (v) {
+                              setState(() => _junkFood = v);
+                              _updateHabits();
+                            },
                           ),
 
                           // Procrastination — violet / lavender iridescence
@@ -725,7 +761,10 @@ class _OnboardingPage2State extends State<OnboardingPage2> {
                             rowTint: [const Color(0xFFD8B4FF), const Color(0xFFB4BCFF)],
                             title: 'Procrastination',
                             value: _procrastination,
-                            onChanged: (v) => setState(() => _procrastination = v),
+                            onChanged: (v) {
+                              setState(() => _procrastination = v);
+                              _updateHabits();
+                            },
                           ),
 
                           const SizedBox(height: 2),

@@ -2,8 +2,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'providers/onboarding_provider.dart';
 import '../home_screen.dart';
 import 'widgets/app_button.dart';
@@ -60,14 +58,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final state = ref.read(onboardingProvider);
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'onboarding': state.toMap(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
+      await ref.read(onboardingProvider.notifier).saveToFirestore();
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -105,7 +96,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 child: PageView(
                   controller: _pageController,
                   physics: const BouncingScrollPhysics(),
-                  onPageChanged: (i) => setState(() => _currentPage = i),
+                  onPageChanged: (i) {
+                    setState(() => _currentPage = i);
+                    ref.read(onboardingProvider.notifier).saveToFirestore();
+                  },
                   children: const [
                     OnboardingPage0(),
                     OnboardingPage1(),

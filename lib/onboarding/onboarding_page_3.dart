@@ -1,16 +1,35 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 
-class OnboardingPage3 extends StatefulWidget {
+class OnboardingPage3 extends ConsumerStatefulWidget {
   const OnboardingPage3({super.key});
 
   @override
-  State<OnboardingPage3> createState() => _OnboardingPage3State();
+  ConsumerState<OnboardingPage3> createState() => _OnboardingPage3State();
 }
 
-class _OnboardingPage3State extends State<OnboardingPage3> {
+class _OnboardingPage3State extends ConsumerState<OnboardingPage3> {
   final Set<String> _selectedHabits = {'Gym', 'Reading'};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final habits = ref.read(onboardingProvider).goodHabits;
+      if (habits.isNotEmpty) {
+        setState(() {
+          _selectedHabits.clear();
+          _selectedHabits.addAll(habits);
+        });
+      } else {
+        // Initialize provider with defaults
+        ref.read(onboardingProvider.notifier).updateGoodHabits(_selectedHabits.toList());
+      }
+    });
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // 3-D Glass Orb  (used for both the icon circle AND the toggle)
@@ -218,13 +237,16 @@ class _OnboardingPage3State extends State<OnboardingPage3> {
     final isSelected = _selectedHabits.contains(title);
 
     return GestureDetector(
-      onTap: () => setState(() {
-        if (isSelected) {
-          _selectedHabits.remove(title);
-        } else {
-          _selectedHabits.add(title);
-        }
-      }),
+      onTap: () {
+        setState(() {
+          if (isSelected) {
+            _selectedHabits.remove(title);
+          } else {
+            _selectedHabits.add(title);
+          }
+        });
+        ref.read(onboardingProvider.notifier).updateGoodHabits(_selectedHabits.toList());
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,

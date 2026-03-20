@@ -1,48 +1,61 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class OnboardingState {
   final List<String> selectedCategories;
+  final List<String> badHabits;
+  final List<String> goodHabits;
+  final List<String> goals; // Long-term goals
   final String coachStyle;
-  final List<String> goals;
-  final String wakeTime;
-  final String sleepHours;
-  final List<String> mealTimes;
+  final String coachName;
+  final String accountabilityType;
+  final List<Map<String, dynamic>> scheduleItems;
 
   OnboardingState({
     this.selectedCategories = const [],
-    this.coachStyle = 'Supportive',
+    this.badHabits = const [],
+    this.goodHabits = const [],
     this.goals = const [],
-    this.wakeTime = '',
-    this.sleepHours = '',
-    this.mealTimes = const [],
+    this.coachStyle = 'Supportive',
+    this.coachName = '',
+    this.accountabilityType = 'Strict',
+    this.scheduleItems = const [],
   });
 
   OnboardingState copyWith({
     List<String>? selectedCategories,
-    String? coachStyle,
+    List<String>? badHabits,
+    List<String>? goodHabits,
     List<String>? goals,
-    String? wakeTime,
-    String? sleepHours,
-    List<String>? mealTimes,
+    String? coachStyle,
+    String? coachName,
+    String? accountabilityType,
+    List<Map<String, dynamic>>? scheduleItems,
   }) {
     return OnboardingState(
       selectedCategories: selectedCategories ?? this.selectedCategories,
-      coachStyle: coachStyle ?? this.coachStyle,
+      badHabits: badHabits ?? this.badHabits,
+      goodHabits: goodHabits ?? this.goodHabits,
       goals: goals ?? this.goals,
-      wakeTime: wakeTime ?? this.wakeTime,
-      sleepHours: sleepHours ?? this.sleepHours,
-      mealTimes: mealTimes ?? this.mealTimes,
+      coachStyle: coachStyle ?? this.coachStyle,
+      coachName: coachName ?? this.coachName,
+      accountabilityType: accountabilityType ?? this.accountabilityType,
+      scheduleItems: scheduleItems ?? this.scheduleItems,
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'selectedCategories': selectedCategories,
-      'coachStyle': coachStyle,
+      'badHabits': badHabits,
+      'goodHabits': goodHabits,
       'goals': goals,
-      'wakeTime': wakeTime,
-      'sleepHours': sleepHours,
-      'mealTimes': mealTimes,
+      'coachStyle': coachStyle,
+      'coachName': coachName,
+      'accountabilityType': accountabilityType,
+      'scheduleItems': scheduleItems,
     };
   }
 }
@@ -51,11 +64,28 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   OnboardingNotifier() : super(OnboardingState());
 
   void updateCategories(List<String> cats) => state = state.copyWith(selectedCategories: cats);
-  void updateCoachStyle(String style) => state = state.copyWith(coachStyle: style);
+  void updateBadHabits(List<String> habits) => state = state.copyWith(badHabits: habits);
+  void updateGoodHabits(List<String> habits) => state = state.copyWith(goodHabits: habits);
   void updateGoals(List<String> goals) => state = state.copyWith(goals: goals);
-  void updateWakeTime(String wakeTime) => state = state.copyWith(wakeTime: wakeTime);
-  void updateSleepHours(String sleepHours) => state = state.copyWith(sleepHours: sleepHours);
-  void updateMealTimes(List<String> mealTimes) => state = state.copyWith(mealTimes: mealTimes);
+  void updateCoachStyle(String style) => state = state.copyWith(coachStyle: style);
+  void updateCoachName(String name) => state = state.copyWith(coachName: name);
+  void updateAccountability(String type) => state = state.copyWith(accountabilityType: type);
+  void updateScheduleItems(List<Map<String, dynamic>> items) => state = state.copyWith(scheduleItems: items);
+
+  Future<void> saveToFirestore() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'onboarding': state.toMap(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        // Silently fail or log for analytics, shouldn't disrupt user flow
+        debugPrint('Error saving onboarding data: $e');
+      }
+    }
+  }
 }
 
 final onboardingProvider = StateNotifierProvider<OnboardingNotifier, OnboardingState>((ref) {

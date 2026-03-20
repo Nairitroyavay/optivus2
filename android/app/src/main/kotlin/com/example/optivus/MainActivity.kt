@@ -1,4 +1,4 @@
-package com.example.optivus2
+package com.example.optivus
 
 import io.flutter.embedding.android.FlutterActivity
 

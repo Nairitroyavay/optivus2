@@ -1,15 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 
-class OnboardingPage7 extends StatefulWidget {
+class OnboardingPage7 extends ConsumerStatefulWidget {
   const OnboardingPage7({super.key});
 
   @override
-  State<OnboardingPage7> createState() => _OnboardingPage7State();
+  ConsumerState<OnboardingPage7> createState() => _OnboardingPage7State();
 }
 
-class _OnboardingPage7State extends State<OnboardingPage7> {
-  String _selectedCoach = 'Strict'; // Default match to image
+class _OnboardingPage7State extends ConsumerState<OnboardingPage7> {
+  String _selectedAccountability = 'Strict'; // Default match to image
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final acc = ref.read(onboardingProvider).accountabilityType;
+      if (acc.isNotEmpty) {
+        setState(() {
+          _selectedAccountability = acc;
+        });
+      }
+    });
+  }
 
   Widget _buildAccountabilityCard({
     required String title,
@@ -18,7 +33,10 @@ class _OnboardingPage7State extends State<OnboardingPage7> {
     required bool isSelected,
   }) {
     return GestureDetector(
-      onTap: () => setState(() => _selectedCoach = title),
+      onTap: () {
+        setState(() => _selectedAccountability = title);
+        ref.read(onboardingProvider.notifier).updateAccountability(title);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
@@ -190,19 +208,19 @@ class _OnboardingPage7State extends State<OnboardingPage7> {
               title: 'Forgiving',
               description: 'Gently roll missed tasks over to tomorrow. Focus on the comeback, not the failure.',
               emojiIcon: '🪶',
-              isSelected: _selectedCoach == 'Forgiving',
+              isSelected: _selectedAccountability == 'Forgiving',
             ),
             _buildAccountabilityCard(
               title: 'Strict',
               description: 'Call me out. Force me to explain why I missed it before letting me reschedule.',
               emojiIcon: '📋',
-              isSelected: _selectedCoach == 'Strict',
+              isSelected: _selectedAccountability == 'Strict',
             ),
             _buildAccountabilityCard(
               title: 'Ruthless',
               description: 'Zero excuses. Strip away pleasantries, give me a harsh truth pill, and demand immediate action.',
               emojiIcon: '🔒',
-              isSelected: _selectedCoach == 'Ruthless',
+              isSelected: _selectedAccountability == 'Ruthless',
             ),
           ],
         ),

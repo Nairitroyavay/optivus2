@@ -1,18 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 import '../widgets/liquid_glass_card.dart';
 import '../widgets/liquid_category_card.dart';
 
-class OnboardingPage4 extends StatefulWidget {
+class OnboardingPage4 extends ConsumerStatefulWidget {
   const OnboardingPage4({super.key});
 
   @override
-  State<OnboardingPage4> createState() => _OnboardingPage4State();
+  ConsumerState<OnboardingPage4> createState() => _OnboardingPage4State();
 }
 
-class _OnboardingPage4State extends State<OnboardingPage4> {
+class _OnboardingPage4State extends ConsumerState<OnboardingPage4> {
   // Multi-select: match the reference (Build strong body + Find inner peace)
-  final Set<String> _selected = {'Build strong body', 'Find inner peace'};
+  final Set<String> _selected = {'Strong\nBody', 'Inner\nPeace'};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final goals = ref.read(onboardingProvider).goals;
+      if (goals.isNotEmpty) {
+        setState(() {
+          _selected.clear();
+          _selected.addAll(goals);
+        });
+      } else {
+        ref.read(onboardingProvider.notifier).updateGoals(_selected.toList());
+      }
+    });
+  }
 
   void _toggle(String title) {
     setState(() {
@@ -22,6 +40,7 @@ class _OnboardingPage4State extends State<OnboardingPage4> {
         _selected.add(title);
       }
     });
+    ref.read(onboardingProvider.notifier).updateGoals(_selected.toList());
   }
 
   // ── Helper: Positioned liquid droplet ───────────────────────────────────
