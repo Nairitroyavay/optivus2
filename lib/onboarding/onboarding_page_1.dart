@@ -1,17 +1,18 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 import '../widgets/liquid_glass_card.dart';
 import '../widgets/liquid_category_card.dart';
 
-class OnboardingPage1 extends StatefulWidget {
+class OnboardingPage1 extends ConsumerStatefulWidget {
   const OnboardingPage1({super.key});
 
   @override
-  State<OnboardingPage1> createState() => _OnboardingPage1State();
+  ConsumerState<OnboardingPage1> createState() => _OnboardingPage1State();
 }
 
-class _OnboardingPage1State extends State<OnboardingPage1> {
+class _OnboardingPage1State extends ConsumerState<OnboardingPage1> {
   final Set<String> _selectedCategories = {'Health', 'Recovery'};
   final List<String> _allCategories = [
     'Health', 'Career', 'Skill', 'Recovery', 'Growth', 'Focus'
@@ -27,6 +28,7 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
         _selectedCategories.add(title);
       }
     });
+    ref.read(onboardingProvider.notifier).updateCategories(_selectedCategories.toList());
   }
 
   void _toggleAll() {
@@ -37,6 +39,7 @@ class _OnboardingPage1State extends State<OnboardingPage1> {
         _selectedCategories.addAll(_allCategories);
       }
     });
+    ref.read(onboardingProvider.notifier).updateCategories(_selectedCategories.toList());
   }
 
   // Helper: create a Positioned LiquidDroplet

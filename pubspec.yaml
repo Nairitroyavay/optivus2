@@ -24,6 +24,8 @@ dependencies:
   firebase_core: ^4.5.0
   firebase_crashlytics: ^5.0.8
   go_router: ^17.1.0
+  firebase_auth: ^6.2.0
+  cloud_firestore: ^6.1.3
 
 # ---------------------------------------------------------------------------
 # Development dependencies

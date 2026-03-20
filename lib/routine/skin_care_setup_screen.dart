@@ -192,10 +192,10 @@ class _SkinCareSetupScreenState extends State<SkinCareSetupScreen> {
                                 border: sel
                                     ? null
                                     : Border.all(
-                                        color: _kInk.withOpacity(0.1)),
+                                        color: _kInk.withValues(alpha: 0.1)),
                                 boxShadow: sel
                                     ? [BoxShadow(
-                                        color: _kBlue.withOpacity(0.32),
+                                        color: _kBlue.withValues(alpha: 0.32),
                                         blurRadius: 12,
                                         offset: const Offset(0, 4))]
                                     : [],
@@ -214,13 +214,13 @@ class _SkinCareSetupScreenState extends State<SkinCareSetupScreen> {
                                         letterSpacing: .3,
                                       )),
                                   // dot if day has steps (only day 0 seeded)
-                                  if (i == 0) ...[
+                                  if (_morning.isNotEmpty || _afternoon.isNotEmpty || _night.isNotEmpty) ...[
                                     const SizedBox(height: 3),
                                     Container(
                                       width: 5, height: 5,
                                       decoration: BoxDecoration(
                                         color: sel
-                                            ? Colors.white.withOpacity(0.7)
+                                            ? Colors.white.withValues(alpha: 0.7)
                                             : _kBlue,
                                         shape: BoxShape.circle,
                                       ),
@@ -284,7 +284,7 @@ class _SkinCareSetupScreenState extends State<SkinCareSetupScreen> {
                     borderRadius: BorderRadius.circular(32),
                     boxShadow: [
                       BoxShadow(
-                        color: _kBlue.withOpacity(0.35),
+                        color: _kBlue.withValues(alpha: 0.35),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       ),
@@ -405,7 +405,7 @@ class _SlotCard extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 7, vertical: 2),
                               decoration: BoxDecoration(
-                                color: _kBlue.withOpacity(0.12),
+                                color: _kBlue.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(s.time,
@@ -456,7 +456,7 @@ class _TF extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: TextStyle(
-            color: _kSub.withOpacity(0.55), fontSize: 15),
+            color: _kSub.withValues(alpha: 0.55), fontSize: 15),
         filled: true,
         fillColor: const Color(0xFFF2F2F2),
         border: OutlineInputBorder(

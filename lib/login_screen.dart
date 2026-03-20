@@ -5,6 +5,7 @@ import 'widgets/glass_logo.dart';
 import 'widgets/liquid_textfield.dart';
 import 'widgets/app_button.dart';
 import 'widgets/liquid_glass_panel.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,6 +16,15 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +60,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           children: [
                             // Email Field
-                            const LiquidTextField(
+                            LiquidTextField(
+                              controller: _emailCtrl,
                               hintText: 'Email',
                               prefixIcon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
@@ -59,6 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                             // Password Field
                             LiquidTextField(
+                              controller: _passCtrl,
                               hintText: 'Password',
                               prefixIcon: Icons.lock_outline,
                               obscureText: _obscurePassword,
@@ -116,13 +128,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: AppButton(
                   text: 'Sign In',
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const HomeScreen(),
-                      ),
-                    );
+                  onPressed: () async {
+                    if (_emailCtrl.text.isEmpty || _passCtrl.text.isEmpty) return;
+                    try {
+                      await FirebaseAuth.instance.signInWithEmailAndPassword(
+                        email: _emailCtrl.text.trim(), 
+                        password: _passCtrl.text
+                      );
+                      if (!context.mounted) return;
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HomeScreen(),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
                   },
                 ),
               ),

@@ -1,12 +1,10 @@
 // lib/Routine Screen/routine_tab_impl.dart
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/liquid_ui.dart';
 import '../providers/routine_provider.dart';
 import 'skin_care_setup_screen.dart';
 import 'eating_setup_screen.dart';
-import 'fixed_schedule_screen.dart';
 import 'add_task_sheet.dart';
 import 'ai_routine_panel.dart';
 import 'routine_settings_sheet.dart';
@@ -69,12 +67,18 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.skinCare) {
       final p = s.skinPlanForDay(dayIdx);
-      if (p.morning.isNotEmpty)   blocks.add(DisplayBlock(time:'07:30', title:'Morning Skin Care',
-          subtitle: p.morning.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'🌿', type:RoutineFilter.skinCare));
-      if (p.afternoon.isNotEmpty) blocks.add(DisplayBlock(time:'13:00', title:'Afternoon Skin Care',
-          subtitle: p.afternoon.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'💧', type:RoutineFilter.skinCare));
-      if (p.night.isNotEmpty)     blocks.add(DisplayBlock(time:'22:00', title:'Night Skin Care',
-          subtitle: p.night.map((x)=>x.name).join(' · '), accentColor:kPurple, emoji:'🌙', type:RoutineFilter.skinCare));
+      if (p.morning.isNotEmpty) {
+        blocks.add(DisplayBlock(time:'07:30', title:'Morning Skin Care',
+            subtitle: p.morning.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'🌿', type:RoutineFilter.skinCare));
+      }
+      if (p.afternoon.isNotEmpty) {
+        blocks.add(DisplayBlock(time:'13:00', title:'Afternoon Skin Care',
+            subtitle: p.afternoon.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'💧', type:RoutineFilter.skinCare));
+      }
+      if (p.night.isNotEmpty) {
+        blocks.add(DisplayBlock(time:'22:00', title:'Night Skin Care',
+            subtitle: p.night.map((x)=>x.name).join(' · '), accentColor:kPurple, emoji:'🌙', type:RoutineFilter.skinCare));
+      }
     }
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.classes) {
@@ -238,7 +242,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         // AI dim overlay
         if (_aiOpen) Positioned.fill(bottom: 340, child: GestureDetector(
           onTap: () => setState(() => _aiOpen = false),
-          child: Container(color: Colors.black.withOpacity(0.18)))),
+          child: Container(color: Colors.black.withValues(alpha: 0.18)))),
 
         // AI Panel
         if (_aiOpen) Positioned(left:0, right:0, bottom:0, child: AiRoutinePanel(
@@ -318,9 +322,9 @@ class _TRState extends State<_TimelineRow> {
           const SizedBox(height: 18),
           Container(width: 10, height: 10, decoration: BoxDecoration(
             color: b.accentColor, shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: b.accentColor.withOpacity(0.45), blurRadius: 6)])),
+            boxShadow: [BoxShadow(color: b.accentColor.withValues(alpha: 0.45), blurRadius: 6)])),
           if (!widget.isLast) Expanded(child: Container(
-              width: 1.5, color: kInk.withOpacity(0.07))),
+              width: 1.5, color: kInk.withValues(alpha: 0.07))),
         ]),
         const SizedBox(width: 10),
         Expanded(child: Padding(
@@ -333,7 +337,7 @@ class _TRState extends State<_TimelineRow> {
                   decoration: BoxDecoration(color: b.accentColor,
                       borderRadius: BorderRadius.circular(2))),
               Container(width: 38, height: 38,
-                  decoration: BoxDecoration(color: b.accentColor.withOpacity(0.14),
+                  decoration: BoxDecoration(color: b.accentColor.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(11)),
                   child: Center(child: Text(b.emoji,
                       style: const TextStyle(fontSize: 18)))),

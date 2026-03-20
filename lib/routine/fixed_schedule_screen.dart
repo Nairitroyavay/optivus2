@@ -11,7 +11,6 @@ const _kInk   = Color(0xFF0F111A);
 const _kSub   = Color(0xFF6B7280);
 const _kBg    = Color(0xFFFAF7F0);
 const _kCard  = Colors.white;
-const _kShad  = Color(0x0D000000);
 
 // 1 hour = 72px on the timeline
 const double _kHourH = 72.0;
@@ -92,7 +91,7 @@ class _MutableBlock {
   FixedBlock toFixed() => FixedBlock(
     id: id, title: title, emoji: emoji,
     startMinute: startMinute, endMinute: endMinute,
-    colorHex: '#${color.value.toRadixString(16).substring(2).toUpperCase()}',
+    colorHex: '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
   );
 }
 
@@ -145,10 +144,6 @@ class _FixedScheduleScreenState
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
-
-  _MutableBlock? _blockById(String id) =>
-      _blocks.firstWhere((b) => b.id == id,
-          orElse: () => _blocks.first);
 
   void _addBlock(_BlockTemplate tpl) {
     if (_blocks.any((b) => b.id == tpl.id)) return;
@@ -276,10 +271,10 @@ class _FixedScheduleScreenState
               padding: const EdgeInsets.symmetric(
                   horizontal: 12, vertical: 0),
               decoration: BoxDecoration(
-                color: t.color.withOpacity(0.15),
+                color: t.color.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                    color: t.color.withOpacity(0.4), width: 1),
+                    color: t.color.withValues(alpha: 0.4), width: 1),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -348,7 +343,7 @@ class _FixedScheduleScreenState
               decoration: BoxDecoration(
                 border: Border(
                   top: BorderSide(
-                    color: _kInk.withOpacity(0.06),
+                    color: _kInk.withValues(alpha: 0.06),
                     width: 1,
                   ),
                 ),
@@ -387,7 +382,6 @@ class _FixedScheduleScreenState
           final dur = _dragEndMin - _dragStartMin;
           int newStart =
               (_dragStartMin + minDelta).clamp(0, 1440 - dur);
-          int newEnd = newStart + dur;
           setState(() {
             b.startMinute = _MutableBlock.snapTo15(newStart);
             b.endMinute   = b.startMinute + dur;
@@ -400,13 +394,13 @@ class _FixedScheduleScreenState
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 80),
           decoration: BoxDecoration(
-            color: blockColor.withOpacity(isDragging ? 0.35 : 0.18),
+            color: blockColor.withValues(alpha: isDragging ? 0.35 : 0.18),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-                color: blockColor.withOpacity(0.5), width: 1.5),
+                color: blockColor.withValues(alpha: 0.5), width: 1.5),
             boxShadow: isDragging
                 ? [BoxShadow(
-                    color: blockColor.withOpacity(0.3),
+                    color: blockColor.withValues(alpha: 0.3),
                     blurRadius: 16, offset: const Offset(0, 6))]
                 : [],
           ),
@@ -468,7 +462,7 @@ class _FixedScheduleScreenState
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
-                                  color: _kInk.withOpacity(0.7),
+                                  color: _kInk.withValues(alpha: 0.7),
                                 ),
                               ),
                             ),
@@ -561,7 +555,7 @@ class _FixedScheduleScreenState
             borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFC084FC).withOpacity(0.35),
+                color: const Color(0xFFC084FC).withValues(alpha: 0.35),
                 blurRadius: 20, offset: const Offset(0, 8),
               ),
             ],
@@ -596,16 +590,16 @@ class _ResizeHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    double? _startY;
+    double? startY;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onVerticalDragStart: (d) {
-        _startY = d.globalPosition.dy;
+        startY = d.globalPosition.dy;
         onDragStart(d.globalPosition.dy);
       },
       onVerticalDragUpdate: (d) {
-        if (_startY != null) {
-          onDragUpdate(d.globalPosition.dy - _startY!);
+        if (startY != null) {
+          onDragUpdate(d.globalPosition.dy - startY!);
         }
       },
       onVerticalDragEnd: (_) {
@@ -618,7 +612,7 @@ class _ResizeHandle extends StatelessWidget {
         child: Container(
           width: 36, height: 4,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             borderRadius: BorderRadius.circular(2),
           ),
         ),

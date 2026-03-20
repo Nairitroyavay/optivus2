@@ -176,19 +176,19 @@ class _AppButtonState extends State<AppButton> with TickerProviderStateMixin {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(33),
                         // Slightly tinted so it shows against the white screen
-                        color: const Color(0xFFD8E8EF).withOpacity(0.45),
+                        color: const Color(0xFFD8E8EF).withValues(alpha: 0.45),
                         // gradient border applied via CustomPaint above
                         boxShadow: [
                           // Pastel blue drop shadow — separates from background
                           BoxShadow(
-                            color: const Color(0xFF92E0FF).withOpacity(0.55),
+                            color: const Color(0xFF92E0FF).withValues(alpha: 0.55),
                             blurRadius: 22,
                             spreadRadius: 0,
                             offset: const Offset(0, 6),
                           ),
                           // Soft inset top highlight
                           BoxShadow(
-                            color: Colors.white.withOpacity(0.55),
+                            color: Colors.white.withValues(alpha: 0.55),
                             blurRadius: 5,
                             offset: const Offset(0, -2),
                           ),
@@ -207,7 +207,7 @@ class _AppButtonState extends State<AppButton> with TickerProviderStateMixin {
                             children: [
                               // 1. Very light translucent base — lets
                               //    background show through for the glass feel
-                              Container(color: Colors.white.withOpacity(0.40)),
+                              Container(color: Colors.white.withValues(alpha: 0.40)),
 
                               // 2. Liquid blobs: mostly original soft pastels +
                               //    a large white blob for airiness, two vivid
@@ -222,17 +222,17 @@ class _AppButtonState extends State<AppButton> with TickerProviderStateMixin {
                                     children: [
                                       // White — large, drifts around, keeps
                                       // the liquid feeling bright & airy
-                                      _buildBlob(size: 200, color: Colors.white.withOpacity(0.90),              freqX: 1.29, freqY: 0.73, phaseX: 3 * pi / 2, phaseY: pi),
+                                      _buildBlob(size: 200, color: Colors.white.withValues(alpha: 0.90),              freqX: 1.29, freqY: 0.73, phaseX: 3 * pi / 2, phaseY: pi),
                                       // Original pastel peach
-                                      _buildBlob(size: 160, color: const Color(0xFFFFC6BA).withOpacity(0.75),   freqX: 1.13, freqY: 0.54, phaseX: 0,           phaseY: 0),
+                                      _buildBlob(size: 160, color: const Color(0xFFFFC6BA).withValues(alpha: 0.75),   freqX: 1.13, freqY: 0.54, phaseX: 0,           phaseY: 0),
                                       // Original pale sky-blue
-                                      _buildBlob(size: 170, color: const Color(0xFF92E0FF).withOpacity(0.70),   freqX: 0.67, freqY: 0.92, phaseX: pi,           phaseY: pi / 1.5),
+                                      _buildBlob(size: 170, color: const Color(0xFF92E0FF).withValues(alpha: 0.70),   freqX: 0.67, freqY: 0.92, phaseX: pi,           phaseY: pi / 1.5),
                                       // Original soft mint
-                                      _buildBlob(size: 155, color: const Color(0xFFC2E5DC).withOpacity(0.70),   freqX: 0.77, freqY: 1.51, phaseX: pi / 4,       phaseY: 3 * pi / 2),
+                                      _buildBlob(size: 155, color: const Color(0xFFC2E5DC).withValues(alpha: 0.70),   freqX: 0.77, freqY: 1.51, phaseX: pi / 4,       phaseY: 3 * pi / 2),
                                       // Vivid accent — coral (low opacity)
-                                      _buildBlob(size: 120, color: const Color(0xFFFF3C5F).withOpacity(0.45),   freqX: 0.81, freqY: 1.25, phaseX: pi / 2,       phaseY: pi / 3),
+                                      _buildBlob(size: 120, color: const Color(0xFFFF3C5F).withValues(alpha: 0.45),   freqX: 0.81, freqY: 1.25, phaseX: pi / 2,       phaseY: pi / 3),
                                       // Vivid accent — cyan (low opacity)
-                                      _buildBlob(size: 140, color: const Color(0xFF00D4FF).withOpacity(0.45),   freqX: 0.53, freqY: 0.61, phaseX: 5 * pi / 3,   phaseY: pi / 4),
+                                      _buildBlob(size: 140, color: const Color(0xFF00D4FF).withValues(alpha: 0.45),   freqX: 0.53, freqY: 0.61, phaseX: 5 * pi / 3,   phaseY: pi / 4),
                                     ],
                                   ),
                                 ),
@@ -247,10 +247,10 @@ class _AppButtonState extends State<AppButton> with TickerProviderStateMixin {
                                     end: Alignment.bottomCenter,
                                     stops: const [0.0, 0.18, 0.42, 1.0],
                                     colors: [
-                                      Colors.white.withOpacity(0.82),
-                                      Colors.white.withOpacity(0.45),
-                                      Colors.white.withOpacity(0.0),
-                                      Colors.white.withOpacity(0.0),
+                                      Colors.white.withValues(alpha: 0.82),
+                                      Colors.white.withValues(alpha: 0.45),
+                                      Colors.white.withValues(alpha: 0.0),
+                                      Colors.white.withValues(alpha: 0.0),
                                     ],
                                   ),
                                 ),
@@ -261,7 +261,7 @@ class _AppButtonState extends State<AppButton> with TickerProviderStateMixin {
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(30),
                                   border: Border.all(
-                                    color: Colors.white.withOpacity(0.75),
+                                    color: Colors.white.withValues(alpha: 0.75),
                                     width: 1.5,
                                   ),
                                 ),

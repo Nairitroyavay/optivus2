@@ -83,16 +83,16 @@ class _GlassLiquidButtonState extends State<GlassLiquidButton>
                     height: widget.height,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(widget.height / 2),
-                      color: Colors.white.withOpacity(0.05),
+                      color: Colors.white.withValues(alpha: 0.05),
                       // Inner shadow effect using overlapping gradients
                       border: Border.all(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         width: 1.5,
                       ),
                       boxShadow: [
                         // Dark top/left inner shadow simulation (a bit darker above)
                         BoxShadow(
-                          color: const Color(0xFF9EADC1).withOpacity(0.6),
+                          color: const Color(0xFF9EADC1).withValues(alpha: 0.6),
                           
                           offset: const Offset(0, 4),
                           blurRadius: 10,
@@ -126,28 +126,28 @@ class _GlassLiquidButtonState extends State<GlassLiquidButton>
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.white.withOpacity(0.4),
-                            Colors.white.withOpacity(0.1),
+                            Colors.white.withValues(alpha: 0.4),
+                            Colors.white.withValues(alpha: 0.1),
                           ],
                         ),
                         // Highlights and drop shadows for the inner bubble
                         boxShadow: [
                           // Drop shadow
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             offset: const Offset(0, 4),
                             blurRadius: 8,
                           ),
                           // Top bright highlight (rim light)
                           BoxShadow(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             
                             offset: const Offset(0, 3),
                             blurRadius: 4,
                           ),
                           // Bottom soft highlight
                           BoxShadow(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             
                             offset: const Offset(0, -2),
                             blurRadius: 4,
@@ -155,7 +155,7 @@ class _GlassLiquidButtonState extends State<GlassLiquidButton>
                         ],
                         // White thin border around the bubble
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           width: 1.0,
                         ),
                       ),

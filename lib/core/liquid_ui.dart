@@ -118,7 +118,7 @@ class LiquidCard extends StatelessWidget {
       border: Border.all(color: _kGlassBorder, width: 1.5),
       boxShadow: [
         BoxShadow(
-          color: _kGlassShad.withOpacity(0.08 * elevation),
+          color: _kGlassShad.withValues(alpha: 0.08 * elevation),
           blurRadius: 20 * elevation,
           offset: Offset(0, 6 * elevation),
         ),
@@ -221,13 +221,13 @@ class _LiquidButtonState extends State<LiquidButton>
             color: isGhost ? Colors.transparent : widget.color,
             borderRadius: BorderRadius.circular(widget.height / 2),
             border: isGhost
-                ? Border.all(color: widget.color.withOpacity(0.6), width: 1.5)
+                ? Border.all(color: widget.color.withValues(alpha: 0.6), width: 1.5)
                 : null,
             boxShadow: isGhost
                 ? null
                 : [
                     BoxShadow(
-                      color: widget.color.withOpacity(0.38),
+                      color: widget.color.withValues(alpha: 0.38),
                       blurRadius: 18,
                       offset: const Offset(0, 7),
                     ),
@@ -239,8 +239,8 @@ class _LiquidButtonState extends State<LiquidButton>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      widget.color.withOpacity(0.0),
-                      Colors.black.withOpacity(0.08),
+                      widget.color.withValues(alpha: 0.0),
+                      Colors.black.withValues(alpha: 0.08),
                     ],
                   ),
           ),
@@ -253,7 +253,7 @@ class _LiquidButtonState extends State<LiquidButton>
                   height: 6,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.28),
+                      color: Colors.white.withValues(alpha: 0.28),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),
@@ -332,18 +332,18 @@ class _LiquidTextFieldState extends State<LiquidTextField> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
-        color: kWhite.withOpacity(0.65),
+        color: kWhite.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: _focused
-              ? kAmber.withOpacity(0.7)
-              : kWhite.withOpacity(0.9),
+              ? kAmber.withValues(alpha: 0.7)
+              : kWhite.withValues(alpha: 0.9),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
             color: _focused
-                ? kAmber.withOpacity(0.15)
+                ? kAmber.withValues(alpha: 0.15)
                 : _kGlassShad,
             blurRadius: _focused ? 16 : 8,
             offset: const Offset(0, 4),
@@ -364,13 +364,13 @@ class _LiquidTextFieldState extends State<LiquidTextField> {
         decoration: InputDecoration(
           hintText: widget.hint,
           hintStyle: TextStyle(
-            color: kSub.withOpacity(0.55),
+            color: kSub.withValues(alpha: 0.55),
             fontWeight: FontWeight.w400,
             fontSize: 15,
           ),
           prefixIcon: widget.prefixIcon != null
               ? Icon(widget.prefixIcon,
-                    size: 20, color: kSub.withOpacity(0.7))
+                    size: 20, color: kSub.withValues(alpha: 0.7))
               : null,
           suffix: widget.suffixWidget,
           border: InputBorder.none,
@@ -463,7 +463,7 @@ class _LiquidToggleState extends State<LiquidToggle>
               borderRadius: BorderRadius.circular(trackH / 2),
               boxShadow: [
                 BoxShadow(
-                  color: widget.activeColor.withOpacity(0.25 * t),
+                  color: widget.activeColor.withValues(alpha: 0.25 * t),
                   blurRadius: 8,
                   offset: const Offset(0, 3),
                 ),
@@ -484,7 +484,7 @@ class _LiquidToggleState extends State<LiquidToggle>
                         color: kWhite,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.18),
+                            color: Colors.black.withValues(alpha: 0.18),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -499,7 +499,7 @@ class _LiquidToggleState extends State<LiquidToggle>
                               const Color(0xFFDDDDDD),
                               widget.activeColor,
                               t,
-                            )!.withOpacity(0.5),
+                            )!.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
@@ -578,22 +578,22 @@ class _LiquidChipState extends State<LiquidChip>
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: Color.lerp(
-                kWhite.withOpacity(0.72),
+                kWhite.withValues(alpha: 0.72),
                 widget.accentColor,
                 t,
               ),
               borderRadius: BorderRadius.circular(30),
               border: Border.all(
                 color: Color.lerp(
-                  kWhite.withOpacity(0.9),
-                  widget.accentColor.withOpacity(0.6),
+                  kWhite.withValues(alpha: 0.9),
+                  widget.accentColor.withValues(alpha: 0.6),
                   t,
                 )!,
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: widget.accentColor.withOpacity(0.18 * t),
+                  color: widget.accentColor.withValues(alpha: 0.18 * t),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -628,7 +628,7 @@ class _LiquidChipState extends State<LiquidChip>
                       shape: BoxShape.circle,
                       color: Color.lerp(
                         widget.accentColor,
-                        kWhite.withOpacity(0.7),
+                        kWhite.withValues(alpha: 0.7),
                         t,
                       ),
                     ),
@@ -703,14 +703,14 @@ class _LiquidCheckboxState extends State<LiquidCheckbox>
             width: 22, height: 22,
             decoration: BoxDecoration(
               color: Color.lerp(
-                kWhite.withOpacity(0.7),
+                kWhite.withValues(alpha: 0.7),
                 widget.activeColor,
                 t,
               ),
               borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: Color.lerp(
-                  kSub.withOpacity(0.35),
+                  kSub.withValues(alpha: 0.35),
                   widget.activeColor,
                   t,
                 )!,
@@ -718,7 +718,7 @@ class _LiquidCheckboxState extends State<LiquidCheckbox>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: widget.activeColor.withOpacity(0.25 * t),
+                  color: widget.activeColor.withValues(alpha: 0.25 * t),
                   blurRadius: 6,
                 ),
               ],
@@ -727,7 +727,7 @@ class _LiquidCheckboxState extends State<LiquidCheckbox>
                 ? Center(
                     child: Icon(Icons.check_rounded,
                         size: 13,
-                        color: kWhite.withOpacity(t)),
+                        color: kWhite.withValues(alpha: t)),
                   )
                 : null,
           );
@@ -859,13 +859,13 @@ class _LiquidFabState extends State<LiquidFab>
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: widget.active
-                      ? widget.color.withOpacity(0.6)
+                      ? widget.color.withValues(alpha: 0.6)
                       : _kGlassBorder,
                   width: 1.5,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: widget.color.withOpacity(
+                    color: widget.color.withValues(alpha: 
                         widget.active ? 0.40 : 0.18),
                     blurRadius: widget.active ? 18 : 10,
                     offset: const Offset(0, 5),
@@ -963,7 +963,7 @@ class _TabItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: active
             ? BoxDecoration(
-                color: accent.withOpacity(0.14),
+                color: accent.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(16),
               )
             : null,
@@ -975,7 +975,7 @@ class _TabItem extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 22,
-                color: active ? accent : kSub.withOpacity(0.55),
+                color: active ? accent : kSub.withValues(alpha: 0.55),
               ),
             ),
             const SizedBox(height: 3),
@@ -984,7 +984,7 @@ class _TabItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                color: active ? accent : kSub.withOpacity(0.55),
+                color: active ? accent : kSub.withValues(alpha: 0.55),
               ),
             ),
           ],
@@ -1051,7 +1051,7 @@ class LiquidSheetHandle extends StatelessWidget {
         width: 36, height: 4,
         margin: const EdgeInsets.only(top: 12, bottom: 4),
         decoration: BoxDecoration(
-          color: kInk.withOpacity(0.12),
+          color: kInk.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(2),
         ),
       ),
@@ -1177,7 +1177,7 @@ Future<T?> showLiquidSheet<T>({
     context:             context,
     isScrollControlled:  isScrollControlled,
     backgroundColor:     Colors.transparent,
-    barrierColor:        Colors.black.withOpacity(0.25),
+    barrierColor:        Colors.black.withValues(alpha: 0.25),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),

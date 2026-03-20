@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'add_task_sheet.dart';
 import '../providers/routine_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,7 +76,6 @@ class _AiRoutinePanelState extends ConsumerState<AiRoutinePanel>
 
   final _inputCtrl = TextEditingController();
   bool _loading = false;
-  String _streamText = '';
   List<AiSuggestion> _suggestions = [];
   final _dismissed = <String>{};
 
@@ -107,7 +105,6 @@ class _AiRoutinePanelState extends ConsumerState<AiRoutinePanel>
   Future<void> _fetchSuggestions() async {
     setState(() {
       _loading    = true;
-      _streamText = '';
       _suggestions = [];
     });
 
@@ -168,7 +165,6 @@ Give 3-5 suggestions. Be specific about times. Keep titles under 8 words.''',
     _inputCtrl.clear();
     setState(() {
       _loading    = true;
-      _streamText = '';
     });
 
     try {
@@ -209,7 +205,6 @@ Be literal — do exactly what they ask.''',
     } catch (e) {
       setState(() {
         _loading = false;
-        _streamText = '';
       });
     }
   }
@@ -349,7 +344,7 @@ Be literal — do exactly what they ask.''',
                     child: Container(
                       width: 36, height: 4,
                       decoration: BoxDecoration(
-                        color: _kInk.withOpacity(0.12),
+                        color: _kInk.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -404,7 +399,7 @@ Be literal — do exactly what they ask.''',
                         child: Container(
                           width: 36, height: 36,
                           decoration: BoxDecoration(
-                            color: _kPurple.withOpacity(0.12),
+                            color: _kPurple.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(Icons.refresh_rounded,
@@ -479,7 +474,7 @@ Be literal — do exactly what they ask.''',
                       Text('Ask me anything below',
                           style: TextStyle(
                               fontSize: 13,
-                              color: _kSub.withOpacity(0.7))),
+                              color: _kSub.withValues(alpha: 0.7))),
                     ],
                   ),
                 ),
@@ -505,7 +500,7 @@ Be literal — do exactly what they ask.''',
                         hintText:
                             'Ask AI… e.g. "add yoga at 7am"',
                         hintStyle: TextStyle(
-                            color: _kSub.withOpacity(0.5),
+                            color: _kSub.withValues(alpha: 0.5),
                             fontSize: 14),
                         filled: true,
                         fillColor: const Color(0xFFF2F0F8),
@@ -567,7 +562,7 @@ Be literal — do exactly what they ask.''',
     return Container(
       height: 80,
       decoration: BoxDecoration(
-        color: _kPurple.withOpacity(0.06),
+        color: _kPurple.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(children: [
@@ -575,7 +570,7 @@ Be literal — do exactly what they ask.''',
         Container(
           width: 36, height: 36,
           decoration: BoxDecoration(
-            color: _kPurple.withOpacity(0.1),
+            color: _kPurple.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
         ),
@@ -586,13 +581,13 @@ Be literal — do exactly what they ask.''',
           children: [
             Container(width: 160, height: 12,
                 decoration: BoxDecoration(
-                  color: _kPurple.withOpacity(0.1),
+                  color: _kPurple.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 )),
             const SizedBox(height: 8),
             Container(width: 100, height: 10,
                 decoration: BoxDecoration(
-                  color: _kPurple.withOpacity(0.06),
+                  color: _kPurple.withValues(alpha: 0.06),
                   borderRadius: BorderRadius.circular(6),
                 )),
           ],
@@ -623,10 +618,10 @@ class _SuggestionCard extends StatelessWidget {
       width: 240,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _kPurple.withOpacity(0.06),
+        color: _kPurple.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-            color: _kPurple.withOpacity(0.15), width: 1),
+            color: _kPurple.withValues(alpha: 0.15), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -642,8 +637,8 @@ class _SuggestionCard extends StatelessWidget {
                     horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: suggestion.action == SuggestionAction.add
-                      ? const Color(0xFF60D4A0).withOpacity(0.2)
-                      : Colors.red.withOpacity(0.1),
+                      ? const Color(0xFF60D4A0).withValues(alpha: 0.2)
+                      : Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -678,7 +673,7 @@ class _SuggestionCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 11,
-                  color: _kSub.withOpacity(0.85),
+                  color: _kSub.withValues(alpha: 0.85),
                   height: 1.45,
                 )),
           ),
@@ -712,12 +707,12 @@ class _SuggestionCard extends StatelessWidget {
               child: Container(
                 height: 34, width: 34,
                 decoration: BoxDecoration(
-                  color: _kSub.withOpacity(0.1),
+                  color: _kSub.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.close_rounded,
                     size: 16,
-                    color: _kSub.withOpacity(0.7)),
+                    color: _kSub.withValues(alpha: 0.7)),
               ),
             ),
           ]),
@@ -755,7 +750,7 @@ class PremiumPaywallSheet extends StatelessWidget {
               child: Container(
                 width: 36, height: 4,
                 decoration: BoxDecoration(
-                  color: _kInk.withOpacity(0.12),
+                  color: _kInk.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -832,7 +827,7 @@ class PremiumPaywallSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(32),
                   boxShadow: [
                     BoxShadow(
-                      color: _kPurple.withOpacity(0.35),
+                      color: _kPurple.withValues(alpha: 0.35),
                       blurRadius: 16, offset: const Offset(0, 6),
                     ),
                   ],

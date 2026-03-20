@@ -38,27 +38,27 @@ class GoalCategoryCard extends StatelessWidget {
             colors: isSelected
                 ? [primaryColor, secondaryColor]
                 : [
-                    primaryColor.withOpacity(0.12),
-                    secondaryColor.withOpacity(0.18),
+                    primaryColor.withValues(alpha: 0.12),
+                    secondaryColor.withValues(alpha: 0.18),
                   ],
           ),
           border: Border.all(
             color: isSelected
-                ? primaryColor.withOpacity(0.70)
-                : primaryColor.withOpacity(0.20),
+                ? primaryColor.withValues(alpha: 0.70)
+                : primaryColor.withValues(alpha: 0.20),
             width: isSelected ? 2.0 : 1.5,
           ),
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: primaryColor.withOpacity(0.30),
+                    color: primaryColor.withValues(alpha: 0.30),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
                 ]
               : [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -79,8 +79,8 @@ class GoalCategoryCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isSelected
-                          ? Colors.white.withOpacity(0.25)
-                          : primaryColor.withOpacity(0.15),
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : primaryColor.withValues(alpha: 0.15),
                     ),
                     child: Icon(
                       icon,
@@ -107,7 +107,7 @@ class GoalCategoryCard extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       color: isSelected
-                          ? Colors.white.withOpacity(0.80)
+                          ? Colors.white.withValues(alpha: 0.80)
                           : const Color(0xFF6B7280),
                       height: 1.3,
                     ),
@@ -133,7 +133,7 @@ class GoalCategoryCard extends StatelessWidget {
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: primaryColor.withOpacity(0.30),
+                        color: primaryColor.withValues(alpha: 0.30),
                         blurRadius: 6,
                       ),
                     ],

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'widgets/liquid_glass_tabbar.dart';
 import 'tabs/home_tab.dart';
 import 'routine/routine_tab.dart' as rt;
+import 'tabs/tracker_tab.dart';
+import 'tabs/coach_tab.dart';
+import 'tabs/goals_tab.dart';
+import 'tabs/profile_tab.dart';
 
 // Per-tab gradient definitions
 const List<List<Color>> _tabGradients = [
@@ -11,10 +15,6 @@ const List<List<Color>> _tabGradients = [
   [Color(0xFFC084FC), Color(0xFFF5EEFF)], // Coach    – soft violet
   [Color(0xFFFF8CC2), Color(0xFFFCEDF3)], // Goals    – rose pink
   [Color(0xFFFFB830), Color(0xFFFFF6E0)], // Profile  – amber gold
-];
-
-const List<String> _tabLabels = [
-  'Home', 'Routine', 'Tracker', 'Coach', 'Goals', 'Profile',
 ];
 
 class HomeScreen extends StatefulWidget {
@@ -52,15 +52,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ? const HomeTab()
               : _currentIndex == 1
                   ? const rt.RoutineTab()
-                  : Center(
-                  child: Text(
-                    '${_tabLabels[_currentIndex]} Screen',
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                  : _currentIndex == 2
+                      ? const TrackerTab()
+                      : _currentIndex == 3
+                          ? const CoachTab()
+                          : _currentIndex == 4
+                              ? const GoalsTab()
+                              : const ProfileTab(),
         ),
       ),
       bottomNavigationBar: LiquidGlassTabBar(

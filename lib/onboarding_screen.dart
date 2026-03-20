@@ -1,7 +1,10 @@
 import 'dart:ui';
-import 'dart:math' as dart_math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'providers/onboarding_provider.dart';
 import '../home_screen.dart';
 import 'widgets/app_button.dart';
 import 'onboarding/onboarding_page_0.dart';
@@ -19,14 +22,14 @@ import 'onboarding/onboarding_page_9.dart';
 const double kIndicatorOverlayH = 44.0;  // top glass overlay height
 const double kButtonOverlayH    = 140.0; // bottom glass overlay height (button + 72px sub-area)
 
-class OnboardingScreen extends StatefulWidget {
+class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final PageController _pageController = PageController();
   late final _PageOffsetNotifier _pageOffset;
   int _currentPage = 0;
@@ -50,13 +53,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  void _onNext() {
+  void _onNext() async {
     if (_currentPage < 9) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOutCubic,
       );
     } else {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final state = ref.read(onboardingProvider);
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'onboarding': state.toMap(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const HomeScreen()),
@@ -221,7 +233,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
-                                      color: const Color(0xFF6B7280).withOpacity(0.85),
+                                      color: const Color(0xFF6B7280).withValues(alpha: 0.85),
                                     ),
                                   )
                                 : _currentPage == 9
@@ -313,10 +325,10 @@ class _LiquidGlassIndicator extends StatelessWidget {
           width: _trackW,
           height: _trackH,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.18),
+            color: Colors.white.withValues(alpha: 0.18),
             borderRadius: BorderRadius.circular(_trackH / 2),
             border: Border.all(
-              color: Colors.white.withOpacity(0.40),
+              color: Colors.white.withValues(alpha: 0.40),
               width: 1.0,
             ),
           ),
@@ -333,7 +345,7 @@ class _LiquidGlassIndicator extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.60),
+                      color: Colors.white.withValues(alpha: 0.60),
                     ),
                   ),
                 ),
@@ -356,12 +368,12 @@ class _LiquidGlassIndicator extends StatelessWidget {
                       ],
                     ),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.70),
+                      color: Colors.white.withValues(alpha: 0.70),
                       width: 1.0,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF89F4DD).withOpacity(0.40),
+                        color: const Color(0xFF89F4DD).withValues(alpha: 0.40),
                         blurRadius: 6,
                         spreadRadius: 0,
                       ),

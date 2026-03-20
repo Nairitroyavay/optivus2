@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import '../providers/routine_provider.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -10,7 +9,6 @@ const _kInk   = Color(0xFF0F111A);
 const _kSub   = Color(0xFF6B7280);
 const _kCard  = Colors.white;
 const _kAmber = Color(0xFFFFB830);
-const _kShad  = Color(0x0D000000);
 
 // (CustomTask model moved to routine_provider.dart)
 
@@ -145,7 +143,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                 child: Container(
                   width: 36, height: 4,
                   decoration: BoxDecoration(
-                    color: _kInk.withOpacity(0.12),
+                    color: _kInk.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -211,7 +209,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                         )),
                     const Spacer(),
                     Icon(Icons.chevron_right_rounded,
-                        color: _kSub.withOpacity(0.5), size: 18),
+                        color: _kSub.withValues(alpha: 0.5), size: 18),
                   ]),
                 ),
               ),
@@ -234,7 +232,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                       width: 42, height: 42,
                       decoration: BoxDecoration(
                         color: sel
-                            ? _selectedColor.withOpacity(0.18)
+                            ? _selectedColor.withValues(alpha: 0.18)
                             : const Color(0xFFF4F4F4),
                         borderRadius: BorderRadius.circular(12),
                         border: sel
@@ -275,7 +273,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                             : null,
                         boxShadow: sel
                             ? [BoxShadow(
-                                color: c.withOpacity(0.4),
+                                color: c.withValues(alpha: 0.4),
                                 blurRadius: 8)]
                             : [],
                       ),
@@ -296,7 +294,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                 Container(
                   width: 48, height: 48,
                   decoration: BoxDecoration(
-                    color: _selectedColor.withOpacity(0.14),
+                    color: _selectedColor.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
@@ -314,7 +312,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                     decoration: InputDecoration(
                       hintText: 'Task name…',
                       hintStyle: TextStyle(
-                          color: _kSub.withOpacity(0.5),
+                          color: _kSub.withValues(alpha: 0.5),
                           fontSize: 15,
                           fontWeight: FontWeight.w400),
                       filled: true,
@@ -342,7 +340,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: _selectedColor.withOpacity(0.38),
+                        color: _selectedColor.withValues(alpha: 0.38),
                         blurRadius: 16, offset: const Offset(0, 6),
                       ),
                     ],

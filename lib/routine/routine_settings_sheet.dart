@@ -75,7 +75,7 @@ class RoutineSettingsSheet extends StatelessWidget {
           Container(
             width: 36, height: 4,
             decoration: BoxDecoration(
-              color: _kInk.withOpacity(0.12),
+              color: _kInk.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -163,7 +163,7 @@ class RoutineSettingsSheet extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF60D4A0).withOpacity(0.18),
+                            color: const Color(0xFF60D4A0).withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text('Done',

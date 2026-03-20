@@ -135,7 +135,7 @@ class _EatingSetupScreenState
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: _kOrange.withOpacity(0.12),
+                          color: _kOrange.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text('Copy ${_days[_day - 1]}',
@@ -204,7 +204,7 @@ class _EatingSetupScreenState
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: sel
                             ? [BoxShadow(
-                                color: _kOrange.withOpacity(0.32),
+                                color: _kOrange.withValues(alpha: 0.32),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4))]
                             : [const BoxShadow(
@@ -226,7 +226,7 @@ class _EatingSetupScreenState
                               width: 5, height: 5,
                               decoration: BoxDecoration(
                                 color: sel
-                                    ? Colors.white.withOpacity(0.7)
+                                    ? Colors.white.withValues(alpha: 0.7)
                                     : _kOrange,
                                 shape: BoxShape.circle,
                               ),
@@ -303,7 +303,7 @@ class _EatingSetupScreenState
                     borderRadius: BorderRadius.circular(32),
                     boxShadow: [
                       BoxShadow(
-                        color: _kOrange.withOpacity(0.35),
+                        color: _kOrange.withValues(alpha: 0.35),
                         blurRadius: 16, offset: const Offset(0, 6),
                       ),
                     ],
@@ -358,7 +358,7 @@ class _MealSlot extends StatelessWidget {
           Container(
             width: 44, height: 44,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.14),
+              color: color.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
@@ -383,7 +383,7 @@ class _MealSlot extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color.withOpacity(0.14),
+                        color: color.withValues(alpha: 0.14),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(time,
@@ -402,7 +402,7 @@ class _MealSlot extends StatelessWidget {
                   decoration: InputDecoration(
                     hintText: 'What\'s for $label?',
                     hintStyle: TextStyle(
-                        color: _kSub.withOpacity(0.5),
+                        color: _kSub.withValues(alpha: 0.5),
                         fontSize: 13),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(

@@ -7,6 +7,7 @@ class LiquidTextField extends StatelessWidget {
   final IconData? prefixIcon;
   final Widget? suffixIcon;
   final TextInputType? keyboardType;
+  final TextEditingController? controller;
 
   const LiquidTextField({
     super.key,
@@ -15,6 +16,7 @@ class LiquidTextField extends StatelessWidget {
     this.prefixIcon,
     this.suffixIcon,
     this.keyboardType,
+    this.controller,
   });
 
   @override
@@ -80,6 +82,7 @@ class LiquidTextField extends StatelessWidget {
                 ),
               ),
               TextField(
+            controller: controller,
             obscureText: obscureText,
             keyboardType: keyboardType,
             style: const TextStyle(

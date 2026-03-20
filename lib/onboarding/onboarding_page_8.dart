@@ -220,57 +220,6 @@ class _OnboardingPage8State extends State<OnboardingPage8> {
     );
   }
 
-  Widget _buildTopPill() {
-    return Container(
-      height: 52,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
-          BoxShadow(color: Colors.white.withValues(alpha: 0.8), blurRadius: 8, offset: const Offset(-2, -2)),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        const Color(0xFF60A5FA).withValues(alpha: 0.3),
-                        const Color(0xFF34D399).withValues(alpha: 0.2),
-                        const Color(0xFFFBBF24).withValues(alpha: 0.25),
-                        const Color(0xFFA78BFA).withValues(alpha: 0.3),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Center(
-                child: RichText(
-                  text: const TextSpan(
-                    children: [
-                      TextSpan(text: 'Set Your ', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700, fontSize: 22, letterSpacing: -0.5)),
-                      TextSpan(text: 'Fixed Schedule', style: TextStyle(color: Color(0xFFA78BFA), fontWeight: FontWeight.w700, fontSize: 22, letterSpacing: -0.5)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildDroplet(double size, {Color color = Colors.white}) {
     return Container(
       width: size, height: size,

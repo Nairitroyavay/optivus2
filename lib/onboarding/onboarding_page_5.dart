@@ -1,23 +1,25 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/onboarding_provider.dart';
 import '../onboarding_screen.dart';
 import '../widgets/liquid_glass_card.dart';
 import '../widgets/liquid_category_card.dart';
 
-class OnboardingPage5 extends StatefulWidget {
+class OnboardingPage5 extends ConsumerStatefulWidget {
   const OnboardingPage5({super.key});
 
   @override
-  State<OnboardingPage5> createState() => _OnboardingPage5State();
+  ConsumerState<OnboardingPage5> createState() => _OnboardingPage5State();
 }
 
-class _OnboardingPage5State extends State<OnboardingPage5> {
+class _OnboardingPage5State extends ConsumerState<OnboardingPage5> {
   String _selectedCoach = 'Supportive';
 
   void _selectCoach(String title) {
     setState(() {
       _selectedCoach = title;
     });
+    ref.read(onboardingProvider.notifier).updateCoachStyle(title);
   }
 
   // Helper: create a Positioned LiquidDroplet

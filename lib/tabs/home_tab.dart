@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../core/liquid_ui.dart';
 
@@ -286,10 +285,10 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: Colors.white.withOpacity(0.5), width: 1),
+                          color: Colors.white.withValues(alpha: 0.5), width: 1),
                     ),
                     child: const Text('View All',
                         style: TextStyle(
@@ -374,10 +373,10 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 9, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                              color: Colors.white.withOpacity(0.5), width: 1),
+                              color: Colors.white.withValues(alpha: 0.5), width: 1),
                         ),
                         child: const Text('Open Cal',
                             style: TextStyle(
@@ -418,13 +417,13 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   }) {
     final textColor = light ? Colors.white : const Color(0xFF1A0800);
     final subtextColor =
-        light ? Colors.white70 : Colors.black.withOpacity(0.55);
+        light ? Colors.white70 : Colors.black.withValues(alpha: 0.55);
     return SizedBox(
       width: 110,
       child: LiquidCard.solid(
         radius: 20,
         padding: const EdgeInsets.all(12),
-        tint: gradColors[0].withOpacity(0.3),
+        tint: gradColors[0].withValues(alpha: 0.3),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -442,7 +441,7 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 4, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
+                    color: Colors.white.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(badge,
@@ -503,17 +502,17 @@ class _GlassOrb extends StatelessWidget {
           center: const Alignment(-0.3, -0.4),
           radius: 0.85,
           colors: [
-            Colors.white.withOpacity(0.90),
-            colors[0].withOpacity(0.70),
+            Colors.white.withValues(alpha: 0.90),
+            colors[0].withValues(alpha: 0.70),
             colors[1],
           ],
           stops: const [0.0, 0.45, 1.0],
         ),
         border: Border.all(
-            color: Colors.white.withOpacity(0.80), width: 1.2),
+            color: Colors.white.withValues(alpha: 0.80), width: 1.2),
         boxShadow: [
           BoxShadow(
-              color: colors[1].withOpacity(0.28),
+              color: colors[1].withValues(alpha: 0.28),
               blurRadius: 14,
               offset: const Offset(0, 5)),
         ],
@@ -536,7 +535,7 @@ class _HabitPill extends StatelessWidget {
     return LiquidCard.solid(
       radius: 30,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      tint: Colors.white.withOpacity(0.15),
+      tint: Colors.white.withValues(alpha: 0.15),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -544,7 +543,7 @@ class _HabitPill extends StatelessWidget {
           _GlassOrb(
             size: 36,
             colors: [
-              h.color.withOpacity(0.55),
+              h.color.withValues(alpha: 0.55),
               h.color,
             ],
             child: Center(
@@ -580,7 +579,7 @@ class _RoutineRow extends StatelessWidget {
           _GlassOrb(
             size: 44,
             colors: [
-              r.orbColor.withOpacity(0.50),
+              r.orbColor.withValues(alpha: 0.50),
               r.orbColor,
             ],
             child: Center(
@@ -662,7 +661,7 @@ class _RingPainter extends CustomPainter {
     // Track
     canvas.drawCircle(c, r,
       Paint()
-        ..color = const Color(0xFFDDDDDD).withOpacity(0.60)
+        ..color = const Color(0xFFDDDDDD).withValues(alpha: 0.60)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 13
         ..strokeCap = StrokeCap.round,

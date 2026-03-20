@@ -4,6 +4,7 @@ import 'onboarding_screen.dart';
 import 'widgets/liquid_textfield.dart';
 import 'widgets/app_button.dart';
 import 'widgets/liquid_glass_panel.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -14,6 +15,17 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   bool _obscurePassword = true;
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,14 +99,16 @@ class _SignupScreenState extends State<SignupScreen> {
                         child: Column(
                           children: [
                             // Full Name Field
-                            const LiquidTextField(
+                            LiquidTextField(
+                              controller: _nameCtrl,
                               hintText: 'Full Name',
                               prefixIcon: Icons.person_outline,
                             ),
                             const SizedBox(height: 16),
 
                             // Email Field
-                            const LiquidTextField(
+                            LiquidTextField(
+                              controller: _emailCtrl,
                               hintText: 'Email',
                               prefixIcon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
@@ -103,6 +117,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
                             // Password Field
                             LiquidTextField(
+                              controller: _passCtrl,
                               hintText: 'Password',
                               prefixIcon: Icons.lock_outline,
                               obscureText: _obscurePassword,
@@ -148,13 +163,27 @@ class _SignupScreenState extends State<SignupScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: AppButton(
                   text: 'Create Account',
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const OnboardingScreen(),
-                      ),
-                    );
+                  onPressed: () async {
+                    if (_emailCtrl.text.isEmpty || _passCtrl.text.isEmpty) return;
+                    try {
+                      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                        email: _emailCtrl.text.trim(), 
+                        password: _passCtrl.text
+                      );
+                      if (cred.user != null && _nameCtrl.text.isNotEmpty) {
+                        await cred.user!.updateDisplayName(_nameCtrl.text.trim());
+                      }
+                      if (!context.mounted) return;
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const OnboardingScreen(),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                    }
                   },
                 ),
               ),

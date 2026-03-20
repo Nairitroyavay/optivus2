@@ -1,0 +1,382 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:transparent}
+.w{padding:12px 0;font-family:var(--font-sans);display:flex;flex-direction:column;gap:12px}
+.tabs{display:flex;gap:5px;flex-wrap:wrap}
+.tab{font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--color-border-tertiary);cursor:pointer;background:transparent;color:var(--color-text-secondary);transition:all .15s}
+.tab.active{background:var(--color-text-primary);color:var(--color-background-primary);border-color:transparent}
+.panel{display:none;flex-direction:column;gap:8px}.panel.active{display:flex}
+.card{background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:12px;padding:12px 14px}
+.row{display:flex;align-items:flex-start;gap:8px;padding:9px 0;border-bottom:1px solid var(--color-border-tertiary)}
+.row:last-child{border-bottom:none;padding-bottom:0}
+.badge{font-size:10px;font-weight:500;padding:2px 6px;border-radius:4px;white-space:nowrap;margin-top:1px;flex-shrink:0}
+.ok{background:#E1F5EE;color:#0F6E56}.warn{background:#FAEEDA;color:#854F0B}.crit{background:#FCEBEB;color:#A32D2D}.info{background:#E6F1FB;color:#185FA5}.star{background:#EEEDFE;color:#534AB7}.note{background:#F2F2F2;color:#444}
+.it{font-size:12.5px;line-height:1.5;color:var(--color-text-primary);font-weight:500}
+.is{font-size:11.5px;color:var(--color-text-secondary);margin-top:3px;line-height:1.6}
+.code{font-family:var(--font-mono);font-size:10.5px;background:var(--color-border-tertiary);padding:1px 5px;border-radius:3px;color:var(--color-text-primary)}
+.sum{display:flex;gap:6px;flex-wrap:wrap}
+.sm{flex:1;min-width:68px;padding:9px 5px;background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:10px;text-align:center}
+.sn{font-size:19px;font-weight:500;line-height:1}
+.sl{font-size:9.5px;color:var(--color-text-secondary);margin-top:2px}
+.frow{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--color-border-tertiary)}
+.frow:last-child{border-bottom:none}
+.fn{font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-primary);flex:1}
+.ft{font-size:9.5px;padding:1px 5px;border-radius:3px;font-weight:500;white-space:nowrap}
+.fg{background:#E1F5EE;color:#0F6E56}.fy{background:#FAEEDA;color:#854F0B}.fr{background:#FCEBEB;color:#A32D2D}.fb{background:#E6F1FB;color:#185FA5}.fp{background:#EEEDFE;color:#534AB7}
+.prog{margin-bottom:6px}
+.pt{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:5px;display:flex;justify-content:space-between}
+.pb{height:7px;background:var(--color-border-tertiary);border-radius:4px;overflow:hidden}
+.pf{height:100%;border-radius:4px}
+.ps{font-size:10px;color:var(--color-text-secondary);margin-top:2px}
+</style>
+<div class="w">
+
+<div class="sum">
+  <div class="sm"><div class="sn" style="color:#1D9E75">B+</div><div class="sl">Overall grade</div></div>
+  <div class="sm"><div class="sn" style="color:#A32D2D">3</div><div class="sl">Won't compile</div></div>
+  <div class="sm"><div class="sn" style="color:#BA7517">7</div><div class="sl">Runtime bugs</div></div>
+  <div class="sm"><div class="sn" style="color:#534AB7">9</div><div class="sl">Star files</div></div>
+  <div class="sm"><div class="sn" style="color:#185FA5">44</div><div class="sl">Files read</div></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="show('progress')">📊 Progress</button>
+  <button class="tab" onclick="show('compile')">🔴 Blockers</button>
+  <button class="tab" onclick="show('bugs')">🟡 Bugs</button>
+  <button class="tab" onclick="show('stars')">⭐ Stars</button>
+  <button class="tab" onclick="show('arch')">🏗 Architecture</button>
+  <button class="tab" onclick="show('files')">📁 All files</button>
+  <button class="tab" onclick="show('roadmap')">🗺 Roadmap</button>
+</div>
+
+<!-- PROGRESS -->
+<div id="progress" class="panel active">
+  <div class="card">
+  <div class="prog"><div class="pt"><span>Auth flow (Welcome→Signup→Login→Onboarding→Home)</span><span style="color:#BA7517">65%</span></div><div class="pb"><div class="pf" style="width:65%;background:#BA7517"></div></div><div class="ps">UI complete. Firebase Auth not wired — login bypasses auth entirely</div></div>
+  <div class="prog"><div class="pt"><span>Onboarding (10 pages)</span><span style="color:#1D9E75">95%</span></div><div class="pb"><div class="pf" style="width:95%;background:#1D9E75"></div></div><div class="ps">All 10 pages implemented with animations. Page selections NOT persisted to state</div></div>
+  <div class="prog"><div class="pt"><span>Design system (liquid_ui.dart)</span><span style="color:#534AB7">98%</span></div><div class="pb"><div class="pf" style="width:98%;background:#534AB7"></div></div><div class="ps">16 components, fully production-grade. Best file in the codebase</div></div>
+  <div class="prog"><div class="pt"><span>Widget library (/widgets)</span><span style="color:#534AB7">96%</span></div><div class="pb"><div class="pf" style="width:96%;background:#534AB7"></div></div><div class="ps">AppButton, LiquidGlassTabBar, LiquidCategoryCard, LiquidGlassCard, AnimatedBotAvatar — all exceptional</div></div>
+  <div class="prog"><div class="pt"><span>Home tab</span><span style="color:#1D9E75">88%</span></div><div class="pb"><div class="pf" style="width:88%;background:#1D9E75"></div></div><div class="ps">Ring, habits, streak, calendar, routines complete. BackdropFilter in ListView items (perf issue)</div></div>
+  <div class="prog"><div class="pt"><span>Routine tab (full system)</span><span style="color:#BA7517">70%</span></div><div class="pb"><div class="pf" style="width:70%;background:#BA7517"></div></div><div class="ps">Timeline + filters + FABs + AI panel built. 3 compile blockers prevent it running</div></div>
+  <div class="prog"><div class="pt"><span>Fixed Schedule screen</span><span style="color:#1D9E75">92%</span></div><div class="pb"><div class="pf" style="width:92%;background:#1D9E75"></div></div><div class="ps">Drag + resize with 15min snap, add/remove blocks — production quality</div></div>
+  <div class="prog"><div class="pt"><span>Eating Setup screen</span><span style="color:#1D9E75">90%</span></div><div class="pb"><div class="pf" style="width:90%;background:#1D9E75"></div></div><div class="ps">28 controllers correctly disposed, copy-from-prev, dot indicators — excellent</div></div>
+  <div class="prog"><div class="pt"><span>Skin Care Setup screen</span><span style="color:#1D9E75">85%</span></div><div class="pb"><div class="pf" style="width:85%;background:#1D9E75"></div></div><div class="ps">Add/remove steps works. Day dot only shows for day 0 (hardcoded), not reactive</div></div>
+  <div class="prog"><div class="pt"><span>Tracker tab</span><span style="color:#A32D2D">2%</span></div><div class="pb"><div class="pf" style="width:2%;background:#A32D2D"></div></div><div class="ps">Stub only — Text('Tracker Tab')</div></div>
+  <div class="prog"><div class="pt"><span>Coach tab</span><span style="color:#A32D2D">2%</span></div><div class="pb"><div class="pf" style="width:2%;background:#A32D2D"></div></div><div class="ps">Stub only</div></div>
+  <div class="prog"><div class="pt"><span>Goals tab</span><span style="color:#A32D2D">2%</span></div><div class="pb"><div class="pf" style="width:2%;background:#A32D2D"></div></div><div class="ps">Stub only</div></div>
+  <div class="prog"><div class="pt"><span>Profile tab</span><span style="color:#A32D2D">2%</span></div><div class="pb"><div class="pf" style="width:2%;background:#A32D2D"></div></div><div class="ps">Stub only</div></div>
+  <div class="prog"><div class="pt"><span>Firebase / Backend</span><span style="color:#A32D2D">12%</span></div><div class="pb"><div class="pf" style="width:12%;background:#A32D2D"></div></div><div class="ps">Firebase init + Crashlytics only. No Auth calls, no Firestore reads/writes anywhere</div></div>
+  <div class="prog"><div class="pt"><span>State persistence</span><span style="color:#A32D2D">5%</span></div><div class="pb"><div class="pf" style="width:5%;background:#A32D2D"></div></div><div class="ps">Riverpod in-memory only. Onboarding selections (coach style, categories, goals) not saved anywhere</div></div>
+  </div>
+</div>
+
+<!-- COMPILE BLOCKERS -->
+<div id="compile" class="panel card">
+  <div class="row">
+    <span class="badge crit">BLOCKER 1</span>
+    <div>
+      <div class="it">lib/routine/routine_tab.dart — imports non-existent file on line 13</div>
+      <div class="is">
+        <span class="code">import 'routine_tab_v2.dart' show RoutineFilter;</span> — this file does not exist.<br>
+        Also line 16 defines <span class="code">enum RoutineFilter2</span> which is dead code from a merge.<br><br>
+        <b>Fix:</b> Delete line 13. Delete line 16-17. Add after the other imports:<br>
+        <span class="code">enum RoutineFilter { all, skinCare, classes, eating }</span>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge crit">BLOCKER 2</span>
+    <div>
+      <div class="it">lib/routine/routine_settings_sheet.dart — imports same non-existent file on line 2</div>
+      <div class="is">
+        <span class="code">import 'routine_tab_v2.dart';</span><br><br>
+        <b>Fix:</b> Change to: <span class="code">import 'routine_tab.dart' show RoutineFilter;</span>
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge crit">BLOCKER 3</span>
+    <div>
+      <div class="it">customTasksProvider and isPremiumProvider referenced but never defined</div>
+      <div class="is">
+        Used in routine_tab.dart and routine_fab_layer.dart. NOT in routine_provider.dart. NOT in ai_routine_panel.dart (only <span class="code">aiPanelOpenProvider</span> is there).<br><br>
+        <b>Fix — add to bottom of routine_provider.dart:</b><br>
+        <span class="code">import '../routine/add_task_sheet.dart' show CustomTask;</span> (at top)<br>
+        <span class="code">final customTasksProvider = StateProvider&lt;Map&lt;String,List&lt;CustomTask&gt;&gt;&gt;((_)=&gt;{});</span><br>
+        <span class="code">final isPremiumProvider = StateProvider&lt;bool&gt;((_)=&gt;false);</span><br><br>
+        <b>Also run in terminal:</b> <span class="code">flutter pub add http</span> — ai_routine_panel.dart imports http but it's not in pubspec.yaml
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BUGS -->
+<div id="bugs" class="panel card">
+  <div class="row">
+    <span class="badge warn">BUG 1</span>
+    <div>
+      <div class="it">home_screen.dart — 5 of 6 tabs show Text() placeholders</div>
+      <div class="is">Only case 0 returns HomeTab(). Cases 1-5 return <span class="code">Text('X Screen')</span>. The real RoutineTab is in lib/routine/routine_tab.dart but is never imported. Wire all 6 tabs.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">BUG 2</span>
+    <div>
+      <div class="it">login_screen.dart — no TextEditingControllers, Firebase Auth skipped</div>
+      <div class="is">Email and password fields have no controllers — their values are unreadable. Sign In button navigates directly to HomeScreen with no auth check. Any user can enter the app with no credentials.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">BUG 3</span>
+    <div>
+      <div class="it">signup_screen.dart — same issue as login. Also no form validation</div>
+      <div class="is">3 fields (name, email, password) with no controllers. Create Account navigates to OnboardingScreen without creating a Firebase user. On a real device this means no user is ever created.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">BUG 4</span>
+    <div>
+      <div class="it">RoutineNotifier — timeline is empty on first launch</div>
+      <div class="is">Constructor calls <span class="code">super(const RoutineState())</span> — all lists empty. Constants kDefaultFixedBlocks, kDefaultSkinPlan etc. exist but are never applied. Add: <span class="code">Future.microtask(()=&gt;setFixedBlocks(kDefaultFixedBlocks));</span></div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">BUG 5</span>
+    <div>
+      <div class="it">onboarding_screen.dart — page selections never saved to state or Firebase</div>
+      <div class="is">Pages 1–9 collect: focus categories, coach style, goals, sleep hours, wake time, meal times etc. All selections are local widget state — they die when the screen is disposed. They're never written to Riverpod providers or Firestore. "Enter Optivus" (page 9) just calls Navigator.pushReplacement to HomeScreen and discards everything.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">BUG 6</span>
+    <div>
+      <div class="it">skin_care_setup_screen.dart — day dot indicator hardcoded to day 0 only</div>
+      <div class="is">Line in day selector: <span class="code">if (i == 0)</span> — the filled dot that shows "this day has steps" is hardcoded to Monday only. It should check if the current day's step lists are non-empty.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">BUG 7</span>
+    <div>
+      <div class="it">home_tab.dart — BackdropFilter inside ListView causes GPU jank on Android</div>
+      <div class="is">_HabitPill and _RoutineRow both use BackdropFilter+blur inside a scrollable. liquid_ui.dart's LiquidCard.solid() was built precisely to avoid this. Android with Skia renderer will drop frames on every scroll gesture.</div>
+    </div>
+  </div>
+</div>
+
+<!-- STARS -->
+<div id="stars" class="panel card">
+  <div class="row">
+    <span class="badge star">STAR 1</span>
+    <div>
+      <div class="it">AppButton — best Flutter button in any open codebase</div>
+      <div class="is">Physics Ticker at 60fps, 6 metaball blobs with sin/cos physics, ImageFilter.blur metaball merge, pointer-tracking attraction, gradient SweepGradient border via CustomPainter, press-scale. All animation controllers disposed correctly. This is App Store feature quality.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 2</span>
+    <div>
+      <div class="it">LiquidGlassTabBar — draggable pill with real physics + custom AI bot icon</div>
+      <div class="is">Pill stretches proportionally between tabs via fractional position TweenSequence, haptic tick on every boundary cross, easeOutBack snap animation, custom AI robot painted with CustomPainter (antenna, goggle eyes with square pupils, filled D-shaped smile). Better than anything on pub.dev.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 3</span>
+    <div>
+      <div class="it">LiquidCategoryCard — 3D orb with ripple, AnimatedOpacity crossfade, custom folder shape</div>
+      <div class="is">Two separate orb layers (glass vs color) crossfade via AnimatedOpacity — not AnimatedContainer (which can't lerp gradients with different stop counts). Ripple ring expands on tap. Checkmark springs in with elasticOut. CustomClipper folder tab shape with gradient CustomPainter border. _lighten/_darken via HSLColor. Exceptional Flutter knowledge.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 4</span>
+    <div>
+      <div class="it">onboarding_screen.dart — liquid glass pill indicator with lead/lag physics</div>
+      <div class="is">The page indicator pill uses a lead/lag animation: the leading edge moves ahead of the trailing edge during drag (creates a stretching blob effect). Separate _PageOffsetNotifier bridges PageController to ValueListenable. Haptic tick on each page boundary. Dragging the indicator itself scrolls the page. Genuinely clever.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 5</span>
+    <div>
+      <div class="it">onboarding_page_9.dart — TileMode.decal Impeller fix + RepaintBoundary</div>
+      <div class="is">Uses <span class="code">ImageFilter.blur(tileMode: TileMode.decal)</span> — prevents Impeller edge-pixel extension artefacts on iOS/Android. Wraps each card in RepaintBoundary to prevent GPU re-blur on scroll. The code comment explains why. This is the kind of detail only senior engineers who've shipped on Impeller know.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 6</span>
+    <div>
+      <div class="it">LiquidGlassCard — custom folder shape via ClipPath + gradient border CustomPainter</div>
+      <div class="is">Full folder-tab shape defined by a single _getFolderShape() function used across ClipPath, CustomPainter, and border painter. The border paint uses a gradient shader to simulate glass light reflection. canvas.drawShadow() for the drop shadow. Inner gloss drawn with canvas.save/clipPath/restore to prevent bleeding.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 7</span>
+    <div>
+      <div class="it">liquid_ui.dart — 16-component system, every animation controller disposed</div>
+      <div class="is">LiquidToggle with squish TweenSequence (grows 1→1.18 then snaps back), LiquidChip with Color.lerp animation, LiquidCard.solid() correctly avoids blur in ListViews, LiquidProgressRing custom painter, showLiquidSheet helper. Every initState/dispose pair is correct. Sigma capped at 12 for performance.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 8</span>
+    <div>
+      <div class="it">fixed_schedule_screen.dart — drag/resize with NeverScrollableScrollPhysics guard</div>
+      <div class="is">Separate state for dragging vs resizing (top/bottom handle). Scroll physics switch to NeverScrollable while dragging to prevent scroll/drag conflict. snapTo15() static method. 5 block templates with add chips. Block-level options modal. Haptics on start and end. Production-quality UX.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge star">STAR 9</span>
+    <div>
+      <div class="it">AnimatedBotAvatar — bouncing robot that transitions sad→happy</div>
+      <div class="is">Custom robot painted entirely with CustomPainter: rounded rect head, ear nubs, 3 top nodes, circle eyes that shift vertically with mood, quadraticBezierTo mouth that animates from frown to smile via lerpDouble. Wrapped in 3D glass orb with RadialGradient + specular crescent. Bounces on the y-axis as it animates.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ARCHITECTURE -->
+<div id="arch" class="panel card">
+  <div class="row">
+    <span class="badge ok">GOOD</span>
+    <div>
+      <div class="it">Folder structure is clean and logical</div>
+      <div class="is">lib/core/, lib/providers/, lib/routine/, lib/tabs/, lib/onboarding/, lib/widgets/ — all correct. No circular imports. No files in wrong folders.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge ok">GOOD</span>
+    <div>
+      <div class="it">Riverpod StateNotifierProvider pattern is correct</div>
+      <div class="is">RoutineState is immutable with copyWith. RoutineNotifier mutates via state = state.copyWith(). ProviderScope at root in main.dart. ConsumerStatefulWidget used correctly in screens that need both ref and lifecycle.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">ISSUE</span>
+    <div>
+      <div class="it">CustomTask model lives in a UI file (add_task_sheet.dart) not the provider</div>
+      <div class="is">CustomTask is defined inside lib/routine/add_task_sheet.dart. It's a data model, not a widget. It should be in routine_provider.dart alongside FixedBlock, SkinStep, MealItem etc. This causes a circular import risk.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">ISSUE</span>
+    <div>
+      <div class="it">Onboarding data collected but never persisted</div>
+      <div class="is">10 onboarding pages collect: focus categories (page 1), goals (page 2-4), coach style (page 5), wake time (page 6), sleep hours (page 7), meal preferences (page 8), schedule (page 9). All in local setState. None reaches Riverpod providers or Firestore.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">ISSUE</span>
+    <div>
+      <div class="it">GoRouter imported in main.dart but never used — plain Navigator.push() everywhere</div>
+      <div class="is">go_router: ^17.1.0 is in pubspec, imported in main.dart, but MaterialApp uses home: WelcomeScreen() and every navigation is Navigator.push/pushReplacement. GoRouter needs to be wired or removed.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge info">NOTE</span>
+    <div>
+      <div class="it">local colour constants duplicated across every file</div>
+      <div class="is">Every single file (routine_tab.dart, eating_setup_screen.dart, skin_care_setup_screen.dart etc.) re-declares <span class="code">const _kInk = Color(0xFF0F111A)</span> and <span class="code">const _kSub = Color(0xFF6B7280)</span>. These should only live in liquid_ui.dart (where kInk/kSub already exist) and be imported from there.</div>
+    </div>
+  </div>
+</div>
+
+<!-- FILE MAP -->
+<div id="files" class="panel card">
+  <div class="frow"><span class="fn">lib/main.dart</span><span class="ft fg">✓ Production ready — Firebase + Crashlytics + ProviderScope</span></div>
+  <div class="frow"><span class="fn">lib/core/liquid_ui.dart</span><span class="ft fp">★ 16-component design system — exceptional</span></div>
+  <div class="frow"><span class="fn">lib/providers/routine_provider.dart</span><span class="ft fr">✗ Missing customTasksProvider + isPremiumProvider + seed data</span></div>
+  <div class="frow"><span class="fn">lib/welcome_screen.dart</span><span class="ft fg">✓ Correct — AnimatedBotAvatar, glass card, nav to signup/login</span></div>
+  <div class="frow"><span class="fn">lib/signup_screen.dart</span><span class="ft fr">✗ No controllers, no Firebase Auth, goes straight to OnboardingScreen</span></div>
+  <div class="frow"><span class="fn">lib/login_screen.dart</span><span class="ft fr">✗ No controllers, no Firebase Auth, goes straight to HomeScreen</span></div>
+  <div class="frow"><span class="fn">lib/onboarding_screen.dart</span><span class="ft fp">★ Lead/lag indicator pill + draggable page scrubbing</span></div>
+  <div class="frow"><span class="fn">lib/onboarding/page_0.dart</span><span class="ft fg">✓ Screw-pin LiquidGlassPanel, animated logo pulse</span></div>
+  <div class="frow"><span class="fn">lib/onboarding/page_1.dart</span><span class="ft fy">⚠ Category selection works but not persisted</span></div>
+  <div class="frow"><span class="fn">lib/onboarding/page_5.dart</span><span class="ft fy">⚠ Coach style selection works but not persisted</span></div>
+  <div class="frow"><span class="fn">lib/onboarding/page_9.dart</span><span class="ft fp">★ TileMode.decal + RepaintBoundary + 270° arc CustomPainter</span></div>
+  <div class="frow"><span class="fn">lib/home_screen.dart</span><span class="ft fy">⚠ Only tab 0 wired — 5 stubs remain</span></div>
+  <div class="frow"><span class="fn">lib/tabs/home_tab.dart</span><span class="ft fy">⚠ Beautiful but BackdropFilter in ListView — Android jank</span></div>
+  <div class="frow"><span class="fn">lib/tabs/routine_tab.dart</span><span class="ft fr">✗ Stub (just Text widget)</span></div>
+  <div class="frow"><span class="fn">lib/tabs/coach_tab.dart</span><span class="ft fr">✗ Stub</span></div>
+  <div class="frow"><span class="fn">lib/tabs/tracker_tab.dart</span><span class="ft fr">✗ Stub</span></div>
+  <div class="frow"><span class="fn">lib/tabs/goals_tab.dart</span><span class="ft fr">✗ Stub</span></div>
+  <div class="frow"><span class="fn">lib/tabs/profile_tab.dart</span><span class="ft fr">✗ Stub</span></div>
+  <div class="frow"><span class="fn">lib/routine/routine_tab.dart</span><span class="ft fr">✗ Won't compile — bad import on line 13</span></div>
+  <div class="frow"><span class="fn">lib/routine/routine_settings_sheet.dart</span><span class="ft fr">✗ Won't compile — bad import on line 2</span></div>
+  <div class="frow"><span class="fn">lib/routine/add_task_sheet.dart</span><span class="ft fy">⚠ CustomTask model in wrong file</span></div>
+  <div class="frow"><span class="fn">lib/routine/ai_routine_panel.dart</span><span class="ft fy">⚠ http package missing from pubspec</span></div>
+  <div class="frow"><span class="fn">lib/routine/eating_setup_screen.dart</span><span class="ft fp">★ 28 controllers disposed, copy-prev, dot indicators</span></div>
+  <div class="frow"><span class="fn">lib/routine/fixed_schedule_screen.dart</span><span class="ft fp">★ Drag+resize+snap, NeverScrollable guard, block menu</span></div>
+  <div class="frow"><span class="fn">lib/routine/skin_care_setup_screen.dart</span><span class="ft fy">⚠ Day dot hardcoded to day 0</span></div>
+  <div class="frow"><span class="fn">lib/routine/routine_fab_layer.dart</span><span class="ft fy">⚠ Complete but unused — superseded by inline FABs</span></div>
+  <div class="frow"><span class="fn">lib/widgets/app_button.dart</span><span class="ft fp">★ World-class animated liquid button</span></div>
+  <div class="frow"><span class="fn">lib/widgets/liquid_glass_tabbar.dart</span><span class="ft fp">★ Draggable pill + custom AI bot painter</span></div>
+  <div class="frow"><span class="fn">lib/widgets/liquid_glass_card.dart</span><span class="ft fp">★ Folder shape ClipPath + gradient border painter</span></div>
+  <div class="frow"><span class="fn">lib/widgets/liquid_category_card.dart</span><span class="ft fp">★ Orb crossfade + ripple + elasticOut checkmark</span></div>
+  <div class="frow"><span class="fn">lib/widgets/animated_bot_avatar.dart</span><span class="ft fp">★ Bouncing sad→happy robot CustomPainter</span></div>
+  <div class="frow"><span class="fn">lib/widgets/liquid_glass_panel.dart</span><span class="ft fg">✓ Screw pins detail, BackdropFilter, rim gradient</span></div>
+  <div class="frow"><span class="fn">lib/widgets/liquid_textfield.dart</span><span class="ft fg">✓ 3D glass with specular gradient, depth shadows</span></div>
+  <div class="frow"><span class="fn">lib/widgets/glass_logo.dart</span><span class="ft fg">✓ Clean glass orb with inner white box</span></div>
+  <div class="frow"><span class="fn">lib/widgets/glass_liquid_button.dart</span><span class="ft fb">? Not fetched — likely alternate button variant</span></div>
+  <div class="frow"><span class="fn">lib/widgets/bot_avatar_orb.dart</span><span class="ft fg">✓ Simpler orb variant</span></div>
+  <div class="frow"><span class="fn">lib/widgets/goal_category_card.dart</span><span class="ft fg">✓ Complete</span></div>
+</div>
+
+<!-- ROADMAP -->
+<div id="roadmap" class="panel card">
+  <div class="row">
+    <span class="badge crit">TODAY (1hr)</span>
+    <div>
+      <div class="it">Fix 3 compile blockers + add http package</div>
+      <div class="is">1. routine_tab.dart: delete line 13, add RoutineFilter enum locally<br>2. routine_settings_sheet.dart: fix import line 2<br>3. routine_provider.dart: add customTasksProvider + isPremiumProvider<br>4. Terminal: <span class="code">flutter pub add http</span></div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge crit">TODAY (30min)</span>
+    <div>
+      <div class="it">Wire all 6 tabs in home_screen.dart</div>
+      <div class="is">Import lib/routine/routine_tab.dart and the 4 stub tabs. Replace the 5 Text() widgets with the real screen classes.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">THIS WEEK</span>
+    <div>
+      <div class="it">Add Firebase Auth to login + signup</div>
+      <div class="is">Add TextEditingControllers to both screens. Call FirebaseAuth.instance.createUserWithEmailAndPassword() in signup. signInWithEmailAndPassword() in login. Handle errors. Only navigate to Home/Onboarding on success.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">THIS WEEK</span>
+    <div>
+      <div class="it">Persist onboarding selections</div>
+      <div class="is">Create an OnboardingProvider (Riverpod) to collect: selectedCategories, coachStyle, goals, wakeTime, sleepHours, mealTimes. Each page writes to the provider as user selects. Page 9 "Enter Optivus" writes to Firestore and navigates.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge warn">THIS WEEK</span>
+    <div>
+      <div class="it">Seed RoutineNotifier + fix skin care dot</div>
+      <div class="is">Add <span class="code">Future.microtask(()=&gt;setFixedBlocks(kDefaultFixedBlocks));</span> to RoutineNotifier constructor. Fix skin_care_setup dot: <span class="code">if (_morning.isNotEmpty || _afternoon.isNotEmpty || _night.isNotEmpty)</span> instead of <span class="code">if (i==0)</span>.</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge info">NEXT SPRINT</span>
+    <div>
+      <div class="it">Build 4 remaining tabs</div>
+      <div class="is">Priority order: <b>Tracker</b> (analytics chart, habit log), <b>Goals</b> (list + detail + milestone timeline), <b>Coach</b> (AI chat, wire onboarding coach style selection), <b>Profile</b> (identity tags, preferences — needs auth first).</div>
+    </div>
+  </div>
+  <div class="row">
+    <span class="badge info">NEXT SPRINT</span>
+    <div>
+      <div class="it">Wire GoRouter + add auth gate</div>
+      <div class="is">Replace MaterialApp(home:) with MaterialApp.router(routerConfig: _router). Add auth redirect: unauthenticated → /welcome, authenticated → /home. GoRouter redirect reads FirebaseAuth.instance.currentUser.</div>
+    </div>
+  </div>
+</div>
+
+</div>
+<script>
+function show(id){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+</script>
