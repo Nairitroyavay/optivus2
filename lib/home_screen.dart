@@ -26,6 +26,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  rt.RoutineFilter _routineFilter = rt.RoutineFilter.all;
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +50,28 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SafeArea(
           bottom: false,
           child: _currentIndex == 0
-              ? const HomeTab()
+              ? HomeTab(
+                  onSkinCareTapped: () {
+                    setState(() {
+                      _currentIndex = 1;
+                      _routineFilter = rt.RoutineFilter.skinCare;
+                    });
+                  },
+                  onClassesTapped: () {
+                    setState(() {
+                      _currentIndex = 1;
+                      _routineFilter = rt.RoutineFilter.classes;
+                    });
+                  },
+                  onEatingTapped: () {
+                    setState(() {
+                      _currentIndex = 1;
+                      _routineFilter = rt.RoutineFilter.eating;
+                    });
+                  },
+                )
               : _currentIndex == 1
-                  ? const rt.RoutineTab()
+                  ? rt.RoutineTab(initialFilter: _routineFilter)
                   : _currentIndex == 2
                       ? const TrackerTab()
                       : _currentIndex == 3
@@ -66,6 +86,9 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: (index) {
           setState(() {
             _currentIndex = index;
+            if (index == 1) {
+              _routineFilter = rt.RoutineFilter.all; // Normal tab bar tap resets filter
+            }
           });
         },
         activeColor: _tabGradients[_currentIndex][0],

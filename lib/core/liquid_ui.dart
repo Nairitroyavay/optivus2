@@ -43,10 +43,10 @@ const kTabAccents = <Color>[
 ];
 
 // Glass surface colours
-const _kGlassFill   = Color(0xB3FFFFFF); // 70 % white
-const _kGlassBorder = Color(0xCCFFFFFF); // 80 % white
-const _kGlassShad   = Color(0x14000000); // 8 % black
-const _kInnerHi     = Color(0x66FFFFFF); // top specular highlight
+const _kGlassFill   = Color(0x33FFFFFF); // 20 % white (was 70%)
+const _kGlassBorder = Color(0x66FFFFFF); // 40 % white (was 80%)
+const _kGlassShad   = Color(0x0A000000); // 4 % black
+const _kInnerHi     = Color(0x33FFFFFF); // top specular highlight
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 2.  GLASS SCAFFOLD BACKGROUND
@@ -56,17 +56,18 @@ const _kInnerHi     = Color(0x66FFFFFF); // top specular highlight
 /// Wrap your Scaffold body with this.
 class LiquidBg extends StatelessWidget {
   final Widget child;
-  const LiquidBg({super.key, required this.child});
+  final List<Color>? colors;
+  const LiquidBg({super.key, required this.child, this.colors});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [kCream, kBg],
-          stops: [0.0, 0.55],
+          colors: colors ?? const [kCream, kBg],
+          stops: const [0.0, 0.55],
         ),
       ),
       child: child,
@@ -94,12 +95,12 @@ class LiquidCard extends StatelessWidget {
     required this.child,
     this.padding   = const EdgeInsets.all(20),
     this.radius    = 24,
-    this.frosted   = false, // default: simulated glass (no blur, performant)
+    this.frosted   = true, // defaulting to true for iOS-style frosted glass
     this.tint,
     this.elevation = 1,
   });
 
-  /// Non-blur variant — safe inside ListViews.
+  /// Variant for backward compatibility — now also blurs for iOS aesthetics
   const LiquidCard.solid({
     super.key,
     required this.child,
@@ -107,20 +108,31 @@ class LiquidCard extends StatelessWidget {
     this.radius    = 20,
     this.tint,
     this.elevation = 1,
-  }) : frosted = false;
+  }) : frosted = true;
 
   @override
   Widget build(BuildContext context) {
     final fill = tint ?? _kGlassFill;
-    final decoration = BoxDecoration(
-      color: fill,
-      borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: _kGlassBorder, width: 1.5),
+    final r = radius;
+
+    final outerDecoration = BoxDecoration(
+      borderRadius: BorderRadius.circular(r),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.95), // Strong top-left specular
+          Colors.white.withValues(alpha: 0.25),
+          Colors.white.withValues(alpha: 0.0),
+          Colors.black.withValues(alpha: 0.1),  // Bottom-right shadow edge
+        ],
+        stops: const [0.0, 0.15, 0.8, 1.0],
+      ),
       boxShadow: [
         BoxShadow(
-          color: _kGlassShad.withValues(alpha: 0.08 * elevation),
-          blurRadius: 20 * elevation,
-          offset: Offset(0, 6 * elevation),
+          color: _kGlassShad.withValues(alpha: 0.1 * elevation),
+          blurRadius: 24 * elevation,
+          offset: Offset(0, 8 * elevation),
         ),
         const BoxShadow(
           color: _kInnerHi,
@@ -130,24 +142,32 @@ class LiquidCard extends StatelessWidget {
       ],
     );
 
-    if (!frosted) {
-      return Container(
+    final innerDecoration = BoxDecoration(
+      color: fill,
+      borderRadius: BorderRadius.circular(r - 2.0),
+      // subtle inner border
+      border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 0.5),
+    );
+
+    Widget content = Container(
+      decoration: outerDecoration,
+      padding: const EdgeInsets.all(2.0), // Creates the 3D rim thickness
+      child: Container(
         padding: padding,
-        decoration: decoration,
+        decoration: innerDecoration,
         child: child,
-      );
+      ),
+    );
+
+    if (!frosted) {
+      return content;
     }
 
-    // Frosted — only use for static hero cards (not list items)
     return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
+      borderRadius: BorderRadius.circular(r),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: padding,
-          decoration: decoration,
-          child: child,
-        ),
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: content,
       ),
     );
   }
@@ -746,6 +766,7 @@ class LiquidIconBtn extends StatelessWidget {
   final VoidCallback? onTap;
   final double size;
   final Color? color;
+  final bool isCircle;
 
   const LiquidIconBtn({
     super.key,
@@ -753,6 +774,7 @@ class LiquidIconBtn extends StatelessWidget {
     this.onTap,
     this.size  = 40,
     this.color,
+    this.isCircle = false,
   });
 
   @override
@@ -763,15 +785,61 @@ class LiquidIconBtn extends StatelessWidget {
         width: size, height: size,
         decoration: BoxDecoration(
           color: _kGlassFill,
-          shape: BoxShape.circle,
+          shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
+          borderRadius: isCircle ? null : BorderRadius.circular(size / 3.2),
           border: Border.all(color: _kGlassBorder, width: 1.5),
           boxShadow: const [
-            BoxShadow(color: _kGlassShad, blurRadius: 10,
-                offset: Offset(0, 3)),
+            BoxShadow(color: _kGlassShad, blurRadius: 10, offset: Offset(0, 3)),
+            BoxShadow(color: _kInnerHi, blurRadius: 0, offset: Offset(-1, -1)),
           ],
         ),
-        child: Icon(icon, size: size * 0.45,
-            color: color ?? kInk),
+        child: Stack(
+          children: [
+            // Top-left strong specular highlight
+            Align(
+              alignment: Alignment.topLeft,
+              child: Container(
+                margin: EdgeInsets.only(left: size * 0.1, top: size * 0.08),
+                width: size * 0.45,
+                height: size * 0.25,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(size * 0.2),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.95),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Bottom-right inner gloss edge
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Container(
+                margin: EdgeInsets.only(right: size * 0.05, bottom: size * 0.05),
+                width: size * 0.6,
+                height: size * 0.35,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(size * 0.25),
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.6),
+                      Colors.white.withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Center(
+              child: Icon(icon, size: size * 0.5, color: color ?? kInk),
+            ),
+          ],
+        ),
       ),
     );
   }

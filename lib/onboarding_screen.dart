@@ -2,8 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'providers/onboarding_provider.dart';
-import '../home_screen.dart';
 import 'widgets/app_button.dart';
 import 'onboarding/onboarding_page_0.dart';
 import 'onboarding/onboarding_page_1.dart';
@@ -58,12 +58,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      await ref.read(onboardingProvider.notifier).saveToFirestore();
+      // Fire and forget so we don't block navigation if network is slow
+      ref.read(onboardingProvider.notifier).saveToFirestore().catchError((e) {
+        debugPrint('Failed to save onboarding: $e');
+      });
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      context.go('/home');
     }
   }
 

@@ -148,6 +148,27 @@ class CustomTask {
   });
 }
 
+/// Long-term commitments set by the User or AI
+class LongTermGoal {
+  final String id;
+  final String title;
+  final String emoji;
+  final DateTime startDate;
+  final DateTime endDate;
+  final String? dailyTaskTime; // "HH:MM"
+  final String colorHex;
+
+  const LongTermGoal({
+    required this.id,
+    required this.title,
+    required this.emoji,
+    required this.startDate,
+    required this.endDate,
+    this.dailyTaskTime,
+    required this.colorHex,
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE CLASSES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +190,9 @@ class RoutineState {
   final List<ClassItem> classes;
   final bool classesSetUp;
 
+  // Long-Term Goals
+  final List<LongTermGoal> longTermGoals;
+
   const RoutineState({
     this.fixedBlocks       = const [],
     this.fixedScheduleSetUp = false,
@@ -178,6 +202,7 @@ class RoutineState {
     this.eatingSetUp       = false,
     this.classes           = const [],
     this.classesSetUp      = false,
+    this.longTermGoals     = const [],
   })  : skinCarePlans = skinCarePlans ??
             const [
               DaySkinPlan(), DaySkinPlan(), DaySkinPlan(), DaySkinPlan(),
@@ -198,6 +223,7 @@ class RoutineState {
     bool?                eatingSetUp,
     List<ClassItem>?     classes,
     bool?                classesSetUp,
+    List<LongTermGoal>?  longTermGoals,
   }) => RoutineState(
     fixedBlocks:        fixedBlocks        ?? this.fixedBlocks,
     fixedScheduleSetUp: fixedScheduleSetUp ?? this.fixedScheduleSetUp,
@@ -207,6 +233,7 @@ class RoutineState {
     eatingSetUp:        eatingSetUp        ?? this.eatingSetUp,
     classes:            classes            ?? this.classes,
     classesSetUp:       classesSetUp       ?? this.classesSetUp,
+    longTermGoals:      longTermGoals      ?? this.longTermGoals,
   );
 
   // ── Convenience getters ──────────────────────────────────────────────────
@@ -230,7 +257,30 @@ class RoutineState {
 
 class RoutineNotifier extends StateNotifier<RoutineState> {
   RoutineNotifier() : super(const RoutineState()) {
-    Future.microtask(() => setFixedBlocks(kDefaultFixedBlocks));
+    Future.microtask(() {
+      setFixedBlocks(kDefaultFixedBlocks);
+      // Seed default long-term goals for demonstration
+      final now = DateTime.now();
+      setLongTermGoals([
+        LongTermGoal(
+          id: 'goal_quit_smoking',
+          title: 'Quit smoking and alcohol',
+          emoji: '🚭',
+          startDate: now,
+          endDate: now.add(const Duration(days: 14)), // 2 weeks
+          colorHex: '#CBD5E1', // grey
+        ),
+        LongTermGoal(
+          id: 'goal_gym',
+          title: 'Gym Workout',
+          emoji: '💪',
+          startDate: now,
+          endDate: now.add(const Duration(days: 90)), // 3 months
+          dailyTaskTime: '10:00',
+          colorHex: '#38BDF8', // light blue
+        ),
+      ]);
+    });
   }
 
   // ── Fixed schedule ───────────────────────────────────────────────────────
@@ -287,6 +337,22 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     state = state.copyWith(
       classes: state.classes.where((x) =>
           x.subject != c.subject || x.weekday != c.weekday).toList(),
+    );
+  }
+
+  // ── Long-Term Goals ────────────────────────────────────────────────────────
+  
+  void setLongTermGoals(List<LongTermGoal> goals) {
+    state = state.copyWith(longTermGoals: goals);
+  }
+
+  void addLongTermGoal(LongTermGoal goal) {
+    state = state.copyWith(longTermGoals: [...state.longTermGoals, goal]);
+  }
+
+  void removeLongTermGoal(String id) {
+    state = state.copyWith(
+      longTermGoals: state.longTermGoals.where((g) => g.id != id).toList(),
     );
   }
 }

@@ -56,7 +56,15 @@ const _weekDays = ['S','M','T','W','T','F','S'];
 // ─────────────────────────────────────────────────────────────────────────────
 
 class HomeTab extends StatefulWidget {
-  const HomeTab({super.key});
+  final VoidCallback? onSkinCareTapped;
+  final VoidCallback? onClassesTapped;
+  final VoidCallback? onEatingTapped;
+  const HomeTab({
+    super.key,
+    this.onSkinCareTapped,
+    this.onClassesTapped,
+    this.onEatingTapped,
+  });
 
   @override
   State<HomeTab> createState() => _HomeTabState();
@@ -472,10 +480,24 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
               style: TextStyle(
                   fontSize: 17, fontWeight: FontWeight.w800, color: _kInk)),
           const SizedBox(height: 12),
-          ...List.generate(_routines.length, (i) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _RoutineRow(_routines[i]),
-          )),
+          ...List.generate(_routines.length, (i) {
+            final r = _routines[i];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: GestureDetector(
+                onTap: () {
+                  if (r.title == 'Skin Care') {
+                    widget.onSkinCareTapped?.call();
+                  } else if (r.title == 'Class Routine') {
+                    widget.onClassesTapped?.call();
+                  } else if (r.title == 'Eating Routine') {
+                    widget.onEatingTapped?.call();
+                  }
+                },
+                child: _RoutineRow(r),
+              ),
+            );
+          }),
         ],
       ),
     );

@@ -50,13 +50,29 @@ class ScheduleItem {
       title: map['title'] ?? '',
       start: (map['start'] ?? 0.0).toDouble(),
       duration: (map['duration'] ?? 0.0).toDouble(),
-      icon: map['icon'] != null ? IconData(map['icon'], fontFamily: 'MaterialIcons') : null,
+      icon: _getIconData(map['icon']),
       color: map['color'] != null ? Color((map['color'] as num).toInt()) : null,
       hasTopTape: map['hasTopTape'] ?? false,
       hasBottomTape: map['hasBottomTape'] ?? false,
       isMini: map['isMini'] ?? false,
       isAdd: map['isAdd'] ?? false,
     );
+  }
+
+  static IconData? _getIconData(dynamic code) {
+    if (code == null) return null;
+    final int codePoint = (code as num).toInt();
+    
+    // We must return constant IconData to allow tree-shaking in release builds.
+    // Dynamic IconData(codePoint) is not allowed.
+    if (codePoint == Icons.bed_rounded.codePoint) return Icons.bed_rounded;
+    if (codePoint == Icons.school_rounded.codePoint) return Icons.school_rounded;
+    if (codePoint == Icons.work_rounded.codePoint) return Icons.work_rounded;
+    if (codePoint == Icons.fitness_center_rounded.codePoint) return Icons.fitness_center_rounded;
+    if (codePoint == Icons.star_rounded.codePoint) return Icons.star_rounded;
+    
+    // Fallback if not found
+    return Icons.star_rounded; 
   }
 }
 
