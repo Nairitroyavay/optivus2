@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'login_screen.dart';
-import 'signup_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'widgets/glass_logo.dart';
 import 'widgets/app_button.dart';
 import 'widgets/animated_bot_avatar.dart';
@@ -156,12 +155,7 @@ class WelcomeScreen extends StatelessWidget {
                 child: AppButton(
                   text: 'Get Started',
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SignupScreen(),
-                      ),
-                    );
+                    context.push('/signup');
                   },
                 ),
               ),
@@ -184,12 +178,7 @@ class WelcomeScreen extends StatelessWidget {
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const LoginScreen(),
-                          ),
-                        );
+                        context.push('/login');
                       },
                       child: Container(
                         padding: const EdgeInsets.only(bottom: 2), // space for underline

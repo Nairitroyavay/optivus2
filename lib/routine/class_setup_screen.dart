@@ -1,8 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/liquid_ui.dart';
-import '../providers/routine_provider.dart';
 
 String _formatTimeFromStart(double hoursFrom6AM) {
   int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
@@ -14,14 +12,14 @@ String _formatTimeFromStart(double hoursFrom6AM) {
   return "$displayH:$displayM $ampm";
 }
 
-class EatingRoutineBlock {
+class ClassRoutineBlock {
   final String id;
-  String mealName;
-  String foodName;
+  String subject;
+  String room;
+  String professor;
   double start; // For vertical position (hours from 6 AM)
-  double duration;
+  double duration; // For vertical size (hours length)
   IconData? icon;
-  String emoji;
   Color? color;
 
   bool isAdd;
@@ -31,14 +29,14 @@ class EatingRoutineBlock {
   String get displayStartTime => _formatTimeFromStart(start);
   String get displayEndTime => _formatTimeFromStart(start + duration);
 
-  EatingRoutineBlock({
+  ClassRoutineBlock({
     required this.id,
-    required this.mealName,
-    this.foodName = '',
+    required this.subject,
+    this.room = '',
+    this.professor = '',
     required this.start,
     this.duration = 1.0,
     this.icon,
-    this.emoji = '🍽️',
     this.color,
     this.isAdd = false,
     this.hasTopTape = false,
@@ -46,26 +44,26 @@ class EatingRoutineBlock {
   });
 }
 
-class EatingSetupScreen extends ConsumerStatefulWidget {
+class ClassSetupScreen extends StatefulWidget {
   final VoidCallback onComplete;
-  const EatingSetupScreen({super.key, required this.onComplete});
+  const ClassSetupScreen({super.key, required this.onComplete});
 
   @override
-  ConsumerState<EatingSetupScreen> createState() => _EatingSetupScreenState();
+  State<ClassSetupScreen> createState() => _ClassSetupScreenState();
 }
 
-class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
+class _ClassSetupScreenState extends State<ClassSetupScreen> {
   int _day = 0; // 0 for Mon, 6 for Sun
-  late Map<int, List<EatingRoutineBlock>> weeklyRoutines;
+  late Map<int, List<ClassRoutineBlock>> weeklyRoutines;
 
   final double kHourHeight = 84.0;
   final double kLeftOffset = 64.0;
 
   final List<Color> _cycleColors = [
-    const Color(0xFFFFB830), // Yellow
-    const Color(0xFF60D4A0), // Green
-    const Color(0xFFFF9560), // Orange
-    const Color(0xFF9B8FFF), // Purple
+    const Color(0xFF378ADD), // Blue
+    const Color(0xFFF59E0B), // Orange/Gold
+    const Color(0xFF10B981), // Green
+    const Color(0xFF8B5CF6), // Purple
     const Color(0xFFF43F5E), // Rose
   ];
   int _colorIndex = 0;
@@ -76,73 +74,47 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     weeklyRoutines = {};
     for (int i = 0; i < 7; i++) {
       weeklyRoutines[i] = [
-        EatingRoutineBlock(
-          id: 'breakfast_$i',
-          mealName: 'Breakfast',
-          foodName: 'Oatmeal & Berries',
-          start: 2.0, // 8:00 AM (6 AM + 2 hrs)
+        ClassRoutineBlock(
+          id: 'class1_$i',
+          subject: 'Data Structures',
+          room: 'Room 304',
+          professor: 'Prof. Sarah Jenkins',
+          start: 3.0, // 9:00 AM (6 AM + 3 hrs)
           duration: 1.0,
-          emoji: '🥣',
-          color: const Color(0xFFFFB830),
+          icon: Icons.school_rounded,
+          color: const Color(0xFF378ADD),
           hasTopTape: true,
           hasBottomTape: true,
         ),
-        EatingRoutineBlock(
+        ClassRoutineBlock(
           id: 'add1_$i',
-          mealName: '',
+          subject: '',
+          start: 4.5, // 10:30 AM 
+          isAdd: true,
+        ),
+        ClassRoutineBlock(
+          id: 'class2_$i',
+          subject: 'Operating Systems',
+          room: 'Lab A',
+          professor: 'Dr. Alan Turing',
           start: 5.0, // 11:00 AM
-          isAdd: true,
-        ),
-        EatingRoutineBlock(
-          id: 'lunch_$i',
-          mealName: 'Lunch',
-          foodName: 'Grilled Chicken Salad',
-          start: 7.0, // 1:00 PM
           duration: 1.0,
-          emoji: '🥗',
-          color: const Color(0xFF60D4A0),
+          icon: Icons.computer_rounded,
+          color: const Color(0xFFF59E0B),
           hasTopTape: true,
           hasBottomTape: true,
         ),
-        EatingRoutineBlock(
+        ClassRoutineBlock(
           id: 'add2_$i',
-          mealName: '',
-          start: 9.5, // 3:30 PM
+          subject: '',
+          start: 7.0, // 1:00 PM
           isAdd: true,
-        ),
-        EatingRoutineBlock(
-          id: 'snack_$i',
-          mealName: 'Snack',
-          foodName: 'Green Apple & Walnuts',
-          start: 11.0, // 5:00 PM
-          duration: 0.5,
-          emoji: '🍎',
-          color: const Color(0xFFFF9560),
-          hasTopTape: true,
-          hasBottomTape: true,
-        ),
-        EatingRoutineBlock(
-          id: 'add3_$i',
-          mealName: '',
-          start: 13.0, // 7:00 PM
-          isAdd: true,
-        ),
-        EatingRoutineBlock(
-          id: 'dinner_$i',
-          mealName: 'Dinner',
-          foodName: 'Salmon with Asparagus',
-          start: 14.5, // 8:30 PM
-          duration: 1.0,
-          emoji: '🍣',
-          color: const Color(0xFF9B8FFF),
-          hasTopTape: true,
-          hasBottomTape: true,
         ),
       ];
     }
   }
 
-  List<EatingRoutineBlock> get items => weeklyRoutines[_day]!;
+  List<ClassRoutineBlock> get items => weeklyRoutines[_day]!;
 
   void _onTopTapeDrag(int index, DragUpdateDetails details) {
     setState(() {
@@ -196,9 +168,9 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
   Future<void> _showEditDialog(int index) async {
     final item = items[index];
 
-    TextEditingController nameCtrl = TextEditingController(text: item.mealName);
-    TextEditingController foodCtrl = TextEditingController(text: item.foodName);
-    TextEditingController emojiCtrl = TextEditingController(text: item.emoji);
+    TextEditingController subjectCtrl = TextEditingController(text: item.subject);
+    TextEditingController roomCtrl = TextEditingController(text: item.room);
+    TextEditingController profCtrl = TextEditingController(text: item.professor);
     TextEditingController startTimeCtrl = TextEditingController(text: item.displayStartTime);
     TextEditingController endTimeCtrl = TextEditingController(text: item.displayEndTime);
 
@@ -210,7 +182,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
             return AlertDialog(
               backgroundColor: Colors.white.withValues(alpha: 0.95),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              title: Text(item.isAdd ? 'Add Meal' : 'Edit Meal Details', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF0F111A))),
+              title: Text(item.isAdd ? 'Add Class' : 'Edit Class Details', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF0F111A))),
               content: SizedBox(
                 width: double.maxFinite,
                 child: SingleChildScrollView(
@@ -218,43 +190,11 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 60,
-                            child: TextField(
-                              controller: emojiCtrl,
-                              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-                              textAlign: TextAlign.center,
-                              decoration: InputDecoration(
-                                labelText: 'Icon',
-                                filled: true,
-                                fillColor: const Color(0xFFF1F5F9),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: nameCtrl,
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                              decoration: InputDecoration(
-                                labelText: 'Meal Name (e.g. Lunch)',
-                                filled: true,
-                                fillColor: const Color(0xFFF1F5F9),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
                       TextField(
-                        controller: foodCtrl,
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                        controller: subjectCtrl,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                         decoration: InputDecoration(
-                          labelText: 'Food Detail (e.g. Grilled Chicken Salad)',
+                          labelText: 'Subject (e.g. Data Structures)',
                           filled: true,
                           fillColor: const Color(0xFFF1F5F9),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -265,10 +205,40 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                         children: [
                           Expanded(
                             child: TextField(
+                              controller: roomCtrl,
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                              decoration: InputDecoration(
+                                labelText: 'Room',
+                                filled: true,
+                                fillColor: const Color(0xFFF1F5F9),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: profCtrl,
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                              decoration: InputDecoration(
+                                labelText: 'Professor',
+                                filled: true,
+                                fillColor: const Color(0xFFF1F5F9),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
                               controller: startTimeCtrl,
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                               decoration: InputDecoration(
-                                labelText: 'Start (e.g. 1:00 PM)',
+                                labelText: 'Start (e.g. 9:00 AM)',
                                 filled: true,
                                 fillColor: const Color(0xFFF1F5F9),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -281,7 +251,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                               controller: endTimeCtrl,
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                               decoration: InputDecoration(
-                                labelText: 'End (e.g. 2:00 PM)',
+                                labelText: 'End (e.g. 10:00 AM)',
                                 filled: true,
                                 fillColor: const Color(0xFFF1F5F9),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
@@ -315,9 +285,9 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                   ),
                   onPressed: () {
                     setState(() {
-                      item.mealName = nameCtrl.text.isEmpty ? 'New Meal' : nameCtrl.text;
-                      item.foodName = foodCtrl.text;
-                      item.emoji = emojiCtrl.text.isEmpty ? '🍽️' : emojiCtrl.text;
+                      item.subject = subjectCtrl.text.isEmpty ? 'New Class' : subjectCtrl.text;
+                      item.room = roomCtrl.text;
+                      item.professor = profCtrl.text;
                       
                       double parsedStart = _parseHoursFrom6AM(startTimeCtrl.text);
                       double parsedEnd = _parseHoursFrom6AM(endTimeCtrl.text);
@@ -329,13 +299,14 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                         item.isAdd = false;
                         item.hasTopTape = true;
                         item.hasBottomTape = true;
+                        item.icon = Icons.school_rounded;
                         item.duration = 1.0; 
                         item.color = _cycleColors[_colorIndex % _cycleColors.length];
                         _colorIndex++;
                         // Insert an Add button below this block
-                        items.insert(index + 1, EatingRoutineBlock(
+                        items.insert(index + 1, ClassRoutineBlock(
                            id: 'add_${DateTime.now().millisecondsSinceEpoch}',
-                           mealName: '',
+                           subject: '',
                            start: item.start + item.duration + 0.5,
                            isAdd: true,
                         ));
@@ -449,7 +420,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     );
   }
 
-  Widget _buildColoredBlock(int index, EatingRoutineBlock item) {
+  Widget _buildColoredBlock(int index, ClassRoutineBlock item) {
     final top = item.start * kHourHeight;
     final height = item.duration * kHourHeight;
 
@@ -489,9 +460,11 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                           children: [
                             Row(
                               children: [
-                                Text(item.emoji, style: const TextStyle(fontSize: 24)),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text(item.mealName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F111A)))),
+                                if (item.icon != null) ...[
+                                  Icon(item.icon, color: item.color!.withValues(alpha: 0.9), size: 24),
+                                  const SizedBox(width: 8),
+                                ],
+                                Expanded(child: Text(item.subject, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F111A)))),
                                 const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B), size: 18),
                               ],
                             ),
@@ -510,7 +483,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                                   ),
                                   child: Text('${item.displayStartTime} - ${item.displayEndTime}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
                                 ),
-                                if (item.foodName.isNotEmpty)
+                                if (item.room.isNotEmpty)
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                     decoration: BoxDecoration(
@@ -518,7 +491,17 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1),
                                     ),
-                                    child: Text(item.foodName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                                    child: Text(item.room, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                                  ),
+                                if (item.professor.isNotEmpty)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.45),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1),
+                                    ),
+                                    child: Text(item.professor, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
                                   ),
                               ],
                             ),
@@ -546,7 +529,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     );
   }
 
-  Widget _buildAddButton(int index, EatingRoutineBlock item) {
+  Widget _buildAddButton(int index, ClassRoutineBlock item) {
     final height = 40.0;
     final top = item.start * kHourHeight - height / 2;
     return Positioned(
@@ -594,31 +577,12 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     );
   }
 
-  void _save(WidgetRef ref) {
-    final notifier = ref.read(routineProvider.notifier);
-    for (int d = 0; d < 7; d++) {
-      final itemsForDay = weeklyRoutines[d] ?? [];
-      final meals = <MealItem>[];
-      for (final item in itemsForDay) {
-        if (!item.isAdd) {
-          meals.add(MealItem(
-            emoji: item.emoji,
-            name: item.foodName.isNotEmpty ? item.foodName : item.mealName,
-            time: item.displayStartTime,
-          ));
-        }
-      }
-      notifier.setMealPlan(d, DayMealPlan(meals: meals));
-    }
-    widget.onComplete();
-  }
-
   @override
   Widget build(BuildContext context) {
     const headerColors = [
-      Color(0xFFFFD480),
-      Color(0xFFFFA64D),
-      Color(0xFFFF8080),
+      Color(0xFF93C5FD),
+      Color(0xFF60A5FA),
+      Color(0xFF3B82F6),
     ];
 
     return Scaffold(
@@ -641,7 +605,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                           onTap: () => Navigator.pop(context),
                         ),
                         const Text(
-                          'EATING SETUP',
+                          'CLASS SETUP',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
@@ -653,7 +617,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                           icon: Icons.check_rounded,
                           size: 44,
                           onTap: () {
-                            _save(ref);
+                            widget.onComplete();
                             Navigator.pop(context);
                           },
                         ), 
@@ -672,7 +636,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 2.0),
                         child: _buildDroplet(
                           isSel ? 44 : 36, 
-                          color: const Color(0xFFFF9560),
+                          color: const Color(0xFF378ADD),
                           text: days[i],
                           isActive: isSel,
                         ),
@@ -714,7 +678,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                             child: const Center(
                               child: Text(
-                                'Set Your Daily Eating Routine',
+                                'Set Your Weekly Class Schedule',
                                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 0.2),
                               ),
                             ),
@@ -751,9 +715,9 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Your Fixed Meals.', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF1E293B), letterSpacing: -0.5)),
+                                    Text('Your Fixed Classes.', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF1E293B), letterSpacing: -0.5)),
                                     SizedBox(height: 6),
-                                    Text('Maintain a healthy metabolism with regular eating times.', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+                                    Text('Stay on top of your semester with a clear timetable.', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
                                   ],
                                 ),
                               ),
@@ -809,7 +773,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                                         
                                         ...items.asMap().entries.map((entry) {
                                           int idx = entry.key;
-                                          EatingRoutineBlock item = entry.value;
+                                          ClassRoutineBlock item = entry.value;
                                           if (item.isAdd) {
                                             return _buildAddButton(idx, item);
                                           } else {

@@ -83,33 +83,19 @@ class MealItem {
   const MealItem({required this.emoji, required this.name, required this.time});
 }
 
-/// Eating plan for one day: four meal slots
+/// Eating plan for one day
 class DayMealPlan {
-  final MealItem? breakfast;
-  final MealItem? lunch;
-  final MealItem? snack;
-  final MealItem? dinner;
-  const DayMealPlan({this.breakfast, this.lunch, this.snack, this.dinner});
+  final List<MealItem> meals;
+  const DayMealPlan({this.meals = const []});
 
-  bool get isEmpty =>
-      breakfast == null && lunch == null &&
-      snack == null && dinner == null;
+  bool get isEmpty => meals.isEmpty;
 
-  List<MealItem> get all => [
-    if (breakfast != null) breakfast!,
-    if (lunch     != null) lunch!,
-    if (snack     != null) snack!,
-    if (dinner    != null) dinner!,
-  ];
+  List<MealItem> get all => meals;
 
   DayMealPlan copyWith({
-    MealItem? breakfast, MealItem? lunch,
-    MealItem? snack,     MealItem? dinner,
+    List<MealItem>? meals,
   }) => DayMealPlan(
-    breakfast: breakfast ?? this.breakfast,
-    lunch:     lunch     ?? this.lunch,
-    snack:     snack     ?? this.snack,
-    dinner:    dinner    ?? this.dinner,
+    meals: meals ?? this.meals,
   );
 }
 
@@ -399,10 +385,12 @@ const kDefaultSkinPlan = DaySkinPlan(
 );
 
 const kDefaultMealPlanMon = DayMealPlan(
-  breakfast: MealItem(emoji:'🥣', name:'Oatmeal & Berries',        time:'08:00 AM'),
-  lunch:     MealItem(emoji:'🥗', name:'Grilled Chicken Salad',    time:'01:00 PM'),
-  snack:     MealItem(emoji:'🍎', name:'Green Apple & Walnuts',    time:'05:00 PM'),
-  dinner:    MealItem(emoji:'🍣', name:'Salmon with Asparagus',    time:'08:30 PM'),
+  meals: [
+    MealItem(emoji:'🥣', name:'Oatmeal & Berries',        time:'08:00 AM'),
+    MealItem(emoji:'🥗', name:'Grilled Chicken Salad',    time:'01:00 PM'),
+    MealItem(emoji:'🍎', name:'Green Apple & Walnuts',    time:'05:00 PM'),
+    MealItem(emoji:'🍣', name:'Salmon with Asparagus',    time:'08:30 PM'),
+  ],
 );
 
 const kDefaultClasses = <ClassItem>[

@@ -35,8 +35,9 @@ const _options = [
     filter: RoutineFilter.eating,
   ),
   _SettingsOption(
-    emoji: '⏰', title: 'Custom Routine',
-    subtitle: 'Build a routine from scratch',
+    emoji: '📅', title: 'Fixed Schedule',
+    subtitle: 'Base daily activities, sleep & work',
+    filter: RoutineFilter.fixedSchedule,
   ),
   _SettingsOption(
     emoji: '🔔', title: 'Notification Settings',

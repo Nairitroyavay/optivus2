@@ -1,8 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'signup_screen.dart';
-import 'home_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'widgets/glass_logo.dart';
 import 'widgets/app_button.dart';
 import 'widgets/liquid_glass_panel.dart';
@@ -70,10 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // Bypass login for testing when password is blank
     if (_passCtrl.text.isEmpty) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      context.go('/home');
       return;
     }
 
@@ -93,10 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      context.go('/home');
     } on FirebaseAuthException catch (e) {
       setState(() {
         switch (e.code) {
@@ -301,11 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(
                             color: Colors.grey.shade600, fontSize: 14)),
                     TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const SignupScreen()),
-                      ),
+                      onPressed: () => context.push('/signup'),
                       style: TextButton.styleFrom(
                         foregroundColor: _kInk,
                         padding: const EdgeInsets.symmetric(horizontal: 8),

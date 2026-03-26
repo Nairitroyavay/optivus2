@@ -1,8 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'login_screen.dart';
-import 'onboarding_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'widgets/app_button.dart';
 import 'widgets/liquid_glass_panel.dart';
 
@@ -163,10 +162,7 @@ class _SignupScreenState extends State<SignupScreen>
       if (!mounted) return;
 
       // Navigate to onboarding
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      );
+      context.go('/onboarding');
     } on FirebaseAuthException catch (e) {
       setState(() {
         switch (e.code) {
@@ -377,11 +373,7 @@ class _SignupScreenState extends State<SignupScreen>
                         style: TextStyle(
                             color: Colors.grey.shade600, fontSize: 14)),
                     TextButton(
-                      onPressed: () => Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const LoginScreen()),
-                      ),
+                      onPressed: () => context.go('/login'),
                       style: TextButton.styleFrom(
                         foregroundColor: _kInk,
                         padding: const EdgeInsets.symmetric(horizontal: 8),

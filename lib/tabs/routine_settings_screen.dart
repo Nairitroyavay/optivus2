@@ -5,6 +5,8 @@ import '../providers/routine_provider.dart';
 import '../routine/glass_filter_dropdown.dart' show RoutineFilter;
 import '../routine/skin_care_setup_screen.dart';
 import '../routine/eating_setup_screen.dart';
+import '../routine/class_setup_screen.dart';
+import '../routine/fixed_schedule_setup_screen.dart';
 
 class RoutineSettingsScreen extends ConsumerWidget {
   const RoutineSettingsScreen({super.key});
@@ -17,8 +19,13 @@ class RoutineSettingsScreen extends ConsumerWidget {
     } else if (f == RoutineFilter.eating) {
       Navigator.push(context, slideRoute(EatingSetupScreen(
           onComplete: () {})));
+    } else if (f == RoutineFilter.classes) {
+      Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {
+        ref.read(routineProvider.notifier).setClasses(kDefaultClasses);
+      })));
+    } else if (f == RoutineFilter.fixedSchedule) {
+      Navigator.push(context, slideRoute(FixedScheduleSetupScreen(onComplete: () {})));
     }
-    // Classes and Custom setups might be implemented later
   }
 
   @override
@@ -89,11 +96,12 @@ class RoutineSettingsScreen extends ConsumerWidget {
                             ),
                             _buildDivider(),
                             _buildPrefTile(
-                              emoji: '⏰',
-                              title: 'Custom Routine',
-                              subtitle: 'Build a routine from scratch',
-                              hasArrow: true,
-                              onTap: () {},
+                              emoji: '📅',
+                              title: 'Fixed Schedule',
+                              subtitle: 'Base daily activities, sleep & work',
+                              hasArrow: !s.fixedScheduleSetUp,
+                              isDone: s.fixedScheduleSetUp,
+                              onTap: () => _doSetup(context, ref, RoutineFilter.fixedSchedule),
                             ),
                           ],
                         ),

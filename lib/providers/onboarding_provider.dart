@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -61,7 +62,22 @@ class OnboardingState {
 }
 
 class OnboardingNotifier extends StateNotifier<OnboardingState> {
+  Timer? _debounceTimer;
+
   OnboardingNotifier() : super(OnboardingState());
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void saveToFirestoreDebounced() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(seconds: 2), () {
+      saveToFirestore();
+    });
+  }
 
   void updateCategories(List<String> cats) => state = state.copyWith(selectedCategories: cats);
   void updateBadHabits(List<String> habits) => state = state.copyWith(badHabits: habits);
@@ -83,6 +99,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       } catch (e) {
         // Silently fail or log for analytics, shouldn't disrupt user flow
         debugPrint('Error saving onboarding data: $e');
+        rethrow;
       }
     }
   }

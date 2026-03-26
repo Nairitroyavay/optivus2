@@ -13,34 +13,36 @@ import 'signup_screen.dart';
 import 'onboarding_screen.dart';
 import 'home_screen.dart';
 
-final _router = GoRouter(
-  initialLocation: '/',
-  redirect: (context, state) {
-    final user = FirebaseAuth.instance.currentUser;
-    final isAuthRoute = state.uri.path == '/' || 
-                        state.uri.path == '/login' || 
-                        state.uri.path == '/signup';
-    
-    if (user == null && !isAuthRoute) return '/';
-    if (user != null && isAuthRoute) return '/home';
-    return null;
-  },
-  routes: [
-    GoRoute(path: '/', builder: (_, __) => const WelcomeScreen()),
-    GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-    GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
-    GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
-    GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
-  ],
-);
+class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    _subscription = stream.asBroadcastStream().listen(
+      (dynamic _) => notifyListeners(),
+    );
+  }
+
+  late final StreamSubscription<dynamic> _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
+
+late final GoRouterRefreshStream _authRefreshStream;
+late final GoRouter _router;
 
 void main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ));
 
     try {
@@ -52,6 +54,36 @@ void main() async {
     } catch (e) {
       debugPrint('Firebase init failed: $e');
     }
+
+    _authRefreshStream = GoRouterRefreshStream(FirebaseAuth.instance.authStateChanges());
+    _router = GoRouter(authStateChanges());
+      initialLocation: '/',
+      refreshListenable: _authRefreshStream,
+      redirect: (context, state) {
+        final user = FirebaseAuth.instance.currentUser;
+        final isAuthRoute = state.uri.path == '/' || 
+                            state.uri.path == '/login' || 
+                            state.uri.path == '/signup';
+        
+        // Bypass login auth check for testing
+        // if (user == null && !isAuthRoute) return '/';
+        if (user != null) {
+          if (state.uri.path == '/signup') {
+            return '/onboarding';
+          } else if (isAuthRoute) {
+            return '/home';
+          }
+        }
+        return null;
+      },
+      routes: [
+        GoRoute(path: '/', builder: (_, __) => const WelcomeScreen()),
+        GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+        GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
+        GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
+        GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+      ],
+    );
 
     runApp(const ProviderScope(child: OptivusApp()));
   }, (error, stack) {

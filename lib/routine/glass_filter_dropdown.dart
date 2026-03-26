@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/liquid_ui.dart';
 import '../providers/routine_provider.dart';
 
-enum RoutineFilter { all, skinCare, classes, eating }
+enum RoutineFilter { all, fixedSchedule, skinCare, classes, eating }
 
 class FilterMeta {
   final String label, emoji;
@@ -12,10 +12,11 @@ class FilterMeta {
 }
 
 const filterMetaData = <RoutineFilter, FilterMeta>{
-  RoutineFilter.all:      FilterMeta('All',       '🗓️', kInk),
-  RoutineFilter.skinCare: FilterMeta('Skin Care', '🌿', kMint),
-  RoutineFilter.classes:  FilterMeta('Classes',   '🎓', kBlue),
-  RoutineFilter.eating:   FilterMeta('Eating',    '🍽️', kRose),
+  RoutineFilter.all:           FilterMeta('All',            '🗓️', kInk),
+  RoutineFilter.fixedSchedule: FilterMeta('Fixed Schedule', '📅', Color(0xFF8B5CF6)), // Purple
+  RoutineFilter.skinCare:      FilterMeta('Skin Care',      '🌿', kMint),
+  RoutineFilter.classes:       FilterMeta('Classes',        '🎓', kBlue),
+  RoutineFilter.eating:        FilterMeta('Eating',         '🍽️', kRose),
 };
 
 class GlassFilterDropdown extends StatefulWidget {

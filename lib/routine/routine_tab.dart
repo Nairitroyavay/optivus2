@@ -8,6 +8,10 @@ import '../core/liquid_ui.dart';
 import '../providers/routine_provider.dart';
 import 'skin_care_setup_screen.dart';
 import 'eating_setup_screen.dart';
+import 'class_setup_screen.dart';
+
+
+import 'fixed_schedule_setup_screen.dart';
 
 import 'ai_routine_panel.dart';
 import 'routine_settings_sheet.dart';
@@ -224,6 +228,15 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     } else if (f == RoutineFilter.eating) {
       Navigator.push(context, slideRoute(EatingSetupScreen(
           onComplete: () => setState(() => _filter = RoutineFilter.eating))));
+    } else if (f == RoutineFilter.classes) {
+      Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {
+        ref.read(routineProvider.notifier).setClasses(kDefaultClasses); // sets classesSetUp true, demo purposes
+        setState(() => _filter = RoutineFilter.classes);
+      })));
+    } else if (f == RoutineFilter.fixedSchedule) {
+      Navigator.push(context, slideRoute(FixedScheduleSetupScreen(onComplete: () {
+        setState(() => _filter = RoutineFilter.fixedSchedule);
+      })));
     }
   }
 

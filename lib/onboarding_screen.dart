@@ -58,10 +58,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      // Fire and forget so we don't block navigation if network is slow
-      ref.read(onboardingProvider.notifier).saveToFirestore().catchError((e) {
+      try {
+        await ref.read(onboardingProvider.notifier).saveToFirestore();
+      } catch (e) {
         debugPrint('Failed to save onboarding: $e');
-      });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to save profile. Please check your connection and try again.')),
+          );
+        }
+        return;
+      }
       if (!mounted) return;
       context.go('/home');
     }
@@ -98,7 +105,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   physics: const BouncingScrollPhysics(),
                   onPageChanged: (i) {
                     setState(() => _currentPage = i);
-                    ref.read(onboardingProvider.notifier).saveToFirestore();
+                    ref.read(onboardingProvider.notifier).saveToFirestoreDebounced();
                   },
                   children: const [
                     OnboardingPage0(),

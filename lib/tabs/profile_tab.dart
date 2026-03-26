@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:go_router/go_router.dart';
 import '../core/liquid_ui.dart';
 import 'routine_settings_screen.dart';
 
@@ -81,7 +83,7 @@ class ProfileTab extends StatelessWidget {
                       const SizedBox(height: 40),
 
                       // 10. Log Out
-                      _buildLogOutSetting(),
+                      _buildLogOutSetting(context),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -407,7 +409,7 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
-  Widget _buildLogOutSetting() {
+  Widget _buildLogOutSetting(BuildContext context) {
     return LiquidCard(
       frosted: true,
       padding: EdgeInsets.zero,
@@ -417,6 +419,20 @@ class ProfileTab extends StatelessWidget {
         iconColor: kCoral,
         title: 'Log out',
         hasArrow: false,
+        onTap: () async {
+          try {
+            await FirebaseAuth.instance.signOut();
+            if (context.mounted) {
+              context.go('/');
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Failed to log out. Please try again.')),
+              );
+            }
+          }
+        },
       ),
     );
   }
@@ -429,9 +445,11 @@ class ProfileTab extends StatelessWidget {
     Widget? trailing,
     VoidCallback? onTap,
   }) {
-    return InkWell(
-      onTap: onTap ?? () {},
-      child: Padding(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
           children: [
@@ -529,6 +547,7 @@ class ProfileTab extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 
