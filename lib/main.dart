@@ -55,18 +55,20 @@ void main() async {
       debugPrint('Firebase init failed: $e');
     }
 
-    _authRefreshStream = GoRouterRefreshStream(FirebaseAuth.instance.authStateChanges());
-    _router = GoRouter(authStateChanges());
+    _authRefreshStream = GoRouterRefreshStream(
+      FirebaseAuth.instance.authStateChanges(),
+    );
+    _router = GoRouter(
       initialLocation: '/',
       refreshListenable: _authRefreshStream,
       redirect: (context, state) {
         final user = FirebaseAuth.instance.currentUser;
-        final isAuthRoute = state.uri.path == '/' || 
-                            state.uri.path == '/login' || 
-                            state.uri.path == '/signup';
-        
-        // Bypass login auth check for testing
-        // if (user == null && !isAuthRoute) return '/';
+        final isAuthRoute = state.uri.path == '/' ||
+            state.uri.path == '/login' ||
+            state.uri.path == '/signup';
+
+        // Enforce auth: block non-auth routes when signed out
+        if (user == null && !isAuthRoute) return '/';
         if (user != null) {
           if (state.uri.path == '/signup') {
             return '/onboarding';

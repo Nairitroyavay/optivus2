@@ -58,10 +58,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      try {
-        await ref.read(onboardingProvider.notifier).saveToFirestore();
-      } catch (e) {
-        debugPrint('Failed to save onboarding: $e');
+      final ok = await ref.read(onboardingProvider.notifier).saveToFirestore();
+      if (!ok) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to save profile. Please check your connection and try again.')),

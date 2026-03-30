@@ -75,6 +75,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void saveToFirestoreDebounced() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 2), () {
+      // Fire-and-forget; errors are handled inside saveToFirestore.
       saveToFirestore();
     });
   }
@@ -88,19 +89,20 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void updateAccountability(String type) => state = state.copyWith(accountabilityType: type);
   void updateScheduleItems(List<Map<String, dynamic>> items) => state = state.copyWith(scheduleItems: items);
 
-  Future<void> saveToFirestore() async {
+  Future<bool> saveToFirestore() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      try {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'onboarding': state.toMap(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } catch (e) {
-        // Silently fail or log for analytics, shouldn't disrupt user flow
-        debugPrint('Error saving onboarding data: $e');
-        rethrow;
-      }
+    if (user == null) return false;
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'onboarding': state.toMap(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return true;
+    } catch (e) {
+      // Log and return failure; callers can decide how to notify.
+      debugPrint('Error saving onboarding data: $e');
+      return false;
     }
   }
 }

@@ -67,11 +67,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _signIn() async {
     FocusScope.of(context).unfocus();
 
-    // Bypass login for testing when password is blank
-    if (_passCtrl.text.isEmpty) {
-      context.go('/home');
-      return;
-    }
 
     final error = _validate();
     if (error != null) {
