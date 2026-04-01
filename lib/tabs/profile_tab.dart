@@ -453,64 +453,142 @@ class ProfileTab extends StatelessWidget {
         title: 'Delete account',
         hasArrow: false,
         onTap: () async {
+          // Step 1: Confirmation dialog
           final confirm = await showDialog<bool>(
             context: context,
-            builder: (context) => AlertDialog(
+            builder: (ctx) => AlertDialog(
               backgroundColor: const Color(0xFF1E202A),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: const Text('Delete Account', style: TextStyle(color: Colors.white)),
               content: const Text(
-                'Are you sure you want to delete your account? This action cannot be undone.',
-                style: TextStyle(color: Colors.white70),
+                'Are you sure you want to delete your account? '
+                'All your data will be permanently removed and this action cannot be undone.',
+                style: TextStyle(color: Colors.white70, height: 1.4),
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context, false),
+                  onPressed: () => Navigator.pop(ctx, false),
                   child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
                 ),
                 TextButton(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () => Navigator.pop(ctx, true),
                   child: const Text('Delete', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),
           );
-
           if (confirm != true) return;
           if (!context.mounted) return;
 
+          // Step 2: Ask for password to re-authenticate
+          final password = await _showPasswordDialog(context);
+          if (password == null || password.isEmpty) return;
+          if (!context.mounted) return;
+
+          // Step 3: Re-authenticate, delete Firestore data, delete auth user
           try {
             final user = FirebaseAuth.instance.currentUser;
-            if (user != null) {
-              // Delete user data from Firestore
-              await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
-              // Delete the Firebase Auth user
-              await user.delete();
-            }
-            if (context.mounted) {
-              context.go('/');
-            }
+            if (user == null || user.email == null) return;
+
+            // Re-authenticate with email + password credential
+            final credential = EmailAuthProvider.credential(
+              email: user.email!,
+              password: password,
+            );
+            await user.reauthenticateWithCredential(credential);
+
+            // Delete user data from Firestore
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .delete();
+
+            // Delete the Firebase Auth user — authStateChanges will fire
+            // and the router redirect will auto-navigate to '/' (welcome screen)
+            await user.delete();
           } on FirebaseAuthException catch (e) {
-            if (e.code == 'requires-recent-login') {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please log out and log back in to delete your account.')),
-                );
-              }
-            } else {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Failed to delete account: ${e.message}')),
-                );
-              }
+            if (!context.mounted) return;
+            String msg;
+            switch (e.code) {
+              case 'wrong-password':
+              case 'invalid-credential':
+                msg = 'Incorrect password. Please try again.';
+                break;
+              case 'too-many-requests':
+                msg = 'Too many attempts. Please wait and try again.';
+                break;
+              default:
+                msg = 'Failed to delete account. Please try again.';
             }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(msg)),
+            );
           } catch (e) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('An error occurred. Please try again.')),
-              );
-            }
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('An error occurred. Please try again.')),
+            );
           }
         },
+      ),
+    );
+  }
+
+  /// Shows a dialog asking the user for their password before account deletion.
+  Future<String?> _showPasswordDialog(BuildContext context) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E202A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Confirm Password', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter your password to confirm account deletion.',
+              style: TextStyle(color: Colors.white70, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              cursorColor: Colors.redAccent,
+              decoration: InputDecoration(
+                hintText: 'Password',
+                hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.1),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                prefixIcon: const Icon(Icons.lock_outline, color: Colors.white54, size: 20),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              controller.dispose();
+              Navigator.pop(ctx, null);
+            },
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              final pass = controller.text;
+              controller.dispose();
+              Navigator.pop(ctx, pass);
+            },
+            child: const Text('Confirm', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
