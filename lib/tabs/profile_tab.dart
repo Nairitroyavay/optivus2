@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../core/liquid_ui.dart';
 import 'routine_settings_screen.dart';
@@ -84,6 +85,10 @@ class ProfileTab extends StatelessWidget {
 
                       // 10. Log Out
                       _buildLogOutSetting(context),
+                      const SizedBox(height: 16),
+
+                      // 11. Delete Account
+                      _buildDeleteAccountSetting(context),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -429,6 +434,79 @@ class ProfileTab extends StatelessWidget {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Failed to log out. Please try again.')),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildDeleteAccountSetting(BuildContext context) {
+    return LiquidCard(
+      frosted: true,
+      padding: EdgeInsets.zero,
+      radius: 20,
+      child: _buildPrefTile(
+        icon: Icons.person_remove_rounded,
+        iconColor: Colors.redAccent,
+        title: 'Delete account',
+        hasArrow: false,
+        onTap: () async {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: const Color(0xFF1E202A),
+              title: const Text('Delete Account', style: TextStyle(color: Colors.white)),
+              content: const Text(
+                'Are you sure you want to delete your account? This action cannot be undone.',
+                style: TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Delete', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+
+          if (confirm != true) return;
+          if (!context.mounted) return;
+
+          try {
+            final user = FirebaseAuth.instance.currentUser;
+            if (user != null) {
+              // Delete user data from Firestore
+              await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
+              // Delete the Firebase Auth user
+              await user.delete();
+            }
+            if (context.mounted) {
+              context.go('/');
+            }
+          } on FirebaseAuthException catch (e) {
+            if (e.code == 'requires-recent-login') {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please log out and log back in to delete your account.')),
+                );
+              }
+            } else {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to delete account: ${e.message}')),
+                );
+              }
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('An error occurred. Please try again.')),
               );
             }
           }

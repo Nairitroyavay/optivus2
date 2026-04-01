@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'widgets/app_button.dart';
 import 'widgets/liquid_glass_panel.dart';
+import 'widgets/wavy_loading_indicator.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLOUR TOKENS
@@ -355,7 +356,7 @@ class _SignupScreenState extends State<SignupScreen>
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: _loading
-                    ? const _LoadingPill()
+                    ? _LoadingButton()
                     : AppButton(
                         text: 'Create Account',
                         onPressed: _createAccount,
@@ -547,27 +548,47 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LOADING PILL  — replaces button while loading
-// ─────────────────────────────────────────────────────────────────────────────
-class _LoadingPill extends StatelessWidget {
-  const _LoadingPill();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOADING BUTTON — glass pill with wavy spinner, mirrors AppButton dimensions
+// ─────────────────────────────────────────────────────────────────────────────
+class _LoadingButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 60,
+      width: double.infinity,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: _kInk.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(
-            color: Colors.white.withValues(alpha: 0.6), width: 1.5),
+        borderRadius: BorderRadius.circular(33),
+        color: const Color(0xFFD8E8EF).withValues(alpha: 0.45),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF92E0FF).withValues(alpha: 0.55),
+            blurRadius: 22,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.55),
+            blurRadius: 5,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
-      child: const Center(
-        child: SizedBox(
-          width: 22, height: 22,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5, color: _kInk),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(30),
+        child: Container(
+          height: 60,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            color: Colors.white.withValues(alpha: 0.40),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.75),
+              width: 1.5,
+            ),
+          ),
+          child: const Center(
+            child: WavyLoadingIndicator(size: 36),
+          ),
         ),
       ),
     );
@@ -576,6 +597,7 @@ class _LoadingPill extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FIELD LABEL
+
 // ─────────────────────────────────────────────────────────────────────────────
 class _FieldLabel extends StatelessWidget {
   final String text;
