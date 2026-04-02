@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import '../core/liquid_ui.dart';
 import '../providers/routine_provider.dart';
 
-enum RoutineFilter { all, fixedSchedule, skinCare, classes, eating }
-
 class FilterMeta {
   final String label, emoji;
   final Color color;

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import '../providers/routine_provider.dart';
+import '../services/gemini_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PALETTE
@@ -235,28 +235,11 @@ Be literal — do exactly what they ask.''',
     required String systemPrompt,
     required String userMessage,
   }) async {
-    // Backend URL is set at build time via: --dart-define=AI_BACKEND_URL=https://...
-    const backendUrl = String.fromEnvironment('AI_BACKEND_URL', defaultValue: '');
-    if (backendUrl.isEmpty) {
-      throw Exception('AI backend not configured. Using demo suggestions.');
-    }
-    final uri = Uri.parse(backendUrl);
-
     try {
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'systemPrompt': systemPrompt,
-          'userMessage': userMessage,
-        }),
+      return await GeminiService().generate(
+        systemPrompt: systemPrompt,
+        userMessage: userMessage,
       );
-      
-      if (response.statusCode == 200) {
-        return response.body;
-      } else {
-        throw Exception('Failed fetching AI suggestions: ${response.statusCode}');
-      }
     } catch (e) {
       // In a real app we'd show an error state
       rethrow;

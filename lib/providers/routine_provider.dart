@@ -407,3 +407,5 @@ const kDefaultClasses = <ClassItem>[
       startTime:'14:00', endTime:'15:00', weekday:3,
       colorHex:'#9B8FFF'),
 ];
+
+enum RoutineFilter { all, fixedSchedule, skinCare, classes, eating }

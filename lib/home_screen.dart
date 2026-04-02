@@ -49,8 +49,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: SafeArea(
           bottom: false,
-          child: _currentIndex == 0
-              ? HomeTab(
+          child: switch (_currentIndex) {
+            0 => HomeTab(
                   onSkinCareTapped: () {
                     setState(() {
                       _currentIndex = 1;
@@ -69,16 +69,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       _routineFilter = rt.RoutineFilter.eating;
                     });
                   },
-                )
-              : _currentIndex == 1
-                  ? rt.RoutineTab(initialFilter: _routineFilter)
-                  : _currentIndex == 2
-                      ? const TrackerTab()
-                      : _currentIndex == 3
-                          ? const CoachTab()
-                          : _currentIndex == 4
-                              ? const GoalsTab()
-                              : const ProfileTab(),
+                ),
+            1 => rt.RoutineTab(initialFilter: _routineFilter),
+            2 => const TrackerTab(),
+            3 => const CoachTab(),
+            4 => const GoalsTab(),
+            _ => const ProfileTab(),
+          },
         ),
       ),
       bottomNavigationBar: LiquidGlassTabBar(
