@@ -4,6 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
+import '../providers/onboarding_provider.dart';
+import '../providers/routine_provider.dart';
+import '../services/gemini_service.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -774,20 +779,21 @@ class _InnerCavityPainter extends CustomPainter {
 // Coach Tab Screen
 // ─────────────────────────────────────────────────────────────────────────────
 
-class CoachTab extends StatefulWidget {
+class CoachTab extends ConsumerStatefulWidget {
   const CoachTab({super.key});
 
   @override
-  State<CoachTab> createState() => _CoachTabState();
+  ConsumerState<CoachTab> createState() => _CoachTabState();
 }
 
-class _CoachTabState extends State<CoachTab> {
+class _CoachTabState extends ConsumerState<CoachTab> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
   final _focus = FocusNode();
   bool _hasText = false;
   bool _isTyping = false;
   String _coachName = 'AI Coach';
+  GeminiChatSession? _chatSession;
 
   final List<_CoachMessage> _messages = [
     _CoachMessage(text: 'I noticed that today u smoked 2 cigarettes .', isUser: false),
@@ -845,7 +851,7 @@ class _CoachTabState extends State<CoachTab> {
     });
   }
 
-  void _sendMessage() {
+  Future<void> _sendMessage() async {
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
     HapticFeedback.lightImpact();
@@ -855,14 +861,39 @@ class _CoachTabState extends State<CoachTab> {
     });
     _ctrl.clear();
     _scrollToBottom();
-    Future.delayed(const Duration(milliseconds: 1200), () {
+    
+    try {
+      if (_chatSession == null) {
+        final ob = ref.read(onboardingProvider);
+        final goals = ob.goals.join(', ');
+        final habits = ob.badHabits.join(', ');
+        final tone = ob.coachStyle.isEmpty ? 'Empathetic and motivating' : ob.coachStyle;
+        
+        final sysPrompt = '''You are the user's personal Optivus AI life coach. Your name is $_coachName.
+Your tone should be: $tone.
+User's main goals: $goals.
+Habits trying to break: $habits.
+You are embedded in their daily timeline app. Keep responses engaging, supportive, and relatively concise (1-3 paragraphs max) so they fit well in a chat bubble.''';
+
+        _chatSession = GeminiService().startChat(sysPrompt);
+      }
+      
+      final reply = await _chatSession!.sendMessage(text);
+      if (!mounted) return;
+      
+      setState(() {
+        _isTyping = false;
+        _messages.add(_CoachMessage(text: reply, isUser: false));
+      });
+      _scrollToBottom();
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _isTyping = false;
-        _messages.add(_CoachMessage(text: "Every setback is data, not defeat. Keep moving forward! 🌟", isUser: false));
+        _messages.add(_CoachMessage(text: "I'm having trouble connecting right now, but remember: Every setback is data, not defeat. Keep moving forward! 🌟", isUser: false));
       });
       _scrollToBottom();
-    });
+    }
   }
 
   @override
