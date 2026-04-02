@@ -82,10 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email:    _emailCtrl.text.trim(),
         password: _passCtrl.text,
       );
-
-      if (!mounted) return;
-
-      context.go('/home');
+      // GoRouter redirect handles navigation after auth state changes.
     } on FirebaseAuthException catch (e) {
       setState(() {
         switch (e.code) {

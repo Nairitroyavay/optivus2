@@ -160,10 +160,7 @@ class _SignupScreenState extends State<SignupScreen>
       // Update display name
       await credential.user?.updateDisplayName(_nameCtrl.text.trim());
 
-      if (!mounted) return;
-
-      // Navigate to onboarding
-      context.go('/onboarding');
+      // GoRouter redirect handles navigation after auth state changes.
     } on FirebaseAuthException catch (e) {
       setState(() {
         switch (e.code) {

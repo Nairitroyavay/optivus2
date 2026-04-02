@@ -7,17 +7,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
-import 'welcome_screen.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
 import 'onboarding_screen.dart';
 import 'home_screen.dart';
 
-class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    _subscription = stream.asBroadcastStream().listen(
-      (dynamic _) => notifyListeners(),
-    );
+class _AuthNotifier extends ChangeNotifier {
+  _AuthNotifier() {
+    _subscription = FirebaseAuth.instance
+        .authStateChanges()
+        .listen((_) => notifyListeners());
   }
 
   late final StreamSubscription<dynamic> _subscription;
@@ -29,7 +28,7 @@ class GoRouterRefreshStream extends ChangeNotifier {
   }
 }
 
-late final GoRouterRefreshStream _authRefreshStream;
+late final _AuthNotifier _authNotifier;
 late final GoRouter _router;
 
 void main() async {
@@ -55,31 +54,21 @@ void main() async {
       debugPrint('Firebase init failed: $e');
     }
 
-    _authRefreshStream = GoRouterRefreshStream(
-      FirebaseAuth.instance.authStateChanges(),
-    );
+    _authNotifier = _AuthNotifier();
     _router = GoRouter(
-      initialLocation: '/',
-      refreshListenable: _authRefreshStream,
+      initialLocation: '/login',
+      refreshListenable: _authNotifier,
       redirect: (context, state) {
-        final user = FirebaseAuth.instance.currentUser;
-        final path = state.uri.path;
-        final isAuthRoute = path == '/' || path == '/login' || path == '/signup';
+        final loggedIn = FirebaseAuth.instance.currentUser != null;
+        final goingToAuth = state.matchedLocation == '/login' ||
+            state.matchedLocation == '/signup';
 
-        // Not logged in → force to welcome (unless already on auth route)
-        if (user == null && !isAuthRoute) return '/';
-
-        // Logged in + on auth route → redirect away
-        if (user != null) {
-          if (path == '/signup') return '/onboarding';
-          if (isAuthRoute) return '/home';
-        }
-
-        // No redirect needed
+        if (!loggedIn && !goingToAuth) return '/login';
+        if (loggedIn && goingToAuth) return '/home';
         return null;
       },
       routes: [
-        GoRoute(path: '/',           builder: (_, __) => const WelcomeScreen()),
+        GoRoute(path: '/', redirect: (_, __) => '/login'),
         GoRoute(path: '/login',      builder: (_, __) => const LoginScreen()),
         GoRoute(path: '/signup',     builder: (_, __) => const SignupScreen()),
         GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
