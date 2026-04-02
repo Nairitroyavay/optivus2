@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/liquid_ui.dart';
 import '../providers/routine_provider.dart';
-import 'glass_filter_dropdown.dart';
-
+import '../providers/routine_provider.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // WEEK VIEW — 7 horizontal columns representing Mon-Sun
 // ─────────────────────────────────────────────────────────────────────────────

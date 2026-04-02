@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/liquid_ui.dart';
 import '../providers/routine_provider.dart';
-import '../routine/glass_filter_dropdown.dart' show RoutineFilter;
 import '../routine/skin_care_setup_screen.dart';
 import '../routine/eating_setup_screen.dart';
 import '../routine/class_setup_screen.dart';

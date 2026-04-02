@@ -17,6 +17,7 @@ import 'ai_routine_panel.dart';
 import 'routine_settings_sheet.dart';
 import 'glass_filter_dropdown.dart';
 export 'glass_filter_dropdown.dart';
+export '../providers/routine_provider.dart' show RoutineFilter;
 import 'timeline_section.dart';
 import 'timeline_zoom_views.dart';
 
