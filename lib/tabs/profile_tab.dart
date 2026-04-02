@@ -453,7 +453,7 @@ class ProfileTab extends StatelessWidget {
         title: 'Delete account',
         hasArrow: false,
         onTap: () async {
-          // Step 1: Confirmation dialog
+          // 1. Confirmation dialog
           final confirm = await showDialog<bool>(
             context: context,
             builder: (ctx) => AlertDialog(
@@ -477,56 +477,55 @@ class ProfileTab extends StatelessWidget {
               ],
             ),
           );
+
           if (confirm != true) return;
           if (!context.mounted) return;
 
-          // Step 2: Ask for password to re-authenticate
-          final password = await _showPasswordDialog(context);
-          if (password == null || password.isEmpty) return;
-          if (!context.mounted) return;
+          final user = FirebaseAuth.instance.currentUser;
+          if (user == null) return;
 
-          // Step 3: Re-authenticate, delete Firestore data, delete auth user
           try {
-            final user = FirebaseAuth.instance.currentUser;
-            if (user == null || user.email == null) return;
-
-            // Re-authenticate with email + password credential
-            final credential = EmailAuthProvider.credential(
-              email: user.email!,
-              password: password,
-            );
-            await user.reauthenticateWithCredential(credential);
-
-            // Delete user data from Firestore
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .delete();
-
-            // Delete the Firebase Auth user — authStateChanges will fire
-            // and the router redirect will auto-navigate to '/' (welcome screen)
-            await user.delete();
+            // Optimistically try deleting first (works if token is fresh)
+            await _performDeletion(user);
+            if (context.mounted) context.go('/');
           } on FirebaseAuthException catch (e) {
-            if (!context.mounted) return;
-            String msg;
-            switch (e.code) {
-              case 'wrong-password':
-              case 'invalid-credential':
-                msg = 'Incorrect password. Please try again.';
-                break;
-              case 'too-many-requests':
-                msg = 'Too many attempts. Please wait and try again.';
-                break;
-              default:
-                msg = 'Failed to delete account. Please try again.';
+            if (e.code == 'requires-recent-login') {
+              // Token expired. Ask for password to re-auth.
+              if (!context.mounted) return;
+              final password = await _showPasswordDialog(context);
+              if (password == null || password.isEmpty) return;
+
+              try {
+                if (user.email != null) {
+                  final credential = EmailAuthProvider.credential(
+                    email: user.email!,
+                    password: password,
+                  );
+                  await user.reauthenticateWithCredential(credential);
+                  await _performDeletion(user);
+                  if (context.mounted) context.go('/');
+                }
+              } on FirebaseAuthException catch (reAuthError) {
+                if (!context.mounted) return;
+                String msg = 'Auth Error: ${reAuthError.message}';
+                if (reAuthError.code == 'wrong-password' || reAuthError.code == 'invalid-credential') {
+                  msg = 'Incorrect password. Account not deleted.';
+                }
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+              }
+            } else {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to delete account: ${e.message}')),
+              );
             }
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(msg)),
-            );
           } catch (e) {
             if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('An error occurred. Please try again.')),
+              SnackBar(content: Text('Error: $e')),
             );
           }
         },
@@ -534,7 +533,18 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
-  /// Shows a dialog asking the user for their password before account deletion.
+  Future<void> _performDeletion(User user) async {
+    // Attempt to delete user data from Firestore first so we don't end up with orphaned data
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
+    } catch (e) {
+      // If this fails (e.g. no document, missing permissions), we still want to proceed to delete the Auth User
+      debugPrint("Warning: Failed to delete user document from firestore: $e");
+    }
+    // Delete the Firebase Auth user
+    await user.delete();
+  }
+
   Future<String?> _showPasswordDialog(BuildContext context) {
     final controller = TextEditingController();
     return showDialog<String>(
@@ -548,7 +558,7 @@ class ProfileTab extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Enter your password to confirm account deletion.',
+              'For security, please enter your password to confirm account deletion.',
               style: TextStyle(color: Colors.white70, height: 1.4),
             ),
             const SizedBox(height: 16),
@@ -575,7 +585,6 @@ class ProfileTab extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () {
-              controller.dispose();
               Navigator.pop(ctx, null);
             },
             child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
@@ -583,7 +592,6 @@ class ProfileTab extends StatelessWidget {
           TextButton(
             onPressed: () {
               final pass = controller.text;
-              controller.dispose();
               Navigator.pop(ctx, pass);
             },
             child: const Text('Confirm', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),

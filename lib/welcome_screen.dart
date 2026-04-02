@@ -155,7 +155,7 @@ class WelcomeScreen extends StatelessWidget {
                 child: AppButton(
                   text: 'Get Started',
                   onPressed: () {
-                    context.push('/signup');
+                    context.go('/signup');
                   },
                 ),
               ),
@@ -178,7 +178,7 @@ class WelcomeScreen extends StatelessWidget {
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () {
-                        context.push('/login');
+                        context.go('/login');
                       },
                       child: Container(
                         padding: const EdgeInsets.only(bottom: 2), // space for underline

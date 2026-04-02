@@ -290,7 +290,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(
                             color: Colors.grey.shade600, fontSize: 14)),
                     TextButton(
-                      onPressed: () => context.push('/signup'),
+                      onPressed: () => context.go('/signup'),
                       style: TextButton.styleFrom(
                         foregroundColor: _kInk,
                         padding: const EdgeInsets.symmetric(horizontal: 8),
