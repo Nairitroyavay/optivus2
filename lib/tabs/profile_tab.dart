@@ -484,28 +484,54 @@ class ProfileTab extends StatelessWidget {
           final user = FirebaseAuth.instance.currentUser;
           if (user == null) return;
 
+          // Show non-dismissible loading dialog
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.redAccent)),
+          );
+
           try {
-            // Optimistically try deleting first (works if token is fresh)
+            // Attempt deletion
             await _performDeletion(user);
-            if (context.mounted) context.go('/');
+            // If successful, GoRouter's auth listener will automatically navigate user to Welcome screen.
+            // But we can pop the loading dialog just in case GoRouter takes a moment.
+            if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
           } on FirebaseAuthException catch (e) {
+            // Dismiss loading indicator first
+            if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+
             if (e.code == 'requires-recent-login') {
               // Token expired. Ask for password to re-auth.
               if (!context.mounted) return;
               final password = await _showPasswordDialog(context);
               if (password == null || password.isEmpty) return;
 
+              // Show loading again during re-auth
+              if (!context.mounted) return;
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.redAccent)),
+              );
+
               try {
-                if (user.email != null) {
+                // Determine the email, fallback to a prompt or throw if completely unavailable
+                final email = user.email;
+                if (email != null && email.isNotEmpty) {
                   final credential = EmailAuthProvider.credential(
-                    email: user.email!,
+                    email: email,
                     password: password,
                   );
                   await user.reauthenticateWithCredential(credential);
                   await _performDeletion(user);
-                  if (context.mounted) context.go('/');
+                  // Success: dismiss loading
+                  if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+                } else {
+                  throw Exception('Account email is missing, cannot re-authenticate.');
                 }
               } on FirebaseAuthException catch (reAuthError) {
+                if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // dismiss loading
                 if (!context.mounted) return;
                 String msg = 'Auth Error: ${reAuthError.message}';
                 if (reAuthError.code == 'wrong-password' || reAuthError.code == 'invalid-credential') {
@@ -513,6 +539,7 @@ class ProfileTab extends StatelessWidget {
                 }
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
               } catch (e) {
+                if (context.mounted) Navigator.of(context, rootNavigator: true).pop(); // dismiss loading
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
               }
@@ -523,6 +550,8 @@ class ProfileTab extends StatelessWidget {
               );
             }
           } catch (e) {
+            // Dismiss loading on generic error
+            if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
             if (!context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Error: $e')),
@@ -534,15 +563,16 @@ class ProfileTab extends StatelessWidget {
   }
 
   Future<void> _performDeletion(User user) async {
-    // Attempt to delete user data from Firestore first so we don't end up with orphaned data
+    // Attempt to delete user data from Firestore first
     try {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
     } catch (e) {
-      // If this fails (e.g. no document, missing permissions), we still want to proceed to delete the Auth User
       debugPrint("Warning: Failed to delete user document from firestore: $e");
     }
     // Delete the Firebase Auth user
     await user.delete();
+    // Also explicitly sign out to ensure local state clears immediately
+    await FirebaseAuth.instance.signOut();
   }
 
   Future<String?> _showPasswordDialog(BuildContext context) {
