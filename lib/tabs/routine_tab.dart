@@ -1,14 +1,3 @@
-import 'package:flutter/material.dart';
-
-class RoutineTab extends StatelessWidget {
-  const RoutineTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Routine Tab'),
-      ),
-    );
-  }
-}
+// Barrel file — re-exports the real RoutineTab implementation
+// from lib/routine/routine_tab.dart to avoid duplicate class names.
+export '../routine/routine_tab.dart';

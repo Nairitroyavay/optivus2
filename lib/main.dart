@@ -63,27 +63,27 @@ void main() async {
       refreshListenable: _authRefreshStream,
       redirect: (context, state) {
         final user = FirebaseAuth.instance.currentUser;
-        final isAuthRoute = state.uri.path == '/' ||
-            state.uri.path == '/login' ||
-            state.uri.path == '/signup';
+        final path = state.uri.path;
+        final isAuthRoute = path == '/' || path == '/login' || path == '/signup';
 
-        // Enforce auth: block non-auth routes when signed out
+        // Not logged in → force to welcome (unless already on auth route)
         if (user == null && !isAuthRoute) return '/';
+
+        // Logged in + on auth route → redirect away
         if (user != null) {
-          if (state.uri.path == '/signup') {
-            return '/onboarding';
-          } else if (isAuthRoute) {
-            return '/home';
-          }
+          if (path == '/signup') return '/onboarding';
+          if (isAuthRoute) return '/home';
         }
+
+        // No redirect needed
         return null;
       },
       routes: [
-        GoRoute(path: '/', builder: (_, __) => const WelcomeScreen()),
-        GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-        GoRoute(path: '/signup', builder: (_, __) => const SignupScreen()),
+        GoRoute(path: '/',           builder: (_, __) => const WelcomeScreen()),
+        GoRoute(path: '/login',      builder: (_, __) => const LoginScreen()),
+        GoRoute(path: '/signup',     builder: (_, __) => const SignupScreen()),
         GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
-        GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+        GoRoute(path: '/home',       builder: (_, __) => const HomeScreen()),
       ],
     );
 

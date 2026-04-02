@@ -28,10 +28,10 @@ class ProfileTab extends StatelessWidget {
                       const SizedBox(height: 16),
                       
                       // 3. Name & Handle
-                      const Text(
-                        'Nairit',
+                      Text(
+                        FirebaseAuth.instance.currentUser?.displayName ?? 'User',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
                           color: kInk,
@@ -40,7 +40,7 @@ class ProfileTab extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '@nairit_optivus',
+                        '@${(FirebaseAuth.instance.currentUser?.email ?? 'user').split('@').first}',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 15,

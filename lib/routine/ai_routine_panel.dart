@@ -235,8 +235,13 @@ Be literal — do exactly what they ask.''',
     required String systemPrompt,
     required String userMessage,
   }) async {
-    final uri = Uri.parse('https://your-backend.com/api/claude');
-    
+    // Backend URL is set at build time via: --dart-define=AI_BACKEND_URL=https://...
+    const backendUrl = String.fromEnvironment('AI_BACKEND_URL', defaultValue: '');
+    if (backendUrl.isEmpty) {
+      throw Exception('AI backend not configured. Using demo suggestions.');
+    }
+    final uri = Uri.parse(backendUrl);
+
     try {
       final response = await http.post(
         uri,

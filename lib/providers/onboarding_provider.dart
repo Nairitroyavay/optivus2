@@ -75,8 +75,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void saveToFirestoreDebounced() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 2), () {
-      // Fire-and-forget; errors are handled inside saveToFirestore.
-      saveToFirestore();
+      saveToFirestore(); // Fire-and-forget; errors are handled inside.
     });
   }
 
@@ -100,13 +99,17 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       }, SetOptions(merge: true));
       return true;
     } catch (e) {
-      // Log and return failure; callers can decide how to notify.
       debugPrint('Error saving onboarding data: $e');
       return false;
     }
   }
 }
 
-final onboardingProvider = StateNotifierProvider<OnboardingNotifier, OnboardingState>((ref) {
-  return OnboardingNotifier();
-});
+// ─────────────────────────────────────────────────────────────────────────────
+// PROVIDER
+// ─────────────────────────────────────────────────────────────────────────────
+
+final onboardingProvider =
+    StateNotifierProvider<OnboardingNotifier, OnboardingState>(
+  (_) => OnboardingNotifier(),
+);

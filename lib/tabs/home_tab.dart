@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../core/liquid_ui.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,15 +75,11 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   late final AnimationController _ringCtrl;
   late final Animation<double>   _ringAnim;
 
-  DateTime _focusMonth  = DateTime(2023, 10);
-  DateTime _selectedDay = DateTime(2023, 10, 24);
+  DateTime _focusMonth  = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime _selectedDay = DateTime.now();
 
-  final _events = const <int, Color>{
-    1:  Color(0xFF60D4A0), 3:  Color(0xFFFFB830), 7:  Color(0xFF60D4A0),
-    10: Color(0xFFFFB830), 14: Color(0xFF60D4A0), 17: Color(0xFFFFB830),
-    21: Color(0xFF60D4A0), 24: Color(0xFF60D4A0), 28: Color(0xFFFF9560),
-    31: Color(0xFFFFB830),
-  };
+  // TODO: Populate event dots from actual routine data
+  final _events = const <int, Color>{};
 
   @override
   void initState() {
@@ -147,6 +144,24 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
   }
 
   // ── Header ─────────────────────────────────────────────────────────────────
+  String get _dynamicGreeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning,';
+    if (hour < 17) return 'Good Afternoon,';
+    return 'Good Evening,';
+  }
+
+  String get _dynamicDateLabel {
+    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+    const mos  = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    final now = DateTime.now();
+    return '${days[now.weekday - 1]}, ${mos[now.month - 1]} ${now.day}';
+  }
+
+  String get _userName {
+    return FirebaseAuth.instance.currentUser?.displayName ?? 'User';
+  }
+
   Widget _header({double topPad = 0}) {
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 16 + topPad, 20, 12),
@@ -160,22 +175,22 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'THURSDAY, OCT 24',
-                    style: TextStyle(
+                  Text(
+                    _dynamicDateLabel,
+                    style: const TextStyle(
                       fontSize: 11, fontWeight: FontWeight.w700,
                       color: _kSubtext, letterSpacing: .8),
                   ),
                   const SizedBox(height: 4),
                   RichText(
-                    text: const TextSpan(
-                      style: TextStyle(
+                    text: TextSpan(
+                      style: const TextStyle(
                         fontSize: 28, fontWeight: FontWeight.w900,
                         color: _kInk, letterSpacing: -0.5, height: 1.15),
                       children: [
-                        TextSpan(text: 'Good Morning,\n'),
-                        TextSpan(text: 'Nairit',
-                            style: TextStyle(color: _kInk)),
+                        TextSpan(text: '$_dynamicGreeting\n'),
+                        TextSpan(text: _userName,
+                            style: const TextStyle(color: _kInk)),
                       ],
                     ),
                   ),
