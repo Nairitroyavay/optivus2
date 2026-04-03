@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/repositories/routine_repository.dart';
+import 'package:optivus2/core/providers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODELS
@@ -354,32 +357,78 @@ class RoutineState {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class RoutineNotifier extends StateNotifier<RoutineState> {
-  RoutineNotifier() : super(const RoutineState()) {
-    Future.microtask(() {
-      setFixedBlocks(kDefaultFixedBlocks);
-      // Seed default long-term goals for demonstration
-      final now = DateTime.now();
-      setLongTermGoals([
+  final RoutineRepository _repo;
+  Timer? _debounce;
+
+  RoutineNotifier(this._repo) : super(const RoutineState()) {
+    _loadRoutine();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  // ── Persistence ─────────────────────────────────────────────────────────
+
+  /// Load from Firestore; seed defaults if first-time user.
+  Future<void> _loadRoutine() async {
+    try {
+      final saved = await _repo.loadRoutine();
+      if (saved != null) {
+        state = saved;
+      } else {
+        // First-time user — seed demo defaults
+        _seedDefaults();
+        _saveDebounced(); // persist the defaults
+      }
+    } catch (e) {
+      debugPrint('RoutineNotifier: failed to load routine: $e');
+      // Fallback to defaults so the UI isn't empty
+      _seedDefaults();
+    }
+  }
+
+  void _seedDefaults() {
+    final now = DateTime.now();
+    state = state.copyWith(
+      fixedBlocks: kDefaultFixedBlocks,
+      fixedScheduleSetUp: true,
+      longTermGoals: [
         LongTermGoal(
           id: 'goal_quit_smoking',
           title: 'Quit smoking and alcohol',
           emoji: '🚭',
           startDate: now,
-          endDate: now.add(const Duration(days: 14)), // 2 weeks
-          colorHex: '#CBD5E1', // grey
+          endDate: now.add(const Duration(days: 14)),
+          colorHex: '#CBD5E1',
         ),
         LongTermGoal(
           id: 'goal_gym',
           title: 'Gym Workout',
           emoji: '💪',
           startDate: now,
-          endDate: now.add(const Duration(days: 90)), // 3 months
+          endDate: now.add(const Duration(days: 90)),
           dailyTaskTime: '10:00',
-          colorHex: '#38BDF8', // light blue
+          colorHex: '#38BDF8',
         ),
-      ]);
+      ],
+    );
+  }
+
+  /// Debounced save — collapses rapid mutations into a single Firestore write.
+  void _saveDebounced() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(seconds: 2), () {
+      _repo.saveRoutine(state).catchError((e) {
+        debugPrint('RoutineNotifier: failed to save routine: $e');
+      });
     });
   }
+
+  /// Force an immediate save (e.g. before app goes to background).
+  Future<void> saveNow() => _repo.saveRoutine(state);
 
   // ── Fixed schedule ───────────────────────────────────────────────────────
 
@@ -388,12 +437,14 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       fixedBlocks: blocks,
       fixedScheduleSetUp: true,
     );
+    _saveDebounced();
   }
 
   void updateFixedBlock(FixedBlock updated) {
     final list = state.fixedBlocks.map((b) =>
         b.id == updated.id ? updated : b).toList();
     state = state.copyWith(fixedBlocks: list);
+    _saveDebounced();
   }
 
   // ── Skin care ────────────────────────────────────────────────────────────
@@ -402,10 +453,13 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     final plans = List<DaySkinPlan>.from(state.skinCarePlans);
     plans[dayIndex] = plan;
     state = state.copyWith(skinCarePlans: plans, skinCareSetUp: true);
+    _saveDebounced();
   }
 
-  void markSkinCareSetUp() =>
-      state = state.copyWith(skinCareSetUp: true);
+  void markSkinCareSetUp() {
+    state = state.copyWith(skinCareSetUp: true);
+    _saveDebounced();
+  }
 
   // ── Eating ───────────────────────────────────────────────────────────────
 
@@ -413,15 +467,19 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     final plans = List<DayMealPlan>.from(state.mealPlans);
     plans[dayIndex] = plan;
     state = state.copyWith(mealPlans: plans, eatingSetUp: true);
+    _saveDebounced();
   }
 
-  void markEatingSetUp() =>
-      state = state.copyWith(eatingSetUp: true);
+  void markEatingSetUp() {
+    state = state.copyWith(eatingSetUp: true);
+    _saveDebounced();
+  }
 
   // ── Classes ──────────────────────────────────────────────────────────────
 
   void setClasses(List<ClassItem> classes) {
     state = state.copyWith(classes: classes, classesSetUp: true);
+    _saveDebounced();
   }
 
   void addClass(ClassItem c) {
@@ -429,6 +487,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       classes: [...state.classes, c],
       classesSetUp: true,
     );
+    _saveDebounced();
   }
 
   void removeClass(ClassItem c) {
@@ -436,22 +495,26 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       classes: state.classes.where((x) =>
           x.subject != c.subject || x.weekday != c.weekday).toList(),
     );
+    _saveDebounced();
   }
 
   // ── Long-Term Goals ────────────────────────────────────────────────────────
-  
+
   void setLongTermGoals(List<LongTermGoal> goals) {
     state = state.copyWith(longTermGoals: goals);
+    _saveDebounced();
   }
 
   void addLongTermGoal(LongTermGoal goal) {
     state = state.copyWith(longTermGoals: [...state.longTermGoals, goal]);
+    _saveDebounced();
   }
 
   void removeLongTermGoal(String id) {
     state = state.copyWith(
       longTermGoals: state.longTermGoals.where((g) => g.id != id).toList(),
     );
+    _saveDebounced();
   }
 }
 
@@ -461,7 +524,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
 
 final routineProvider =
     StateNotifierProvider<RoutineNotifier, RoutineState>(
-  (_) => RoutineNotifier(),
+  (ref) => RoutineNotifier(ref.read(routineRepositoryProvider)),
 );
 
 final customTasksProvider =
