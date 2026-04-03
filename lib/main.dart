@@ -6,11 +6,12 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'firebase_options.dart';
-import 'login_screen.dart';
-import 'signup_screen.dart';
-import 'onboarding_screen.dart';
-import 'home_screen.dart';
+import 'config/firebase_options.dart';
+import 'views/screens/login_screen.dart';
+import 'views/screens/signup_screen.dart';
+import 'views/screens/onboarding_screen.dart';
+import 'views/screens/home_screen.dart';
+import 'views/screens/welcome_screen.dart';
 
 class _AuthNotifier extends ChangeNotifier {
   _AuthNotifier() {
@@ -56,19 +57,20 @@ void main() async {
 
     _authNotifier = _AuthNotifier();
     _router = GoRouter(
-      initialLocation: '/login',
+      initialLocation: '/',
       refreshListenable: _authNotifier,
       redirect: (context, state) {
         final loggedIn = FirebaseAuth.instance.currentUser != null;
         final goingToAuth = state.matchedLocation == '/login' ||
-            state.matchedLocation == '/signup';
+            state.matchedLocation == '/signup' ||
+            state.matchedLocation == '/'; // explicitly allow root map to Welcome
 
-        if (!loggedIn && !goingToAuth) return '/login';
+        if (!loggedIn && !goingToAuth) return '/'; // show welcome to fresh users
         if (loggedIn && goingToAuth) return '/home';
         return null;
       },
       routes: [
-        GoRoute(path: '/', redirect: (_, __) => '/login'),
+        GoRoute(path: '/',           builder: (_, __) => const WelcomeScreen()),
         GoRoute(path: '/login',      builder: (_, __) => const LoginScreen()),
         GoRoute(path: '/signup',     builder: (_, __) => const SignupScreen()),
         GoRoute(path: '/onboarding', builder: (_, __) => const OnboardingScreen()),
