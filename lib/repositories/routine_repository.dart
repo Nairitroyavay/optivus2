@@ -7,6 +7,6 @@ class RoutineRepository {
   RoutineRepository(this._service);
 
   Future<void> addRoutine(RoutineModel routine) {
-    return _service.saveRoutine(routine);
+    return _service.saveRoutine(routine.toMap());
   }
 }

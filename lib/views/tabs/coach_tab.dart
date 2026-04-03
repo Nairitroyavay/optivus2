@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:optivus2/services/firestore_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
@@ -819,10 +819,9 @@ class _CoachTabState extends ConsumerState<CoachTab> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-        if (doc.exists && mounted) {
-          final data = doc.data();
-          if (data != null && data.containsKey('onboarding')) {
+        final data = await FirestoreService().getUserProfile();
+        if (data != null && mounted) {
+          if (data.containsKey('onboarding')) {
             final ob = data['onboarding'] as Map<String, dynamic>;
             if (ob.containsKey('coachName') && ob['coachName'].toString().isNotEmpty) {
               setState(() => _coachName = ob['coachName'].toString());

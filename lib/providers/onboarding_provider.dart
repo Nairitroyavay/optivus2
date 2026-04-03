@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firestore_service.dart';
 
 class OnboardingState {
   final List<String> selectedCategories;
@@ -63,8 +63,9 @@ class OnboardingState {
 
 class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Timer? _debounceTimer;
+  final FirestoreService _firestoreService;
 
-  OnboardingNotifier() : super(OnboardingState());
+  OnboardingNotifier(this._firestoreService) : super(OnboardingState());
 
   @override
   void dispose() {
@@ -93,10 +94,10 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     if (user == null) return false;
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      await _firestoreService.saveUserProfile({
         'onboarding': state.toMap(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+        'updatedAt': DateTime.now().toIso8601String(),
+      }, merge: true);
       return true;
     } catch (e) {
       debugPrint('Error saving onboarding data: $e');
@@ -111,5 +112,6 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
 final onboardingProvider =
     StateNotifierProvider<OnboardingNotifier, OnboardingState>(
-  (_) => OnboardingNotifier(),
+  (_) => OnboardingNotifier(FirestoreService()),
 );
+

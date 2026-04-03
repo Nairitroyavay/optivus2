@@ -40,6 +40,17 @@ class FixedBlock {
     endMinute:   endMinute   ?? this.endMinute,
     colorHex: colorHex,
   );
+
+  Map<String, dynamic> toMap() => {
+    'id': id, 'title': title, 'emoji': emoji,
+    'startMinute': startMinute, 'endMinute': endMinute, 'colorHex': colorHex,
+  };
+
+  factory FixedBlock.fromMap(Map<String, dynamic> m) => FixedBlock(
+    id: m['id'] ?? '', title: m['title'] ?? '', emoji: m['emoji'] ?? '',
+    startMinute: m['startMinute'] ?? 0, endMinute: m['endMinute'] ?? 0,
+    colorHex: m['colorHex'] ?? '#FFFFFF',
+  );
 }
 
 /// One skin-care step
@@ -48,6 +59,12 @@ class SkinStep {
   final String name;
   final String tag;
   const SkinStep({required this.emoji, required this.name, required this.tag});
+
+  Map<String, dynamic> toMap() => {'emoji': emoji, 'name': name, 'tag': tag};
+
+  factory SkinStep.fromMap(Map<String, dynamic> m) => SkinStep(
+    emoji: m['emoji'] ?? '', name: m['name'] ?? '', tag: m['tag'] ?? '',
+  );
 }
 
 /// Skin care plan for one day: three time slots
@@ -73,6 +90,18 @@ class DaySkinPlan {
     afternoon: afternoon ?? this.afternoon,
     night:     night     ?? this.night,
   );
+
+  Map<String, dynamic> toMap() => {
+    'morning':   morning.map((e) => e.toMap()).toList(),
+    'afternoon': afternoon.map((e) => e.toMap()).toList(),
+    'night':     night.map((e) => e.toMap()).toList(),
+  };
+
+  factory DaySkinPlan.fromMap(Map<String, dynamic> m) => DaySkinPlan(
+    morning:   (m['morning']   as List? ?? []).map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e))).toList(),
+    afternoon: (m['afternoon'] as List? ?? []).map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e))).toList(),
+    night:     (m['night']     as List? ?? []).map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e))).toList(),
+  );
 }
 
 /// One meal slot
@@ -81,6 +110,12 @@ class MealItem {
   final String name;
   final String time; // "08:00 AM"
   const MealItem({required this.emoji, required this.name, required this.time});
+
+  Map<String, dynamic> toMap() => {'emoji': emoji, 'name': name, 'time': time};
+
+  factory MealItem.fromMap(Map<String, dynamic> m) => MealItem(
+    emoji: m['emoji'] ?? '', name: m['name'] ?? '', time: m['time'] ?? '',
+  );
 }
 
 /// Eating plan for one day
@@ -96,6 +131,14 @@ class DayMealPlan {
     List<MealItem>? meals,
   }) => DayMealPlan(
     meals: meals ?? this.meals,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'meals': meals.map((e) => e.toMap()).toList(),
+  };
+
+  factory DayMealPlan.fromMap(Map<String, dynamic> m) => DayMealPlan(
+    meals: (m['meals'] as List? ?? []).map((e) => MealItem.fromMap(Map<String, dynamic>.from(e))).toList(),
   );
 }
 
@@ -114,6 +157,19 @@ class ClassItem {
     required this.endTime, required this.weekday,
     required this.colorHex,
   });
+
+  Map<String, dynamic> toMap() => {
+    'subject': subject, 'room': room, 'professor': professor,
+    'startTime': startTime, 'endTime': endTime,
+    'weekday': weekday, 'colorHex': colorHex,
+  };
+
+  factory ClassItem.fromMap(Map<String, dynamic> m) => ClassItem(
+    subject: m['subject'] ?? '', room: m['room'] ?? '',
+    professor: m['professor'] ?? '',
+    startTime: m['startTime'] ?? '', endTime: m['endTime'] ?? '',
+    weekday: m['weekday'] ?? 1, colorHex: m['colorHex'] ?? '#FFFFFF',
+  );
 }
 
 class CustomTask {
@@ -132,6 +188,17 @@ class CustomTask {
     required this.date,
     required this.color,
   });
+
+  Map<String, dynamic> toMap() => {
+    'id': id, 'title': title, 'emoji': emoji, 'time': time,
+    'date': date.toIso8601String(), 'color': color.value,
+  };
+
+  factory CustomTask.fromMap(Map<String, dynamic> m) => CustomTask(
+    id: m['id'] ?? '', title: m['title'] ?? '', emoji: m['emoji'] ?? '',
+    time: m['time'] ?? '', date: DateTime.parse(m['date']),
+    color: Color(m['color'] ?? 0xFF000000),
+  );
 }
 
 /// Long-term commitments set by the User or AI
@@ -153,6 +220,20 @@ class LongTermGoal {
     this.dailyTaskTime,
     required this.colorHex,
   });
+
+  Map<String, dynamic> toMap() => {
+    'id': id, 'title': title, 'emoji': emoji,
+    'startDate': startDate.toIso8601String(),
+    'endDate': endDate.toIso8601String(),
+    'dailyTaskTime': dailyTaskTime, 'colorHex': colorHex,
+  };
+
+  factory LongTermGoal.fromMap(Map<String, dynamic> m) => LongTermGoal(
+    id: m['id'] ?? '', title: m['title'] ?? '', emoji: m['emoji'] ?? '',
+    startDate: DateTime.parse(m['startDate']),
+    endDate: DateTime.parse(m['endDate']),
+    dailyTaskTime: m['dailyTaskTime'], colorHex: m['colorHex'] ?? '#FFFFFF',
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,6 +316,37 @@ class RoutineState {
   List<ClassItem> classesForDay(int weekday) =>
       classes.where((c) => c.weekday == weekday).toList()
         ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+  // ── Firestore serialization ─────────────────────────────────────────────
+
+  Map<String, dynamic> toMap() => {
+    'fixedBlocks': fixedBlocks.map((e) => e.toMap()).toList(),
+    'fixedScheduleSetUp': fixedScheduleSetUp,
+    'skinCarePlans': skinCarePlans.map((e) => e.toMap()).toList(),
+    'skinCareSetUp': skinCareSetUp,
+    'mealPlans': mealPlans.map((e) => e.toMap()).toList(),
+    'eatingSetUp': eatingSetUp,
+    'classes': classes.map((e) => e.toMap()).toList(),
+    'classesSetUp': classesSetUp,
+    'longTermGoals': longTermGoals.map((e) => e.toMap()).toList(),
+  };
+
+  factory RoutineState.fromMap(Map<String, dynamic> m) => RoutineState(
+    fixedBlocks: (m['fixedBlocks'] as List? ?? [])
+        .map((e) => FixedBlock.fromMap(Map<String, dynamic>.from(e))).toList(),
+    fixedScheduleSetUp: m['fixedScheduleSetUp'] ?? false,
+    skinCarePlans: (m['skinCarePlans'] as List?)
+        ?.map((e) => DaySkinPlan.fromMap(Map<String, dynamic>.from(e))).toList(),
+    skinCareSetUp: m['skinCareSetUp'] ?? false,
+    mealPlans: (m['mealPlans'] as List?)
+        ?.map((e) => DayMealPlan.fromMap(Map<String, dynamic>.from(e))).toList(),
+    eatingSetUp: m['eatingSetUp'] ?? false,
+    classes: (m['classes'] as List? ?? [])
+        .map((e) => ClassItem.fromMap(Map<String, dynamic>.from(e))).toList(),
+    classesSetUp: m['classesSetUp'] ?? false,
+    longTermGoals: (m['longTermGoals'] as List? ?? [])
+        .map((e) => LongTermGoal.fromMap(Map<String, dynamic>.from(e))).toList(),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

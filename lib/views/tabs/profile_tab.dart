@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:optivus2/services/firestore_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'routine_settings_screen.dart';
@@ -563,11 +563,11 @@ class ProfileTab extends StatelessWidget {
   }
 
   Future<void> _performDeletion(User user) async {
-    // Attempt to delete user data from Firestore first
+    // Cascade-delete all user data (tasks, goals, routine subcollections + user doc)
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).delete();
+      await FirestoreService().deleteAllUserData();
     } catch (e) {
-      debugPrint("Warning: Failed to delete user document from firestore: $e");
+      debugPrint("Warning: Failed to delete user data from Firestore: $e");
     }
     // Delete the Firebase Auth user
     await user.delete();
