@@ -5,9 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:optivus2/services/firestore_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
-import 'package:optivus2/providers/routine_provider.dart';
 import 'package:optivus2/services/gemini_service.dart';
 
 

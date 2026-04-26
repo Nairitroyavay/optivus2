@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/providers/routine_provider.dart';
-import 'package:optivus2/providers/routine_provider.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // WEEK VIEW — 7 horizontal columns representing Mon-Sun
 // ─────────────────────────────────────────────────────────────────────────────

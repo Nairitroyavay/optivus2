@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'glass_filter_dropdown.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 
 const _kInk  = Color(0xFF0F111A);
