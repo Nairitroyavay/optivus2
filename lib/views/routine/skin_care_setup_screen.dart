@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/providers/routine_provider.dart';
 
 class SkinCareStep {
   String name;
@@ -49,15 +51,15 @@ class SkinCareRoutineBlock {
   });
 }
 
-class SkinCareSetupScreen extends StatefulWidget {
+class SkinCareSetupScreen extends ConsumerStatefulWidget {
   final VoidCallback onComplete;
   const SkinCareSetupScreen({super.key, required this.onComplete});
 
   @override
-  State<SkinCareSetupScreen> createState() => _SkinCareSetupScreenState();
+  ConsumerState<SkinCareSetupScreen> createState() => _SkinCareSetupScreenState();
 }
 
-class _SkinCareSetupScreenState extends State<SkinCareSetupScreen> {
+class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
   int _day = 0; // 0 for Mon, 6 for Sun
   late Map<int, List<SkinCareRoutineBlock>> weeklyRoutines;
 
@@ -660,6 +662,33 @@ class _SkinCareSetupScreenState extends State<SkinCareSetupScreen> {
   }
 
   // BUILD
+  void _save(WidgetRef ref) {
+    final notifier = ref.read(routineProvider.notifier);
+    for (int d = 0; d < 7; d++) {
+      final itemsForDay = weeklyRoutines[d] ?? [];
+      final morning = <SkinStep>[];
+      final afternoon = <SkinStep>[];
+      final night = <SkinStep>[];
+
+      for (final item in itemsForDay) {
+        if (!item.isAdd) {
+          for (final step in item.steps) {
+            final skinStep = SkinStep(emoji: '✨', name: step.name, tag: item.title);
+            if (item.start < 6.0) {
+              morning.add(skinStep);
+            } else if (item.start < 11.0) {
+              afternoon.add(skinStep);
+            } else {
+              night.add(skinStep);
+            }
+          }
+        }
+      }
+      notifier.setSkinCarePlan(d, DaySkinPlan(morning: morning, afternoon: afternoon, night: night));
+    }
+    widget.onComplete();
+  }
+
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
@@ -704,7 +733,7 @@ class _SkinCareSetupScreenState extends State<SkinCareSetupScreen> {
                           icon: Icons.check_rounded,
                           size: 44,
                           onTap: () {
-                            widget.onComplete();
+                            _save(ref);
                             Navigator.pop(context);
                           },
                         ), 

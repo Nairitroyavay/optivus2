@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/providers/routine_provider.dart';
 
 String _formatTimeFromStart(double hoursFrom6AM) {
   int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
@@ -44,15 +46,15 @@ class ClassRoutineBlock {
   });
 }
 
-class ClassSetupScreen extends StatefulWidget {
+class ClassSetupScreen extends ConsumerStatefulWidget {
   final VoidCallback onComplete;
   const ClassSetupScreen({super.key, required this.onComplete});
 
   @override
-  State<ClassSetupScreen> createState() => _ClassSetupScreenState();
+  ConsumerState<ClassSetupScreen> createState() => _ClassSetupScreenState();
 }
 
-class _ClassSetupScreenState extends State<ClassSetupScreen> {
+class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
   int _day = 0; // 0 for Mon, 6 for Sun
   late Map<int, List<ClassRoutineBlock>> weeklyRoutines;
 
@@ -577,6 +579,42 @@ class _ClassSetupScreenState extends State<ClassSetupScreen> {
     );
   }
 
+  void _save(WidgetRef ref) {
+    final notifier = ref.read(routineProvider.notifier);
+    final allClasses = <ClassItem>[];
+    
+    String format24h(double hoursFrom6AM) {
+      int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
+      int h = (totalMinutes ~/ 60) % 24;
+      int m = totalMinutes % 60;
+      return "${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}";
+    }
+
+    for (int d = 0; d < 7; d++) {
+      final itemsForDay = weeklyRoutines[d] ?? [];
+      int weekday = d + 1;
+      for (final item in itemsForDay) {
+        if (!item.isAdd) {
+          String colorHex = '#FFFFFF';
+          if (item.color != null) {
+            colorHex = '#${(item.color!.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+          }
+          allClasses.add(ClassItem(
+            subject: item.subject,
+            room: item.room,
+            professor: item.professor,
+            startTime: format24h(item.start),
+            endTime: format24h(item.start + item.duration),
+            weekday: weekday,
+            colorHex: colorHex,
+          ));
+        }
+      }
+    }
+    notifier.setClasses(allClasses);
+    widget.onComplete();
+  }
+
   @override
   Widget build(BuildContext context) {
     const headerColors = [
@@ -617,7 +655,7 @@ class _ClassSetupScreenState extends State<ClassSetupScreen> {
                           icon: Icons.check_rounded,
                           size: 44,
                           onTap: () {
-                            widget.onComplete();
+                            _save(ref);
                             Navigator.pop(context);
                           },
                         ), 
