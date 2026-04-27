@@ -1,1 +1,28 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"optivus-2nd","appId":"1:731735225406:android:aa40c09061fec65f570d6f","fileOutput":"android/app/google-services.json"}},"dart":{"lib/config/firebase_options.dart":{"projectId":"optivus-2nd","configurations":{"android":"1:731735225406:android:aa40c09061fec65f570d6f"}}}}}}
+{
+  "functions": {
+    "source": "functions"
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "optivus-2nd",
+          "appId": "1:731735225406:android:aa40c09061fec65f570d6f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/config/firebase_options.dart": {
+          "projectId": "optivus-2nd",
+          "configurations": {
+            "android": "1:731735225406:android:aa40c09061fec65f570d6f"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 // lib/services/gemini_service.dart
 
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class GeminiService {
   // Singleton instance
@@ -12,29 +12,22 @@ class GeminiService {
 
   GeminiService._internal();
 
-  GenerativeModel _getModel(String systemPrompt) {
-    const apiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
-    if (apiKey.isEmpty) {
-      throw Exception('GEMINI_API_KEY not found in environment.');
-    }
-    
-    return GenerativeModel(
-      model: 'gemini-1.5-flash',
-      apiKey: apiKey,
-      systemInstruction: Content.system(systemPrompt),
-    );
-  }
-
-  /// Single-shot text generation
+  /// Single-shot text generation via Firebase Cloud Functions
   Future<String> generate({
     required String systemPrompt,
     required String userMessage,
+    List<Map<String, dynamic>>? history,
   }) async {
-    final model = _getModel(systemPrompt);
-    final response = await model.generateContent([Content.text(userMessage)]);
+    final callable = FirebaseFunctions.instance.httpsCallable('aiGenerate');
+    final response = await callable.call({
+      'systemPrompt': systemPrompt,
+      'userMessage': userMessage,
+      if (history != null) 'history': history,
+    });
     
-    if (response.text != null) {
-      return response.text!;
+    final text = response.data['text'] as String?;
+    if (text != null) {
+      return text;
     } else {
       throw Exception('Failed fetching AI generation or empty response');
     }
@@ -42,25 +35,41 @@ class GeminiService {
 
   /// Start a multi-turn chat
   GeminiChatSession startChat(String systemPrompt) {
-    final model = _getModel(systemPrompt);
-    final chat = model.startChat();
-    return GeminiChatSession(chatSession: chat);
+    return GeminiChatSession(systemPrompt: systemPrompt, service: this);
   }
 }
 
 class GeminiChatSession {
-  final ChatSession chatSession;
+  final String systemPrompt;
+  final GeminiService service;
+  
+  // Track chat history locally
+  final List<Map<String, dynamic>> _history = [];
 
-  GeminiChatSession({required this.chatSession});
+  GeminiChatSession({
+    required this.systemPrompt,
+    required this.service,
+  });
 
   Future<String> sendMessage(String message) async {
     try {
-      final response = await chatSession.sendMessage(Content.text(message));
-      if (response.text != null) {
-        return response.text!;
-      } else {
-        throw Exception('Chat API returned empty text');
-      }
+      final reply = await service.generate(
+        systemPrompt: systemPrompt,
+        userMessage: message,
+        history: _history,
+      );
+      
+      // Update history after successful generation
+      _history.add({
+        'role': 'user',
+        'parts': [{'text': message}],
+      });
+      _history.add({
+        'role': 'model',
+        'parts': [{'text': reply}],
+      });
+      
+      return reply;
     } catch (e) {
       rethrow;
     }
