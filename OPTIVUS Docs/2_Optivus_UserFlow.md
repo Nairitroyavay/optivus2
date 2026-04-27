@@ -6,6 +6,16 @@
 
 This document walks through how a real user moves through every part of the Optivus app — from first install to a full day lived inside the system. Each flow lists entry points, the screens the user sees, the taps they make, the conditional branches the system handles, and the exit points.
 
+### How to read the System mapping tables
+
+Each user-facing flow section (1–10) ends with a **System mapping** table that connects the user-visible actions to the underlying engineering: the event emitted, the service that handles it, and the database collections written. Format:
+
+`User action → Event → Service → DB write`
+
+The event names match the canonical catalog in [Section 12](#12-event-system) — they are not invented per flow. Service names follow the contracts in `Optivus_ServiceContracts.md`. Where a service is **deferred to phase 2** (e.g. AI Coach per the PRD's Technical Constraints), it is marked `(phase 2)` and v1 falls back to the rule-based path noted in the same row.
+
+This connects the narrative flow (what the user feels) to the system flow (what the code must do). Engineers and product designers should both be able to read the same row.
+
 ---
 
 ## Table of contents
@@ -180,6 +190,14 @@ User drags handles to fit their real life → **Next**
 
 User taps **Enter Optivus** → all onboarding data is saved to `/users/{uid}/onboarding/*` in Firestore → router redirects to `/home`.
 
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Tap **Create Account** on signup | `user_signed_up` | AuthService | `users/{uid}` (Firebase Auth + Firestore profile stub) |
+| Each onboarding page save (debounced) | — (state mutation only, no event) | OnboardingService | `users/{uid}/onboarding/{section}` |
+| Tap **Enter Optivus** on Page 10 | `onboarding_completed` | OnboardingService → PlanGenerator → NotificationService | `users/{uid}/onboarding/*` finalized, `users/{uid}/identity_profile`, `users/{uid}/scheduled_notifications` armed for next 24h |
+
 ### Exit
 The user is now on the Home tab with a fully personalized day plan, an Identity Profile that grounds the AI Coach, and notifications armed for the next 24 hours.
 
@@ -237,6 +255,16 @@ The user is now on the Home tab with a fully personalized day plan, an Identity 
 | Eating Routine row | Switches to Routine tab with `eating` filter pre-applied |
 | A tab in the bottom bar | Switches tabs with the liquid pill stretching across |
 | Drag the bottom-tab pill | Pill follows finger across tabs with haptic ticks at each boundary |
+
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Open Home tab (first action of the day) | `day_started` | DailyPlanner | `users/{uid}/days/{date}` (priority queue computed) |
+| Tap a habit pill, log amount | `good_habit_logged` | HabitService → StreakService → MissionRing | `users/{uid}/habit_logs`, `users/{uid}/streaks/{habit_id}` |
+| Tap a streak card | — (read-only navigation) | — | none |
+| Tap a calendar day | — (navigation only) | — | none |
+| Tap notification bell | — (navigation only) | — | none |
 
 ### Exit
 The Home tab is a hub — every interaction routes the user into one of the deeper flows (Routine, Habit, Coach, Goals, Profile).
@@ -297,6 +325,16 @@ Same shape, with meal-specific fields:
 ### 3.5 Long-term goals
 Long-term identity goals are captured in onboarding (Step 7 above) but can be edited any time from the Goals tab — tap a goal card → edit panel slides up.
 
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Save Skin Care plan | — (state mutation; emits `task_scheduled` for each window) | RoutineService → NotificationService | `users/{uid}/routines/skin_care`, `users/{uid}/scheduled_notifications` |
+| Save Eating plan | — (emits `task_scheduled` per meal window) | RoutineService → NotificationService | `users/{uid}/routines/eating`, `users/{uid}/scheduled_notifications` |
+| Save Class schedule | — (emits `task_scheduled` per class) | RoutineService → NotificationService | `users/{uid}/routines/classes`, `users/{uid}/scheduled_notifications` |
+| Save Fixed Schedule blocks | — (emits `task_scheduled` per block) | RoutineService → NotificationService | `users/{uid}/routines/fixed_schedule`, `users/{uid}/scheduled_notifications` |
+| Edit / delete a block | — (state mutation; cancels old `scheduled_notifications`) | RoutineService → NotificationService | corresponding `routines/*` doc updated, stale notifications cancelled |
+
 ### Exit
 After any setup screen completes, the user lands back on the Routine tab. The previously-empty filter now shows real blocks on the timeline.
 
@@ -351,6 +389,15 @@ After any setup screen completes, the user lands back on the Routine tab. The pr
   - **Strict** — streak resets; AI asks the user to explain why before rescheduling
   - **Ruthless** — streak resets; AI is sharp and direct, but never insulting
 - Tap a streak card → see a calendar heatmap with hot (consistent) and cold (missed) days
+
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Log a good habit (water +500ml, etc.) | `good_habit_logged` | HabitService → StreakService → MissionRing | `users/{uid}/habit_logs`, `users/{uid}/streaks/{habit_id}` |
+| Log a bad-habit slip (cigarette, scroll) | `bad_habit_slip_logged` | HabitService → StreakService → MoneySavedCounter; **(phase 2: AI Coach)** v1: NotificationService schedules a P4 nudge from rule fallback | `users/{uid}/habit_logs`, `users/{uid}/streaks/{habit_id}`, `users/{uid}/scheduled_notifications` |
+| 3+ slips in 30 min on same habit | `slip_streak_detected` | StreakService; **(phase 2: AI Coach coalesced response)** v1: single rule-based notification | `users/{uid}/streaks/{habit_id}` updated, prior slip notifications coalesced |
+| Tap a streak card to view history | — (read-only) | — | none |
 
 ### Exit
 After a log, the user is returned to whichever screen they came from, with the relevant counter and streak updated app-wide (Home ring, Tracker card, Profile stats all reflect the change).
@@ -426,6 +473,18 @@ Each mode swaps the system prompt; the conversation history is preserved across 
 | User mentions self-harm / suicide | Tone shifts immediately to gentle. Crisis resources offered. AI never moralizes. |
 | Medical / legal / financial advice request | AI declines specifically, names the relevant professional, offers to help frame questions for them. |
 | Severe mental-health crisis flag from health-flag onboarding | Coach uses softer voice by default and proactively offers professional support after recurring distress signals. |
+
+### System mapping
+
+> **Phase note:** the AI Coach as described in this section is a phase-2 feature per the PRD's Technical Constraints. v1 ships with the chat UI behind a "Coming soon" gate — the events below are reserved for the catalog but not emitted in MVP. Routine-tab AI suggestions (5.3) and safety branches (5.5) are also deferred.
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| User sends a chat message | `coach_message_sent` | **(phase 2)** CoachService → GeminiService | `users/{uid}/coach_chats/{thread_id}/turns` |
+| AI replies | `coach_replied` | **(phase 2)** GeminiService → CoachService | same `coach_chats` thread, plus `users/{uid}/ai_memory_writes` |
+| AI generates suggestion cards (Routine tab) | `suggestion_generated` | **(phase 2)** PlanGenerator → SuggestionService | `users/{uid}/suggestions` |
+| User taps **Accept** on a suggestion | `suggestion_accepted` | **(phase 2)** SuggestionService → RoutineService → NotificationService | `users/{uid}/routines/*`, `users/{uid}/scheduled_notifications`, suggestion marked accepted |
+| User taps **Dismiss** | `suggestion_dismissed` | **(phase 2)** SuggestionService (logs reinforcement signal) | suggestion marked dismissed |
 
 ### Exit
 - User backs out → Coach tab remains open with full chat history preserved
@@ -512,6 +571,20 @@ This walkthrough uses **Nairit** (the persona from the PRD) on a regular Monday.
 - User can tap to open journaling, or ignore
 - (User ignores it tonight and opens Instagram)
 
+### System mapping
+
+This flow is a composite — most actions reuse mappings from earlier flows. Listed below in narrative order.
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| 6.2 Wake-up alarm tapped | `notification_tapped` then `task_started` | NotificationService → TaskService | `users/{uid}/notifications/{id}` (tapped state), `users/{uid}/tasks/{morning_routine_id}` |
+| 6.3 Each subtask checkbox | — (state mutation, granular) | TaskService | task subtasks updated incrementally |
+| 6.3 All subtasks done | `task_completed` | TaskService → StreakService → MissionRing → IdentityProfile | `tasks/*`, `streaks/*`, `mission_ring`, `identity_profile` |
+| 6.4 Class block auto-starts | `task_started` | TaskService (auto-start by scheduler) | `tasks/{class_id}` actual_start set |
+| 6.5 Bad habit slip | `bad_habit_slip_logged` | HabitService → StreakService (see Section 4 system mapping) | `habit_logs`, `streaks` |
+| 6.7 Custom alarm fires & user starts gym | `notification_tapped` → `task_started` | NotificationService → TaskService | as above |
+| 6.10 User ignores wind-down notif | `notification_dismissed` | NotificationService (logs for learning loop) | `notifications/{id}` dismissed state |
+
 ### Exit
 The day flows continuously into the End-of-Day flow below.
 
@@ -582,6 +655,16 @@ User taps **Approve all** → tomorrow's timeline is ready before bed.
 - All notifications muted except wake alarm
 - Wake alarm armed
 - App enters background
+
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Sleep block reached OR midnight cutoff | `day_closed` | DayCloseService → StreakService → IdentityProfile → SummaryGenerator | `users/{uid}/days/{date}` (final state), `streaks/*`, `identity_profile`, `users/{uid}/summaries/{date}` |
+| Coach end-of-day summary opens | `coach_replied` (proactive) | **(phase 2)** CoachService; v1: rule-based template message inserted by NotificationService | `notifications/{id}` for v1; `coach_chats/*` for phase 2 |
+| User adjusts streak setting from summary | — (state mutation) | StreakService | `users/{uid}/streaks/{habit_id}.accountability_mode` |
+| User approves AI-suggested tweaks for tomorrow | `suggestion_accepted` | **(phase 2)** SuggestionService → PlanGenerator → RoutineService | `users/{uid}/plans/{tomorrow_date}`, `routines/*` updated |
+| Identity Profile recomputes after `day_closed` | `identity_progress_changed` | IdentityProfile | `users/{uid}/identity_profile` (per-identity %) |
 
 ### Exit
 The user wakes up the next morning and re-enters the **Daily usage flow** at Step 6.2. The system has already adjusted based on what *actually* happened today, not just what was planned. Over weeks, the loop tightens, the coach gets sharper, and the user moves measurably closer to the identity they chose during onboarding.
@@ -1004,6 +1087,18 @@ The Tracker isn't just a logger — it's where the user *sees themselves* in dat
 2. **Every screen has the AI's interpretation visible**, not buried in chat. The Tracker is where pattern → insight → action lives in one glance.
 3. **Bad habit screens are gentle by default.** The hardest moment in this app is logging a slip; the screen design makes that act feel safe.
 
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Tap a metric card from Tracker home | — (read-only navigation) | — | none |
+| Quick-log from a card (+250ml, +1 cig, etc.) | `good_habit_logged` or `bad_habit_slip_logged` | HabitService → StreakService → MissionRing → MoneySavedCounter (if applicable) | `users/{uid}/habit_logs`, `users/{uid}/streaks/{habit_id}` |
+| Edit habit goal (numpad sheet) | `habit_goal_edited` | HabitService | `users/{uid}/habits/{habit_id}.target_*` |
+| Pause a habit | `habit_paused` | HabitService → StreakService (freeze counter) | `users/{uid}/habits/{habit_id}.is_paused = true` |
+| Archive a habit | `habit_archived` | HabitService | `users/{uid}/habits/{habit_id}.archived_at` set |
+| Delete a habit (from Profile, double-confirmed) | `habit_deleted` | HabitService | hard delete: `habits/{habit_id}` removed (logs preserved for audit) |
+| Add a new habit | `habit_created` | HabitService | new doc at `users/{uid}/habits/{new_id}` |
+
 ---
 
 ## 9. Goals screen flow
@@ -1163,6 +1258,18 @@ This connection is **the differentiator** — what makes Optivus more than a hab
 
 This means: a user who finishes 7 of 10 random tasks but skipped the 3 that mattered most for *their* chosen identities will see Mission ring < 70%, and the AI will say so. This is the system telling the truth.
 
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Add a new identity goal | `identity_created` | IdentityProfile → GoalService | `users/{uid}/identities/{new_id}` |
+| Edit an identity (rename, change weight) | `identity_updated` | IdentityProfile | `users/{uid}/identities/{id}` |
+| Connect a habit to an identity | `identity_habit_linked` | IdentityProfile → HabitService | `users/{uid}/habits/{habit_id}.identity_ids[]`, `users/{uid}/identities/{id}.linked_habits[]` |
+| Mark a manual milestone complete | `milestone_completed` | IdentityProfile | `users/{uid}/identities/{id}/milestones/{m_id}.completed_at`, P6 celebration notification queued (subject to frequency cap) |
+| Pause an identity | `identity_paused` | IdentityProfile | `users/{uid}/identities/{id}.is_paused = true` |
+| Archive an identity | `identity_archived` | IdentityProfile | `users/{uid}/identities/{id}.archived_at` |
+| Identity % recomputed (system) | `identity_progress_changed` | IdentityProfile | `users/{uid}/identities/{id}.current_pct` |
+
 ---
 
 ## 10. Profile screen flow
@@ -1316,6 +1423,19 @@ The Profile tab is the user's *mirror* — the one place where the app says *"th
 1. **Identity-first**, settings-second. The hero card and Strengths/Improve cards live above the settings list on purpose.
 2. **Every settings change has an event.** Profile is a major source of events feeding the AI's adaptive behavior; the AI notices when a user changes their accountability from Strict to Forgiving and adjusts tone for the next 24 hours.
 3. **No dark patterns.** Sign out and Delete account are reachable in 2 taps. Nothing is buried. The trust this builds compounds.
+
+### System mapping
+
+| User action | Event | Service | DB write |
+|---|---|---|---|
+| Edit Identity Statement | `identity_statement_updated` | IdentityProfile | `users/{uid}/profile.identity_statement` |
+| Change Coach style / tone | `coach_settings_changed` | UserSettingsService | `users/{uid}/settings/coach.*` |
+| Change Accountability mode | `accountability_changed` | UserSettingsService → StreakService (recompute current streaks under new rule) | `users/{uid}/settings/accountability`, `users/{uid}/streaks/*` |
+| Toggle a notification category on/off | `notification_settings_changed` | UserSettingsService → NotificationService (cancel scheduled notifications in category if disabled) | `users/{uid}/settings/notifications`, `users/{uid}/scheduled_notifications` |
+| Edit "About You" (biometrics) | `biometrics_updated` | UserSettingsService | `users/{uid}/profile.biometrics` |
+| Tap **Export my data** | `data_export_requested` | DataExportService | export job queued, email sent with signed URL when ready |
+| Tap **Delete account** | `account_deletion_requested` | DataDeletionService → AuthService | 30-day cascade deletion job queued; auth disabled immediately |
+| Tap **Sign out** | `user_signed_out` | AuthService | local session cleared; Firestore listeners detached |
 
 ---
 

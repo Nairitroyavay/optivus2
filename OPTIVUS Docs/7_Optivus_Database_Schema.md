@@ -16,7 +16,7 @@ Before generating any migration, read this entire document. The schema has heavy
 Hard constraints when you generate code:
 
 1. **The current Optivus codebase is Flutter + Firebase Firestore.** This document specifies a *target* schema. Not all of this exists yet. Per the audit, only `users` (basic), `routine`, and `onboarding` data exist in Firestore today. Everything else is new.
-2. **The recommendation is Postgres-first, NOT a Firestore migration.** Read §1 before assuming we'll keep Firestore. The reasoning matters — if the team decides to stay on Firestore, the table designs translate but the partitioning, indexes, and ACID guarantees do not. Flag this decision before building.
+2. **The recommendation for v1 is Firestore-first.** Read Part 1A — it is the canonical v1 implementation guide with collection layout, indexes, and scaling rules. Parts 3–12 contain Postgres DDL preserved as the future-target spec for if-and-when migration becomes necessary. **Do not generate Postgres migrations for v1.** If a user instruction says "build the database" without specifying which, default to Firestore per Part 1A.
 3. **Every table has `schema_version`.** Per audit P1, the existing codebase is missing this everywhere. Add it as you build.
 4. **Every timestamp is `TIMESTAMPTZ`,** never `TIMESTAMP`. Optivus users span time zones; naive timestamps create silent bugs.
 5. **All IDs are UUIDs**, generated client-side (UUIDv7 preferred — naturally sorted). Not auto-increment. Never reveal counts or guess-next-id.
@@ -29,43 +29,631 @@ Hard constraints when you generate code:
 
 This document closes the design loop. With the PRD, EventSystem, ServiceContracts, AI Master Engine, and now this schema, every layer of Optivus has a written spec. The next thing should be code.
 
-**The big call this document makes:** move off Firestore, onto Postgres, with Redis for hot reads. §1 explains why. Short version: Firestore is great for the routine + user docs you already have, but the event system, rule engine, and analytics-grade queries the PRD demands hit Firestore's structural limits — fan-out fees, lack of ad-hoc joins, no real partitioning. Trying to build the AI brain on Firestore costs more in engineering time than rewriting it.
+**The framing this document uses:** Optivus v1 ships on **Firestore**, not Postgres. Your current codebase is already on Firestore, your scale (zero users today, plausibly tens of thousands in year one) fits Firestore's strengths, and migrating an unbuilt product to Postgres would be premature optimization.
 
-You don't have to migrate today. Phase 1 (auth, profiles, routines) can stay on Firestore. The rewrite begins when you start building the event system. That's a clean break point.
+This document keeps **both** designs intentionally:
 
-If you'd rather stay on Firestore for v1 and revisit later, that's a valid call — but read §11 Q1 first to understand what you're trading off.
+- **Part 1A** is your v1 implementation guide — the Firestore-first data model with the scaling rules you must follow to get to 100k users on Firestore without pain.
+- **Parts 3–12** are the Postgres DDL design — preserved as the *future-target* spec for the day (if ever) that scale or analytics needs force a migration.
+
+The Postgres design is not a recommendation for v1. It is a serious design for v2 or v3, with clear triggers below for when to consider it. If you're solo-building right now, **read Part 1A and skip the Postgres DDL.** It will still be here when you need it.
+
+The earlier framing of this doc (and the changelog v2) implied a Postgres migration was the recommended path. That framing was wrong for your situation. This v3 reframing fixes it.
 
 ---
 
 # Table of Contents
 
-1. **Database Choice** — Postgres + Redis, with Firestore migration path
+1. **Database Choice** — Firestore for v1; Postgres as deferred future option
+1A. **Firestore-first data model (v1)** — collections, indexes, scaling rules — *read this if you're solo-building now*
 2. **Schema Conventions** — naming, types, IDs, timestamps
-3. **Core Tables** — full DDL for all 17 tables
-4. **Event Table Deep Dive** — design, partitioning, query patterns
+3. **Core Tables** — full Postgres DDL for all tables (*future-target spec*)
+4. **Event Table Deep Dive** — Postgres design, partitioning, query patterns (*future-target spec*)
 5. **Relationships** — ER diagram + cardinalities
 6. **AI Rule Engine Storage** — rules, logs, messages, context
 7. **Scalability Strategy** — indexes, partitioning, caching, archival
-8. **Sample Data** — real INSERT examples for every domain
-9. **Query Examples** — the 12 queries the app actually runs
+8. **Sample Data** — INSERT examples for every domain
+9. **Query Examples** — the queries the app actually runs
 10. **Design Principles** — what we optimized for and what we didn't
 11. **Open Questions** — explicitly undecided
-12. **Migration Path from Firestore**
+12. **Migration Path from Firestore** — if and when migration becomes necessary
 
 ---
 
 # Part 1 — Database Choice
 
-## 1.1 Recommendation
+## 1.1 Recommendation for v1: Firestore
 
-**Primary:** PostgreSQL 16 with `JSONB`, native partitioning, and `pgcrypto` for UUIDs.
-**Cache & rate limit:** Redis 7 (not optional for this design).
-**Cold archive:** S3 (Parquet files) for events older than 90 days.
-**Existing Firestore:** keep for `users` profile docs and `routines/current` document during transition. Migrate after event system is live.
+**Primary database:** Cloud Firestore — already in your stack, well-suited to Optivus's per-user, real-time, mobile-first shape.
+**Cache & rate-limit (later):** Redis — only when needed; Firestore's offline cache covers most v1 needs.
+**Cold archive (later):** BigQuery via Firestore-to-BigQuery export — only when you have meaningful event volume.
 
-This is **a hybrid by deployment**, not by data model. Postgres owns the data model; Redis owns transient coach state and pre-computed counters; S3 owns history.
+This was a flip from earlier versions of this doc, which led with Postgres. The flip is intentional. Optivus's actual situation — solo dev, zero users, working Flutter+Firestore codebase — does not justify a Postgres migration before the product exists. Firestore can carry Optivus comfortably to 100k+ users *if* the rules in Part 1A are followed.
 
-## 1.2 Why not pure MongoDB
+Postgres remains a serious future option. It is not the default for v1.
+
+## 1.2 Why Firestore fits Optivus
+
+The product's data shape matches Firestore's strengths almost exactly:
+
+| Optivus need | Firestore capability |
+|---|---|
+| Per-user data isolation (`users/{uid}/...`) | Native subcollection model + security rules per path |
+| Mostly read-your-own-data | No global queries needed; reads are user-scoped |
+| Real-time UI updates | `.snapshots()` listeners are first-class |
+| Offline-first (event log queues locally) | Built-in offline persistence + queued writes |
+| Append-only event log | Document-per-event with collection-as-stream |
+| Derived state (streaks, mission ring) updated on day-close | Cloud Function triggers + transactions on small doc sets |
+| AI Coach reads event stream | Real-time listener on `events_recent` |
+
+The shape that Firestore *struggles* with — large global cross-user queries, ad-hoc analytical joins, ACID across many collections at once — is **not** what Optivus needs in v1. The PRD describes a personal, per-user system. Each user's data is functionally isolated.
+
+## 1.3 Can Firestore actually scale?
+
+This is the question that drove the earlier Postgres recommendation. The answer, with the rules in Part 1A applied, is yes.
+
+**Worked numbers at 100k users:**
+
+| Quantity | Value | Firestore handles? |
+|---|---:|---|
+| Users | 100,000 | Trivially |
+| Events per user per day | ~100 | — |
+| Total events per day | 10M | Yes — partitioned per user |
+| Largest single user's lifetime events | ~36k/year | Yes — under any single-doc limit |
+| Concurrent live listeners | up to 100k | Yes — that's the design point |
+| Cost at this scale (estimate) | ~$200–600/mo for Firestore reads + writes | Yes |
+
+The cost number assumes the Part 1A rules are followed (no global queries, derived summaries, paginated reads). If the rules are *broken* — e.g., loading every event ever for the home screen — the cost balloons 10–50× and Firestore becomes painful. The rules are the difference.
+
+**Where Firestore gets hard, and what we do about it:**
+
+| Pain point | At what scale | Mitigation |
+|---|---|---|
+| Ad-hoc analytics ("how many users in slipping state?") | Any scale | Use Firestore→BigQuery export for analytics; never run analytics queries on production Firestore |
+| Cross-user reports for the founder dashboard | 1k+ users | Same — BigQuery |
+| Coach cooldowns at 1B reads/day | 100k+ users | Add Redis only when daily reads of cooldown keys cross ~100M |
+| Day-close atomic updates | Any scale | Use Firestore transactions with WriteBatch; works across documents within the same user, which is the only place we need atomicity |
+
+None of these need Postgres. They need either Firestore patterns done correctly or one auxiliary system (BigQuery, Redis) added at the right time.
+
+## 1.4 When Postgres becomes worth considering
+
+Document the trigger conditions explicitly. Migration is justified only if **two or more** of these become true:
+
+1. **Total monthly Firestore cost crosses $2,000** for 3 consecutive months, AND profiling shows the cost is driven by event reads that BigQuery export cannot displace.
+2. **You hire a backend engineer** whose week-1 task list includes "build a public API" or "build cross-user analytics that BigQuery can't handle."
+3. **A specific feature requires multi-document ACID transactions across more than one user**, which Firestore cannot do (e.g., social features with shared state — explicitly out-of-scope per PRD §9).
+4. **Schema migrations become a regular pain** — i.e., you find yourself doing 3+ migrations per year and silent drift causes real bugs.
+
+Until two of these are true, **stay on Firestore**. The Postgres design in Parts 3–12 of this doc is the migration target if/when the time comes — not a v1 instruction.
+
+## 1.5 What's in this document and how to read it
+
+| Part | Purpose | Read for v1? |
+|---|---|---|
+| **1. Database Choice** (this part) | The decision and trade-offs | Yes — context |
+| **1A. Firestore-first data model (v1)** | Collections, indexes, scaling rules — implementation-ready | **Yes — this is your build guide** |
+| **2. Schema Conventions** | Naming, types, IDs, timestamps | Yes — applies to both |
+| **3–9. Postgres DDL & queries** | The future-target relational design | No — reference only |
+| **10. Design Principles** | What we optimized for and didn't | Yes |
+| **11. Open Questions** | Decisions deferred | Yes |
+| **12. Migration Path** | If/when Postgres migration happens | No — future-only |
+
+If you are solo-building Optivus today, you read Parts 1, 1A, 2, 10, 11. That is the entire v1 spec. The rest is preserved for later.
+
+---
+
+# Part 1A — Firestore-first data model (v1)
+
+This is the canonical v1 implementation guide. Every collection, index, and rule below is meant to be implemented as written. If something here conflicts with the Postgres DDL in Parts 3–12, **this section wins for v1**; the Postgres material is for the future-migration scenario.
+
+## 1A.1 Top-level collection layout
+
+Firestore stores everything user-scoped. Optivus uses **strict per-user isolation** — never a global collection — for security, scaling, and pricing reasons.
+
+```
+users/{uid}                                # one doc per user
+  /profile/main                            # profile fields, identity tags, settings
+  /onboarding/state                        # onboarding flow state (existing)
+  /routine/current                         # the live routine config (existing)
+
+  /habits/{habitId}                        # one doc per habit (gym, smoking, water, …)
+  /habit_logs/{logId}                      # one doc per habit log entry
+  /tasks/{taskId}                          # one doc per task
+  /goals/{goalId}                          # one doc per goal
+  /streaks/{streakId}                      # one doc per streak (derived; written by day-close)
+
+  /events_recent/{eventId}                 # last ~50 events for fast UI reads
+  /events/{eventId}                        # full event log (append-only)
+
+  /coach_messages/{messageId}              # what the user sees in the Coach tab
+  /coach_speak_log/{logId}                 # engine decision audit (one per decision)
+  /ai_context_snapshots/{snapshotId}       # weekly summary memory rows
+  /scheduled_notifications/{notifId}       # scheduled push/local notifications
+
+  /journal_entries/{entryId}               # journal & day-close reflections
+  /screen_time_logs/{logId}                # daily screen time aggregates
+  /addiction_logs/{logId}                  # cigarettes, alcohol, etc. (typed)
+```
+
+**Hard rule:** never put a collection at the root that contains user data. Specifically forbidden:
+
+```
+events/                                    # ❌ never global
+habit_logs/                                # ❌ never global
+coach_messages/                            # ❌ never global
+```
+
+Why: a global collection forces you to filter by `uid` on every read (4× the reads, no security-rule isolation, fan-out cost). Per-user trees cost ~zero to read for a single user.
+
+The only acceptable root-level collections are:
+- `app_config/` — read-only feature flags & versioned config (admin-managed)
+- `crisis_handoffs/` — Tier-3 crisis alerts (write-only from Cloud Function, read by ops)
+
+Both of these are tiny.
+
+## 1A.2 Indexing — the most important section
+
+Firestore composite indexes are **declared in advance** in `firestore.indexes.json`. Missing one causes runtime query failures in production. The required v1 indexes:
+
+| Collection | Fields (in order) | Used by |
+|---|---|---|
+| `events_recent` | `eventName ASC, ts DESC` | Coach engine reading events of a specific type |
+| `events_recent` | `ts DESC` | Home tab "recent activity" |
+| `events` | `eventName ASC, ts DESC` | Replay on app start |
+| `habit_logs` | `habitId ASC, ts DESC` | Tracker tab per-habit charts |
+| `habit_logs` | `ts DESC` | Mission ring computation |
+| `tasks` | `state ASC, plannedStart ASC` | Today's task list |
+| `tasks` | `state ASC, plannedEnd ASC` | Auto-abandon detection |
+| `coach_messages` | `created_at DESC` | Coach tab listener |
+| `coach_messages` | `read_at ASC, created_at DESC` (where `role == "coach"`) | Unread count |
+| `addiction_logs` | `addictionType ASC, ts DESC` | Per-addiction tracker |
+| `scheduled_notifications` | `scheduled_for ASC` (where `delivered_at == null`) | Pending notification list |
+
+Declare all of these in `firestore.indexes.json` from day one. Skipping any of them = runtime failure when the query first runs.
+
+## 1A.3 The `events_recent` vs `events` split
+
+Per the EventSystem doc §1.1, two collections, two roles:
+
+| Collection | Role | Lifetime | Doc count cap |
+|---|---|---|---|
+| `events_recent` | Fast UI cache | Trim when older than 7 days OR exceeds 100 entries | 100 per user |
+| `events` | Source of truth | Forever (until account deletion) | Unbounded |
+
+**Write rule:** every event writes to *both* in the same WriteBatch. They never get out of sync. If `events_recent` is corrupted, rebuild from `events` in a one-time job.
+
+**Read rule:**
+- UI screens read from `events_recent` (small, fast, paginated)
+- Coach engine reads from `events_recent` (live)
+- Analytics, replays, AI memory bootstrap read from `events`
+- Never page through `events` from the UI — that's a "load full history" anti-pattern that breaks the doc's principles
+
+**Trim policy:** a Cloud Function runs hourly. For each user with >100 docs in `events_recent` or with docs >7 days old, delete the excess. The full record is preserved in `events`.
+
+### Server-side eventId deduplication (mandatory)
+
+The client generates `eventId = UUIDv7` at the moment the action happens (per EventSystem §16.6). The server side **must reject duplicates** — otherwise a double-tap, a network retry, or a backgrounded-app sync produces ghost events that break streaks, fire AI triggers twice, and corrupt analytics.
+
+Firestore does not have native `INSERT ... ON CONFLICT` — but the same effect is achieved with a transaction that checks existence first:
+
+```dart
+Future<bool> writeEventIdempotent({
+  required String uid,
+  required String eventId,
+  required Map<String, dynamic> eventDoc,
+}) {
+  final db = FirebaseFirestore.instance;
+  final eventsRef = db.doc('users/$uid/events/$eventId');
+  final recentRef = db.doc('users/$uid/events_recent/$eventId');
+
+  return db.runTransaction((tx) async {
+    final existing = await tx.get(eventsRef);
+    if (existing.exists) {
+      // Duplicate — do nothing. Return false so caller knows.
+      return false;
+    }
+    tx.set(eventsRef, eventDoc);
+    tx.set(recentRef, eventDoc);
+    return true;
+  });
+}
+```
+
+The transaction read-then-write makes "first writer wins" atomic. Subsequent retries see `existing.exists == true` and no-op. The function returns a bool so the caller can distinguish "wrote a new event" from "ignored a duplicate." Downstream side effects (publishing to local event bus, triggering coach) only fire when the return value is `true`.
+
+**Why this matters:** without the existence check, two devices logged into the same account flushing offline queues on reconnect can each write the same `eventId` — Firestore's `set()` with a known doc ID will *overwrite*, and both writes succeed silently. The transaction prevents that. **No event write goes to Firestore without this guard.**
+
+### Dual-write failure handling
+
+The "every event writes to both `events` and `events_recent` in the same WriteBatch" rule has one failure mode worth naming: **what if the batch commit itself fails?** Network drop, permission denied, transient backend error.
+
+If the WriteBatch fails:
+1. **Firestore's offline cache queues the batch.** The SDK retries automatically with exponential backoff when network returns. This handles 95% of the cases.
+2. **For non-transient failures** (permission denied, schema rejection from security rules), the batch is rejected outright. The local event bus does **not** fire — both the truth and the cache are unwritten, the system stays consistent.
+3. **For partial failures** (this should not happen because batches are atomic — either both writes succeed or both fail), there's a Cloud Function that runs every 6 hours: it scans `events` for docs whose `eventId` is missing from `events_recent` (within the 7-day window) and back-fills. This is a recovery safety net, not the primary mechanism.
+
+**The invariant:** `events_recent` is always a strict subset of `events`. If they ever diverge — meaning a doc in `events_recent` that isn't in `events` — that's a P0 incident. Alerting fires.
+
+This is why §1A.3 said earlier: "If `events_recent` is corrupted, rebuild from `events`." That's the recovery story. `events_recent` is disposable; `events` is sacred.
+
+## 1A.4 Seven rules to follow to scale to 100k+ users
+
+These are the rules the critique called out, formalized.
+
+### Rule 1 — Strict per-user isolation
+Every collection containing user data lives under `users/{uid}/...`. No global collections (with the two exceptions in §1A.1). This makes security rules trivial (`request.auth.uid == userId`) and partitions your reads naturally — one user's growth doesn't slow anyone else's reads.
+
+### Rule 2 — Declare indexes in advance
+Every compound query needs a composite index in `firestore.indexes.json`. List in §1A.2. Deploy with `firebase deploy --only firestore:indexes` before deploying code that uses them. Production-deploying code that hits an undeclared index = runtime crash for users.
+
+### Rule 3 — Never load full history
+Always paginate. The Coach tab loads the last 50 messages, not all messages. The tracker loads the last 30 days of logs, not the lifetime. The home screen reads `events_recent`, not `events`. Add an explicit `limit(N)` to every query — Firestore charges per document read, not per query, so an unbounded query at 100k events scales to "$$$" not "slow."
+
+```dart
+// ❌ Wrong — loads everything
+ref.collection('events').snapshots()
+
+// ✅ Right — last 50, newest first
+ref.collection('events_recent').orderBy('ts', descending: true).limit(50).snapshots()
+```
+
+### Rule 4 — Use derived data (you already do this)
+Don't compute from raw events on every UI read. Pre-compute and cache:
+
+| Derived doc | Source | Updated by |
+|---|---|---|
+| `users/{uid}/streaks/{habitId}` | `habit_logs` | Day-close Cloud Function |
+| `users/{uid}/profile/mission_ring` | `events_recent` | Local on every event |
+| `users/{uid}/days/{date}/summary` | `events` for that day | Day-close Cloud Function |
+| `users/{uid}/identity_profile` | `goals` + `tasks` weighted | Day-close Cloud Function |
+
+The home screen doesn't compute the mission ring from events — it reads the cached value. The tracker doesn't compute the streak from logs — it reads `streaks/{habitId}`. This collapses thousands of reads per page-load into a handful.
+
+### Rule 5 — Use `events_recent` for everything UI-facing
+Already covered in §1A.3. Restated as a rule because it's the highest-leverage one. Every Coach tab listener, every home screen feed, every recent-activity widget reads from `events_recent` — never from `events`.
+
+### Rule 6 — Batch writes; debounce rapid events
+Two patterns to use throughout the codebase:
+
+**Pattern A — WriteBatch for related writes:**
+```dart
+final batch = FirebaseFirestore.instance.batch();
+batch.set(eventRef, eventDoc);
+batch.set(eventRecentRef, eventDoc);
+batch.update(streakRef, {'lastUpdated': FieldValue.serverTimestamp()});
+await batch.commit();   // one network round-trip; atomic
+```
+
+**Pattern B — Debounce mutations from UI:**
+The existing `OnboardingNotifier` and `RoutineNotifier` already do this — they queue rapid changes and flush every 2 seconds. Keep doing this for any UI that mutates state on every keystroke. Without it: 50 writes per second when the user types in a text field.
+
+### Rule 7 — Paginate `coach_messages` and archive cold history
+
+The coach_messages collection grows fast — 5–10 messages per active user per day. After 6 months, an active user has ~1,500 messages. Loading them all into the Coach tab is the kind of unbounded-query mistake Rule 3 warns against, but coach_messages is the most likely place for that mistake to happen because the chat UI visually invites scrolling backwards.
+
+**Pagination rule for the Coach tab:**
+
+```dart
+// ✅ Right — initial load is the last 50, newest first
+final initial = await ref
+    .collection('users/$uid/coach_messages')
+    .orderBy('createdAt', descending: true)
+    .limit(50)
+    .get();
+
+// User scrolls up to load more — paginate using startAfterDocument
+final older = await ref
+    .collection('users/$uid/coach_messages')
+    .orderBy('createdAt', descending: true)
+    .startAfterDocument(lastVisibleDoc)
+    .limit(50)
+    .get();
+```
+
+The default UI never loads more than 50 unless the user explicitly scrolls. Most users will only ever see the most recent 20.
+
+**Archive strategy (deferred to v1.5):**
+
+Coach_messages older than 90 days are moved by a nightly Cloud Function to `users/{uid}/coach_messages_archive/{messageId}`. The active collection stays small. The archive collection is read only when:
+- The user explicitly opens "View older messages" in Profile (rare action)
+- The AI Memory builder needs to load context for a weekly summary (uses the archive directly, never paginates)
+
+This split keeps the active collection bounded to ~600–900 docs per user, which is fast to query indefinitely. The archive grows unbounded but is rarely read.
+
+**v1 simplification:** ship without the archive. Just ship the pagination rule. The archive split becomes important around month 4 of active usage. Before then, the active collection is small enough that pagination alone is sufficient.
+
+## 1A.5 Document shapes (the v1 essentials)
+
+Full document shapes for the most critical collections. These match the data the existing services produce and consume.
+
+### `users/{uid}` (root document)
+
+```jsonc
+{
+  "uid": "firebase-uid",
+  "email": "...",
+  "displayName": "...",
+  "createdAt": Timestamp,
+  "updatedAt": Timestamp,                // bumped on any mutable field change
+  "schemaVersion": 1,
+  "timezone": "Asia/Kolkata"
+}
+```
+
+### `users/{uid}/profile/main`
+
+```jsonc
+{
+  "identityTags": ["Strong Body", "Inner Peace"],
+  "accountabilityMode": "strict",       // forgiving | strict | ruthless
+  "coachName": "Sensei",
+  "coachStyle": "supportive",
+  "eatingDisorderFlag": false,
+  "coachEnabled": true,
+  "biometrics": {
+    "birthDate": "2006-08-15",
+    "heightCm": 175,
+    "weightKg": 50,
+    "sex": "male"
+  },
+  "createdAt": Timestamp,
+  "updatedAt": Timestamp,
+  "schemaVersion": 1
+}
+```
+
+### `users/{uid}/habits/{habitId}`
+
+```jsonc
+{
+  "habitId": "uuid",
+  "name": "Cigarettes",
+  "kind": "bad",                        // good | bad
+  "category": "recovery",
+  "targetPerDay": 0,
+  "unit": "cigarette",
+  "identityTags": ["Strong Body"],
+  "color": "D54848",
+  "icon": "smoking",
+  "isActive": true,
+  "createdAt": Timestamp,
+  "updatedAt": Timestamp,
+  "schemaVersion": 1
+}
+```
+
+### `users/{uid}/habit_logs/{logId}`
+
+```jsonc
+{
+  "logId": "uuid",
+  "habitId": "uuid",
+  "occurredAt": Timestamp,              // when habit happened
+  "loggedAt": Timestamp,                // when user logged it
+  "quantity": 1,
+  "trigger": "stress",                  // for bad habits
+  "note": "...",
+  "schemaVersion": 1
+}
+```
+
+> **Note:** `habit_logs` is **append-only** — once written, never updated. No `updatedAt` field. Corrections become new log entries with `metadata.correctsLogId` pointing at the original. The same rule applies to `events_recent` and `events` below.
+
+### `users/{uid}/events_recent/{eventId}` and `users/{uid}/events/{eventId}`
+
+```jsonc
+{
+  "eventId": "uuid-v7",                 // idempotency key — see Fix Rule below
+  "eventName": "bad_habit_slip_logged",  // canonical, snake_case (see EventSystem doc)
+  "ts": Timestamp,                      // server time
+  "deviceLocalTs": Timestamp,            // device-local time
+  "source": "ui",                       // ui | system | ai
+  "payloadVersion": 1,
+  "payload": { /* event-specific shape per ServiceContracts §8 */ }
+}
+```
+
+### `users/{uid}/coach_messages/{messageId}`
+
+```jsonc
+{
+  "messageId": "uuid",
+  "role": "coach",                      // coach | user
+  "body": "First one in 3 days — not nothing. What set it off today?",
+  "messageType": "check_in",
+  "priority": 2,
+  "ruleId": "slip_cigarette_strict_on_track",
+  "triggeringEventId": "uuid",
+  "suggestedActions": [
+    {"label": "Log trigger", "action": "log_trigger", "params": {}}
+  ],
+  "createdAt": Timestamp,
+  "updatedAt": Timestamp,                // bumped when readAt/deliveredAt/dismissedAt change
+  "deliveredAt": Timestamp,
+  "readAt": null,
+  "dismissedAt": null,
+  "schemaVersion": 1
+}
+```
+
+### `users/{uid}/streaks/{streakId}`
+
+```jsonc
+{
+  "streakId": "habit_good_<habitId>",
+  "streakType": "habit_good",            // habit_good | habit_bad_clean | routine | goal
+  "targetId": "habit-uuid",
+  "currentStreak": 5,
+  "longestStreak": 12,
+  "totalCompletions": 47,
+  "startedOn": "2026-04-22",
+  "lastCompletionOn": "2026-04-26",
+  "state": "active",                    // active | paused | broken | recovering
+  "createdAt": Timestamp,
+  "updatedAt": Timestamp,
+  "schemaVersion": 1
+}
+```
+
+### `users/{uid}/days/{date}/summary` (one per calendar day)
+
+The home screen and AI Context Builder both read this. The Day-close Cloud Function writes it once per user per day at `sleep_time − 30min` local. Subsequent writes update fields in place; do not create multiple docs per day.
+
+```jsonc
+{
+  "date": "2026-04-26",                 // YYYY-MM-DD, doc ID matches
+  "missionScore": 78,                   // 0-100, weighted by identity ring
+  "habitsCompleted": 5,
+  "habitsBadLogged": 2,
+  "tasksCompleted": 3,
+  "tasksAbandoned": 1,
+  "routinesCompleted": 2,
+  "routinesMissed": 1,
+  "streaksActive": 4,                   // count of streaks with state = "active"
+  "streaksMilestonesHit": ["meditation_7"],
+  "screenTimeMinutes": 187,
+  "addictionsLoggedCount": 2,
+  "stressMarkersCount": 1,
+  "userState": "on_track",              // on_track | slipping | relapsing | recovering
+  "computedAt": Timestamp,              // when the day-close ran
+  "schemaVersion": 1
+}
+```
+
+This is the single source for the home screen's mission ring, the 7-day completion graph, and any rule that needs to know "how was yesterday." The Coach reads the last 7 of these to detect declining-completion patterns.
+
+### `users/{uid}/scheduled_notifications/{notifId}` (notification system)
+
+```jsonc
+{
+  "notifId": "uuid",
+  "title": "Time for skin care",
+  "body": "Your evening routine starts in 5 minutes",
+  "scheduledFor": Timestamp,            // when the notification should fire
+  "channel": "routine",                 // routine | coach | reminder | system | streak
+  "tier": 3,                            // P1-P6 priority tier
+  "deepLink": "optivus://routine/skin_care",
+
+  // Lifecycle status
+  "status": "pending",                  // pending | sent | delivered | failed | cancelled | dismissed | tapped
+  "deliveredAt": null,                  // set when FCM/local-notif fires
+  "tappedAt": null,
+  "dismissedAt": null,
+  "failedAt": null,
+  "failureReason": null,                // string code, e.g. "fcm_token_invalid"
+  "retryCount": 0,                      // for failures, max 3 retries
+
+  // Provenance — required for debugging "why did I get this?"
+  "sourceEventId": "uuid",              // the event that scheduled this notification
+  "sourceRuleId": "slip_cigarette_strict_on_track",  // if rule-driven
+  "sourceCoachMessageId": "uuid",        // if linked to a coach message
+
+  "createdAt": Timestamp,
+  "updatedAt": Timestamp,
+  "schemaVersion": 1
+}
+```
+
+Status field values are exhaustive — every notification has exactly one. Transitions are forward-only:
+
+```
+pending → sent → delivered → tapped/dismissed
+pending → cancelled (user cancelled before send)
+pending → failed → (retry up to 3x) → either delivered or stays failed
+```
+
+### `users/{uid}/screen_time_logs/{date}_{appOrAggregate}`
+
+```jsonc
+{
+  "logId": "2026-04-26_instagram",
+  "date": "2026-04-26",
+  "app": "instagram",                   // app package or "total"
+  "minutesUsed": 87,
+  "limitMinutes": 60,                   // user-set; null if no limit
+  "overLimit": true,
+  "source": "manual",                   // see Source taxonomy below
+  "createdAt": Timestamp,
+  "updatedAt": Timestamp,
+  "schemaVersion": 1
+}
+```
+
+**Source taxonomy** — important for Android because real screen-time access is gated:
+
+| Source value | Meaning | Permission required |
+|---|---|---|
+| `manual` | User typed the number themselves | None |
+| `usage_stats_permission` | Read from Android `UsageStatsManager` API | `PACKAGE_USAGE_STATS` (system-level, requires user opt-in via Settings) |
+| `accessibility_service` | Read via Accessibility Service (foreground-app sampling) | Accessibility permission (advanced users only; Google Play scrutinizes use of this) |
+| `ios_estimate` | Estimated heuristically on iOS (which has no public screen-time API) | None — pure user-visible heuristic |
+
+**Default for v1: `manual`.** The `usage_stats_permission` path requires a permission that ~70% of users will not grant on first ask, and Google's Play Store policies penalize apps that aggressively prompt for it. The `accessibility_service` path is even more restricted — Google has rejected apps that use it for usage tracking. Build the manual logger first; treat `usage_stats_permission` as a v1.5 enhancement for power users; treat `accessibility_service` as out of scope unless legal review approves.
+
+This means: in v1, the user opens the tracker and types "I used Instagram for ~90 minutes today." The number is approximate. That's fine for the AI Coach — patterns matter more than precision.
+
+---
+
+### Closing rule for shapes not listed above
+
+These shapes cover ~80% of the v1 build. The remaining shapes (goals, journal, etc.) follow the same patterns. The rules:
+
+- **Mutable documents** (state changes after creation): include `createdAt`, `updatedAt`, and `schemaVersion`. `updatedAt` is bumped on *any* field change. Examples: users, profile, habits, goals, tasks, streaks, coach_messages, days summaries, scheduled_notifications.
+- **Append-only documents** (write once, then immutable): include creation timestamp(s) and `schemaVersion`. **No `updatedAt`** — the absence is the signal that the doc is immutable. Examples: habit_logs, events_recent, events, screen_time_logs (one per day; if the user re-types a number, that's a new doc with date+app composite key, not a mutation).
+- **All documents** carry `schemaVersion` for forward migration safety.
+
+## 1A.6 Security rules (deploy from day one)
+
+These rules are not optional. Without them, your Firestore is open by default. Deploy with `firebase deploy --only firestore:rules`.
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read/write their own subtree
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // App config is read-only by clients
+    match /app_config/{doc} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Crisis handoffs: write-only from Cloud Functions (using admin SDK)
+    match /crisis_handoffs/{doc} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+That's the whole v1 ruleset. Six rules. Audit P0-3 (no security rules in repo) is closed when these are deployed.
+
+## 1A.7 What the build sequence looks like in Firestore
+
+The build sequence does not require Postgres; it just requires writing the right collections in the right order:
+
+| Phase | Build | Firestore collections touched |
+|---|---|---|
+| 0 | P0 audit fixes (real Firebase keys, security rules, server-side AI key) | None new |
+| 1 | EventService + events / events_recent | `events`, `events_recent` |
+| 2 | HabitService | `habits`, `habit_logs`, emits to `events*` |
+| 3 | TaskService | `tasks`, emits to `events*` |
+| 4 | StreakService + day-close Cloud Function | `streaks`, reads `events*` |
+| 5 | NotificationService | `scheduled_notifications` |
+| 6 | CoachService (deferred — phase 2 per PRD) | `coach_messages`, `coach_speak_log`, `ai_context_snapshots` |
+
+Each phase produces a working slice of Firestore data. None requires migration. None requires Postgres.
+
+---
+
+## 1.6 Why not pure MongoDB
+
+(Kept for completeness — the comparison is still useful if Mongo ever comes up.)
 
 MongoDB would handle the JSON shape of events well, but loses:
 - Foreign key integrity (we have many — events reference rules, messages reference events, streaks reference habits)
@@ -73,40 +661,32 @@ MongoDB would handle the JSON shape of events well, but loses:
 - Mature partitioning by time (Postgres native partitions are excellent for events)
 - Mature analytics (Postgres + materialized views beat Mongo aggregation pipelines for the streak rollups)
 
-## 1.3 Why not stay on Firestore
+Firestore beats Mongo on all of these for Optivus's shape. Mongo is not on the table.
 
-The current codebase is Firestore. Why move:
+## 1.7 What Postgres would buy you (the future scenario)
 
-| Need | Firestore | Postgres |
+Preserved from the earlier framing for the future-migration case:
+
+| Need | Firestore today | Postgres future |
 |---|---|---|
-| Event system at 1M events/user/year | Fan-out fees scale linearly with listeners; no partitions | Native time partitions, $0 marginal cost |
-| Rule engine condition queries | Limited compound queries, no joins | Full SQL, joins, CTEs |
-| Day-close transaction (streaks + events + messages atomically) | No multi-document transactions across collection groups | Native ACID transactions |
-| Cohort analytics ("how many users in 'slipping' state for 7+ days") | Requires BigQuery export pipeline + delay | One SQL query, real-time |
-| Schema migration safety | No migrations — silent drift | Migrations as code, version-controlled |
-| Cost at 100k MAU | Read/write per-document fees compound | Predictable fixed instance cost |
+| Event system at 1M events/user/year | Per-user partitioned subcollections + BigQuery export | Native time partitions, $0 marginal cost |
+| Rule engine condition queries | Limited compound queries; works for current rules | Full SQL, joins, CTEs |
+| Day-close transaction | Per-user WriteBatch is sufficient | Native ACID across users |
+| Cohort analytics | BigQuery export pipeline | One SQL query, real-time |
+| Schema migration safety | Manual, doc-by-doc | Migrations as code |
+| Cost at very high MAU | Read/write per-document fees compound past ~50k MAU on heavy event volume | Predictable fixed instance cost |
 
-The earlier production system design doc projected ~$3,800/month at 1M users on Firestore-only. Same scale on Postgres with read replicas: ~$800/month. The break-even is around 8k MAU.
+The cost crossover is around 50k MAU **with heavy per-user event volume**. Below that, Firestore is cheaper. The earlier "$3,800/mo at 1M users" projection was for an unmitigated worst case; with the rules in Part 1A applied, the real number is closer to $400–800/mo at 1M users — and at that point it's a real conversation, not before.
 
-## 1.4 What stays on Firestore (transition)
-
-For 4–6 weeks during migration, this dual-write model works:
-
-- **Firestore continues:** user profile doc, routine doc, onboarding doc (the existing `users/{uid}` and `users/{uid}/routine/current`).
-- **Postgres new:** events, ai_rules, ai_messages, habit_logs, streaks, journal_entries, screen_time_logs, addiction_logs, notifications.
-- **Both temporarily:** habits and goals (write to both, read from Postgres, allow rollback).
-
-After 6 weeks of confidence, move user/routine/onboarding to Postgres too, kill Firestore.
-
-## 1.5 Why Redis is not optional
+## 1.8 Why Redis is not optional (in the Postgres-future scenario)
 
 Three workloads burn Postgres if served directly:
 
-- **Coach cooldowns** — checked on every event arrival. ~10 reads/event. At 1k events/day × 100k users = 1B reads/day to a single table. Postgres can do it but it's wasteful.
-- **Speak budget counter** — incremented on every coach message, checked on every event. Counter primitive, not relational.
+- **Coach cooldowns** — checked on every event arrival. ~10 reads/event. At 1k events/day × 100k users = 1B reads/day to a single table.
+- **Speak budget counter** — incremented on every coach message, checked on every event.
 - **Active session tracking** — "is this user currently in app" is a 30-second TTL fact, not a database row.
 
-These three live in Redis. Everything else lives in Postgres.
+In the Firestore-v1 path, Redis is **not needed** — Firestore handles the cooldown reads via its offline cache and per-doc reads. Redis enters the picture only after the Postgres migration trigger fires.
 
 ---
 
@@ -659,7 +1239,7 @@ CREATE INDEX idx_journal_search_body ON journal_entries USING GIN (to_tsvector('
 CREATE TABLE events (
     id              UUID NOT NULL DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL,                          -- no FK on partition root, declared per partition
-    event_type      TEXT NOT NULL,                          -- 'habit.bad_logged', 'task.completed', etc.
+    event_type      TEXT NOT NULL,                          -- 'bad_habit_slip_logged', 'task_completed', etc.
     occurred_at     TIMESTAMPTZ NOT NULL,                   -- partition key
     metadata        JSONB NOT NULL DEFAULT '{}'::JSONB,
 
@@ -691,7 +1271,7 @@ CREATE TABLE ai_rules (
     description         TEXT NOT NULL,
 
     -- Trigger
-    event_type          TEXT NOT NULL,                      -- 'habit.bad_logged' or '*'
+    event_type          TEXT NOT NULL,                      -- 'bad_habit_slip_logged' or '*'
     conditions          JSONB NOT NULL DEFAULT '[]'::JSONB, -- per AI Master Engine §2
 
     -- Routing
@@ -885,36 +1465,38 @@ CREATE INDEX idx_notifications_needs_reschedule ON notifications(user_id)
 
 The events table will be 80% of total DB volume. Getting this right is the single most important decision in this document.
 
-## 4.1 Event taxonomy (the canonical 24)
+## 4.1 Event taxonomy (canonical, snake_case)
 
 Every event has `event_type` matching one of these strings. Locked enum. Adding a new type requires a code release.
 
+> **Naming source of truth:** Event names below match the master catalog in `Optivus_EventSystem.md` §3 verbatim. If a name in this table ever conflicts with the EventSystem doc, the EventSystem doc wins — update this table to match. Per the EventSystem doc's authoritative naming rule, all event names are `snake_case` only; dotted forms like `user.day_closed` are forbidden and have been removed throughout this document.
+
 | Category | Type | Triggered by |
 |---|---|---|
-| **Habit** | `habit.good_logged` | User logs a good habit |
-| | `habit.bad_logged` | User logs a bad habit |
-| | `habit.target_met` | Daily/weekly target reached |
-| **Routine** | `routine.started` | User taps "Start" on a routine |
-| | `routine.step_completed` | Single step done |
-| | `routine.completed` | All steps done |
-| | `routine.window_missed` | Window closed without completion |
-| | `routine.window_closing` | 15 min before window closes (watched) |
-| **Task** | `task.created` | User adds a task |
-| | `task.started` | State change Scheduled→Started |
-| | `task.paused` | Started→Paused |
-| | `task.completed` | Any→Completed |
-| | `task.abandoned` | Any→Abandoned |
-| **Streak** | `streak.milestone` | Hit 7/14/30/60/90/100/365 |
-| | `streak.broken` | Streak reset |
-| | `streak.recovered` | Returned to streak after break |
-| **Screen time** | `screen_time.logged` | Daily log entered |
-| | `screen_time.exceeded` | Crossed user limit |
-| **Addiction** | `addiction.logged` | Cigarette/etc. logged |
-| | `addiction.relapse` | After clean streak ≥1 day |
-| **User** | `user.day_closed` | Day-close rollup completed |
-| | `user.inactive_24h` | No app open in 24h |
-| | `user.inactive_48h` | No app open in 48h |
-| **Chat** | `chat.user_message` | User typed in coach chat |
+| **Habit** | `good_habit_logged` | User logs a good habit |
+| | `bad_habit_slip_logged` | User logs a bad habit |
+| | `habit_target_met` | Daily/weekly target reached |
+| **Routine** | `routine_block_started` | User taps "Start" on a routine |
+| | `subtask_checked` | Single step done |
+| | `routine_block_completed` | All steps done |
+| | `routine_window_missed` | Window closed without completion |
+| | `routine_window_closing` | 15 min before window closes (watched) |
+| **Task** | `task_scheduled` | User adds a task |
+| | `task_started` | State change Scheduled→Started |
+| | `task_paused` | Started→Paused |
+| | `task_completed` | Any→Completed |
+| | `task_abandoned` | Any→Abandoned |
+| **Streak** | `streak_milestone_reached` | Hit 7/14/30/60/90/100/365 |
+| | `streak_broken` | Streak reset |
+| | `streak_recovered` | Returned to streak after break |
+| **Screen time** | `screen_time_logged` | Daily log entered |
+| | `screen_time_exceeded` | Crossed user limit |
+| **Addiction** | `addiction_logged` | Cigarette/etc. logged |
+| | `addiction_relapse` | After clean streak ≥1 day |
+| **Day** | `day_closed` | Day-close rollup completed |
+| **User** | `user_inactive_24h` | No app open in 24h |
+| | `user_inactive_48h` | No app open in 48h |
+| **Chat** | `chat_user_message` | User typed in coach chat |
 
 ## 4.2 Partitioning
 
@@ -962,7 +1544,7 @@ Partial indexes on the GENERATED columns (`habit_id` etc.) make joins to the par
 `metadata` is JSONB, but the shape per event_type is contractual. Sample shapes:
 
 ```jsonc
-// habit.bad_logged
+// bad_habit_slip_logged
 {
   "habit_id": "uuid-of-cigarettes-habit",
   "habit_name": "cigarettes",                    // denormalized for display
@@ -972,7 +1554,7 @@ Partial indexes on the GENERATED columns (`habit_id` etc.) make joins to the par
   "user_state_at_log": "on_track"
 }
 
-// routine.window_missed
+// routine_window_missed
 {
   "routine_id": "uuid",
   "routine_name": "morning_skin_care",
@@ -983,7 +1565,7 @@ Partial indexes on the GENERATED columns (`habit_id` etc.) make joins to the par
   "miss_count_7d": 2
 }
 
-// streak.milestone
+// streak_milestone_reached
 {
   "streak_type": "habit_good",
   "target_id": "uuid-of-meditation-habit",
@@ -992,7 +1574,7 @@ Partial indexes on the GENERATED columns (`habit_id` etc.) make joins to the par
   "longest_ever": 12
 }
 
-// chat.user_message
+// chat_user_message
 {
   "message_id": "uuid",
   "text_length": 187,
@@ -1215,11 +1797,11 @@ CREATE MATERIALIZED VIEW user_daily_summary AS
 SELECT
     user_id,
     DATE(occurred_at AT TIME ZONE 'UTC') AS day,
-    COUNT(*) FILTER (WHERE event_type = 'habit.good_logged') AS good_habits,
-    COUNT(*) FILTER (WHERE event_type = 'habit.bad_logged') AS bad_habits,
-    COUNT(*) FILTER (WHERE event_type = 'task.completed') AS tasks_done,
-    COUNT(*) FILTER (WHERE event_type = 'routine.completed') AS routines_done,
-    COUNT(*) FILTER (WHERE event_type = 'routine.window_missed') AS routines_missed
+    COUNT(*) FILTER (WHERE event_type = 'good_habit_logged') AS good_habits,
+    COUNT(*) FILTER (WHERE event_type = 'bad_habit_slip_logged') AS bad_habits,
+    COUNT(*) FILTER (WHERE event_type = 'task_completed') AS tasks_done,
+    COUNT(*) FILTER (WHERE event_type = 'routine_block_completed') AS routines_done,
+    COUNT(*) FILTER (WHERE event_type = 'routine_window_missed') AS routines_missed
 FROM events
 WHERE occurred_at > NOW() - INTERVAL '90 days'
 GROUP BY user_id, DATE(occurred_at AT TIME ZONE 'UTC');
@@ -1332,7 +1914,7 @@ INSERT INTO events (
 ) VALUES (
     '01927f3a-1234-7000-8002-000000000001',
     '01927f3a-1234-7000-8000-000000000001',
-    'habit.bad_logged',
+    'bad_habit_slip_logged',
     '2026-04-26T14:23:00+05:30',
     jsonb_build_object(
         'habit_id', '01927f3a-1234-7000-8001-000000000001',
@@ -1613,7 +2195,7 @@ WHERE user_id = $1
 
 -- 3. Emit day_closed event
 INSERT INTO events (user_id, event_type, occurred_at, metadata, source)
-VALUES ($1, 'user.day_closed', NOW(), jsonb_build_object('day', CURRENT_DATE), 'scheduler');
+VALUES ($1, 'day_closed', NOW(), jsonb_build_object('day', CURRENT_DATE), 'scheduler');
 
 -- 4. Refresh cached materialized view for this user
 REFRESH MATERIALIZED VIEW CONCURRENTLY user_daily_summary;
@@ -1703,7 +2285,10 @@ Things this schema deliberately does NOT do:
 Explicitly undecided. Antigravity must NOT silently pick — flag and ask Nairit.
 
 ### Q1. Migrate off Firestore now, in 6 weeks, or never?
-The recommendation is "after event system is built" (§1.4). The alternative — staying on Firestore — is feasible for v1 but caps growth. Decide based on business runway.
+
+**Resolved (per §1.1):** Stay on Firestore for v1. The doc's recommendation flipped from earlier drafts that led with Postgres. Optivus's actual situation — solo dev, zero users, working Flutter+Firestore codebase — does not justify a migration before the product exists.
+
+**Re-open this question only if** two or more of the §1.4 trigger conditions become true (Firestore cost > $2k/mo for 3 months driven by event reads BigQuery can't displace, hiring a backend engineer with cross-user-analytics workload, a feature requiring multi-user ACID, or schema-migration pain becoming a recurring drag). Until then, this question is closed: stay on Firestore.
 
 ### Q2. Postgres host: Neon, Supabase, or self-hosted on GCP?
 Neon (serverless, cheap to start, scales). Supabase (Postgres + RLS + auth bundled, but auth conflicts with Firebase). GCP Cloud SQL (most control, most cost). Recommendation: Neon for solo-dev phase.
@@ -1725,9 +2310,11 @@ For coach messages, the client subscribes to changes. Options: Postgres LISTEN/N
 
 ---
 
-# Part 12 — Migration Path from Firestore
+# Part 12 — Migration Path from Firestore (contingency plan)
 
-This is the actual sequence to get from "everything in Firestore" to "this schema." Six phases.
+> **This is not a planned migration. It is a contingency plan.** Per §1.1 and §1.4, Optivus stays on Firestore for v1 and beyond, until at least two of the §1.4 trigger conditions become true. If that day arrives, this is the sequence. If it never arrives — which is a perfectly reasonable outcome — this section is unused. **Do not start any of the phases below as a v1 task.**
+
+The phases below assume the trigger conditions are real and the team has decided to migrate. Six phases.
 
 ## Phase 1 — Stand up Postgres, dual-read (week 1)
 - Provision Postgres + Redis
@@ -1747,6 +2334,8 @@ This is the actual sequence to get from "everything in Firestore" to "this schem
 - All write to Postgres; all read from Postgres
 - Existing routine/onboarding still on Firestore (parallel paths)
 
+> **Note:** if you reach Phase 3 of this contingency before EventService etc. exist in *any* form (Firestore or Postgres), something has gone wrong. Per the AI Master Engine doc Prerequisites section, those services should already exist on Firestore as part of v1. Migration phase 3 means **rewriting** them against Postgres, not building them for the first time.
+
 ## Phase 4 — Switch reads (week 7)
 - Toggle a feature flag per screen — Tracker tab reads from Postgres first
 - Monitor latency + error rate for 1 week per screen
@@ -1762,20 +2351,25 @@ This is the actual sequence to get from "everything in Firestore" to "this schem
 - Decommission Firestore (except realtime push collection in Q7)
 - Done
 
-Total elapsed: ~3 months calendar time, but only 4–5 weeks of actual eng work scattered across normal feature development. The migration runs alongside building the AI engine, not before.
+Total elapsed: ~3 months calendar time, but only 4–5 weeks of actual eng work scattered across normal feature development. The migration runs alongside building features, not before. **All of this is hypothetical until §1.4 triggers fire.**
 
 ---
 
 # End of schema design
 
-This document is the database backbone. Every other Optivus document depends on it:
+This document is the database backbone. It is **dual-track by design**:
+
+- **For v1 (now and likely forever):** the Firestore-first guide in Parts 1, 1A, 2, 10, 11. That's the actual build.
+- **For a hypothetical future migration:** the Postgres DDL in Parts 3–9, 12. Useful reference for if/when §1.4 trigger conditions become true. Until then, ignore.
+
+Every other Optivus document references this one:
 
 - **PRD** describes user-facing behavior → this schema stores the data behind that behavior.
-- **EventSystem doc** describes the event taxonomy → §4.1 is the canonical list.
-- **AI Master Engine doc** describes coach logic → §3.10 stores rule decisions and messages.
-- **ServiceContracts doc** describes service interfaces → those services read/write these tables.
-- **Code audit** identified 0 of 6 services exist → this schema is what they'll talk to.
+- **EventSystem doc** describes the event taxonomy → mirrored in Part 1A and Part 4.
+- **AI Master Engine doc** describes coach logic → its data lives in `coach_messages` and `coach_speak_log` (defined here).
+- **ServiceContracts doc** describes service interfaces → those services read/write the collections defined in Part 1A.
+- **Code audit** identified 0 of 6 services exist → this schema is what they'll talk to (Firestore in v1; Postgres only if migration is triggered).
 
-If a future change is proposed that conflicts with this schema, that change needs to update §3 (DDL), §4 (events) where relevant, §5 (relationships), and §9 (queries) together. They reference each other.
+If a future change is proposed that conflicts with this schema, the change needs to update both tracks (Part 1A for Firestore, Parts 3–9 for Postgres-future) so both stay coherent.
 
-If you ship it well, you have a database that's built for the *shape* of Optivus — not retrofitted from a generic todo app. That's the bar.
+If you ship Optivus on Firestore using Part 1A correctly, you have a database that's built for the *shape* of Optivus — per-user, real-time, event-driven, offline-first. That's the v1 bar. The Postgres material is preserved for the day (which may never come) when you outgrow Firestore. Most apps don't.

@@ -17,6 +17,19 @@ The product is structured around six tabs: **Home, Routine, Tracker, Coach, Goal
 
 ---
 
+## Technical Constraints
+
+The product vision above is what Optivus aims to be. This section is the engineering reality v1 ships within. These constraints align product expectations with what the team can actually build, ship, and maintain.
+
+- **MVP built using Flutter + Firebase.** Single Flutter codebase targeting Android first. Firebase handles auth, Firestore for data, Crashlytics for monitoring. No custom backend in v1.
+- **Event-driven architecture.** Every user action emits an event. Streaks, mission rings, and analytics are all derived from the events log — not from independent counters that could drift out of sync.
+- **Offline-first support.** The app must function without a network connection for core flows (routine, habit logging, journaling). Writes queue locally and sync when network returns.
+- **AI coach is NOT part of MVP (phase 2).** v1 ships with rule-based notifications and fallback messages only. The full AI coach (Decision Engine + LLM-generated wording) is a phase-2 feature that builds on the event system once it is stable in production.
+
+These constraints can be revisited at the v2 planning cycle, but they are firm for v1.
+
+---
+
 ## 2. Problem Statement
 
 ### The pain we're solving

@@ -39,6 +39,56 @@ It is intentionally repetitive across services — that's the point. You should 
 Plus 1 special:
 - AuthService (thin wrapper around Firebase Auth — covered briefly at the end)
 
+### Service Architecture Rules (mandatory)
+
+Four rules govern how services interact. They are not suggestions. They are enforced by code review, and several are also enforced by Firestore security rules (§9). If a method violates any of them, that method is broken — fix it before merging.
+
+These rules are reinforced in detail across §8 (event payloads), §9 (Firestore access), and §11 (error handling). This section is the single place they are stated together.
+
+**Rule 1 — No service calls another service.**
+A method on `TaskService` never imports or calls a method on `HabitService`, `StreakService`, etc. Services are isolated. The dependency graph is a star: every service depends only on `EventService` (and Firestore, and FirebaseAuth). It never depends on a peer service.
+
+> Detailed enforcement: §9 "Service-layer enforcement rule" + Firestore access matrix.
+
+**Rule 2 — All cross-service communication goes through EventService.**
+When `TaskService.completeTask` finishes, it does not call `StreakService.extendStreak`. It emits `task_completed`. `StreakService` subscribes to `task_completed` and reacts. This is how the streak gets extended. The emitter does not know who is listening; the listener does not know who emitted.
+
+This is what makes the system testable, replaceable, and replayable. If a service ever needs to "update something belonging to another service," it instead emits an event and lets that other service react.
+
+> Detailed enforcement: §1.2 (`EventService.emit`) + §8 (event payload contracts).
+
+**Rule 3 — Every state-mutating method emits at least one event.**
+A method that writes to Firestore without emitting an event is forbidden. There are exactly two exceptions:
+- Pure-read methods (queries, streams) — they emit nothing because they mutate nothing
+- Internal write retries by the Firestore SDK itself — these are not "method calls" in the contract sense
+
+Every method definition in this document declares its emissions in one of two places:
+- A bolded **Emits** subsection (the preferred form), OR
+- An explicit "Emit X" step inside the **Behavior** list
+
+If neither is present on a state-mutating method, that's a documentation bug — fix this doc before writing the code. A method that mutates Firestore but appears to emit nothing means the event log is silently incomplete, which breaks every downstream listener.
+
+> Detailed enforcement: every method spec in §1.2, §2.2, §3.2, §4.2, §5.2, §6.2.
+
+**Rule 4 — No silent state changes.**
+Every change to user-visible data (a habit log appears, a task completes, a streak resets, a routine completes) must produce a corresponding event in the log. The user's data must be reconstructible from the event stream alone.
+
+There is one allowed exception: **intentional silent degradation when a permission or capability is missing.** Example: `NotificationService.scheduleForTask` silently no-ops if the user denied notification permission — that's a graceful failure of a capability, not a hidden state change. These exceptions are explicitly documented per method (search "silently" in this doc — there are 4 such cases).
+
+What is forbidden:
+- Mutating Firestore data without an event (would corrupt analytics, AI memory, replay)
+- Updating a counter or aggregate without emitting a delta event
+- Cleanup operations that delete data without an event recording the deletion
+- Any code path where the user's data state changes but `events_recent` shows no record of why
+
+> Detailed enforcement: §11.4 "What never throws" + §8 strict payload contracts.
+
+### Why these four rules
+
+Two reasons. First, they keep the architecture honest: as long as services only communicate via events, a service can be deleted, replaced, or rewritten without touching others. Second, they make the AI possible: the AI Coach reads the event stream to understand the user. If services bypass events to talk to each other directly, the AI sees an incomplete picture of the user's life — and the central promise of Optivus breaks.
+
+These rules are why this document is called "Contracts" and not "Code Style Guide." They are the agreement that lets the system stay coherent across many services, many engineers, and many years.
+
 ---
 
 ## 1. EventService
@@ -948,6 +998,19 @@ class AuthService {
 ## 8. Event payload contracts (strict)
 
 The single source of truth for what every event's payload looks like. Consumers MUST validate against these shapes; producers MUST match them exactly.
+
+### Strict payload rule (zero variation)
+
+Each event below has **exactly** the payload shape shown. No producer is permitted to:
+- Add an undocumented field ("we just need this one extra thing")
+- Omit a required field ("we don't have it right now, we'll skip it this time")
+- Rename a field ("cleaner name")
+- Change a field's type or unit ("seconds → minutes")
+- Embed nested objects with their own undocumented schemas
+
+If a producer needs a field that isn't in the contract, the contract changes first (PR to this doc), then the code. **The doc moves first.** Producers are validated at write time by `EventService.emit` against the registered schema; mismatches throw `EventValidationError` and the event is rejected.
+
+**Example of what this rule prevents.** v1 of the doc may say `task_completed` payload is `{taskId, plannedDurationMin, actualDurationMin, driftPct, ...}`. A drifting producer might emit `{task_id, duration_planned, duration_actual, drift}` because "those names are clearer." Any consumer reading the documented schema breaks. The streak service silently fails to extend, the AI's memory has gaps, the analytics dashboard shows wrong numbers. This rule is the seatbelt.
 
 ### Convention
 All payloads include the fields shown. Optional fields are marked `?`. Adding fields requires bumping `payloadVersion`.

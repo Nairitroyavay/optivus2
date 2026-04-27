@@ -84,6 +84,30 @@ Without this split, the events collection grows unbounded and Firestore costs be
 
 ### 2.1 Tech stack and rationale
 
+> **Backend at a glance**
+>
+> ```
+> Backend
+> ─────────────────────────────────────────────
+> Firebase Auth        →  user accounts (email + Google + Apple)
+> Cloud Firestore      →  source of truth for all user data
+> Cloud Functions      →  server-side logic, AI calls (Gemini),
+>                          scheduled jobs, webhook handlers
+> Cloud Scheduler      →  per-user time-zoned cron triggers
+> BigQuery             →  cold storage, analytics, AI training data
+> Firebase Cloud       →  push notifications (FCM)
+>   Messaging
+> ─────────────────────────────────────────────
+> ```
+>
+> **There is no separate REST/GraphQL API server.** Clients talk to
+> Firestore directly via the SDK. Cloud Functions handle anything
+> that must run server-side (AI calls because the API key cannot
+> ship to clients; scheduled jobs because devices can't be relied
+> on; webhook receivers; cross-user batch operations).
+>
+> The full tech stack including mobile, state management, and observability is in the table below.
+
 | Layer | Choice | Why |
 |---|---|---|
 | **Mobile** | Flutter (Android first, iOS later) | Single codebase, native performance, mature Firebase SDK |
@@ -160,6 +184,79 @@ The app itself follows a layered architecture:
 ```
 
 The local event bus is a `StreamController.broadcast()` that fires *immediately* after a Firestore write resolves. Listeners get the new event before Firestore's snapshot listeners (which add ~50ms round-trip). This is what makes the UI feel instant while still keeping Firestore as source of truth.
+
+### 2.5 Offline-first and failure handling — at a glance
+
+Both offline behavior and failure handling are first-class concerns, not afterthoughts. They are detailed in their own sections later in this document; the rules below are the headline contract that every module honors.
+
+**Offline-first contract**
+
+```
+Offline rules
+─────────────────────────────────────────────────────
+1. Firestore offline cache is enabled at app start.
+   All reads return last-synced data. No spinner on a read.
+
+2. Writes are queued automatically by the Firestore SDK.
+   When the device reconnects, queued writes flush in order.
+   The user does not see a "saving…" state — writes feel instant.
+
+3. The local EventBus fires every event locally, regardless of
+   network state. UI updates and same-app listeners react
+   immediately. Cloud Functions react when the underlying
+   Firestore write eventually syncs.
+
+4. Local notifications (alarms, routine reminders) are scheduled
+   on-device via AlarmManager. They fire even with the phone
+   in airplane mode for days.
+─────────────────────────────────────────────────────
+```
+
+Full detail in §8.1.
+
+**Failure handling contract**
+
+```
+What happens when something fails
+─────────────────────────────────────────────────────
+Firestore write fails (network, transient error)
+  → SDK retries with exponential backoff automatically
+  → Write stays in the local queue until success
+  → UI shows "Couldn't sync — retrying" only after 30s
+
+Firestore write fails (permission, schema rejection)
+  → SDK surfaces the error
+  → Local optimistic state is rolled back
+  → Toast: "Something didn't save — try again"
+  → Event is logged to Crashlytics
+
+Cloud Function fails
+  → Pub/Sub triggers retry up to 5x with backoff
+  → After 5 failures, message goes to dead-letter queue
+  → Alert fires to ops; data is recoverable from event log
+
+Event consumer fails (e.g. streak update mid-day-close)
+  → The day-close transaction is wrapped in a WriteBatch
+  → Either all writes succeed or all roll back
+  → Next app open replays from the event log (§5.3)
+
+LLM (Gemini) call fails
+  → CoachService falls back to rule-based fallback message
+  → User sees coherent text; no spinner, no error state
+  → See AI Master Engine §11 cost controls
+
+Device killed mid-flow
+  → Local queue persists across app restarts
+  → On next launch, queued writes flush before any new reads
+  → No data is silently dropped
+─────────────────────────────────────────────────────
+```
+
+Full retry semantics for Firestore writes in §8.2 (optimistic updates).
+Full event consistency model in §5.3 (event replay on app start).
+Full atomic-batch model for day-close in §5.4.
+
+**The invariant:** there is no failure mode in this system where the user loses data without the failure being either (a) retried successfully, (b) surfaced to them, or (c) recoverable from the event log. Silent data loss is a P0 incident.
 
 ---
 

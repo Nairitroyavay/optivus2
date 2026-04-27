@@ -40,6 +40,54 @@ The order of building matters. Per the audit, you need `EventService`, `HabitSer
 
 ---
 
+## Prerequisites — what must exist BEFORE you implement this spec
+
+This document describes a system that depends on infrastructure that **does not exist in the current codebase yet** (per the code audit). You cannot start implementing the AI engine until the items below are real. Trying to build the engine before its inputs exist produces a sophisticated mock that doesn't connect to anything.
+
+### Required services (must exist and be deployed)
+
+| Service | Status | Why this engine needs it |
+|---|---|---|
+| `EventService` | ❌ does not exist | The engine's only input. No events = nothing to react to. |
+| `HabitService` | ❌ does not exist | Emits `good_habit_logged`, `bad_habit_slip_logged` — half the rule triggers |
+| `TaskService` | ❌ does not exist | Emits `task_completed`, `task_abandoned` — drives missed-routine rules |
+| `StreakService` | ❌ does not exist | Emits `streak_milestone_reached`, `streak_broken` — drives celebration & rescue |
+| `RoutineService` | ❌ does not exist | Emits `routine_window_missed`, `routine_block_completed` |
+| `NotificationService` | ❌ does not exist | The engine produces messages but doesn't deliver them — NotificationService does |
+
+### Required Firestore collections (must be defined)
+
+| Collection | Purpose | Status |
+|---|---|---|
+| `events` (or `events_recent`) | The event log this engine subscribes to | ❌ not created |
+| `coach_messages/{uid}/messages` | Where coach messages land for the UI to render | ❌ not created |
+| `coach_speak_log/{uid}/log` | Audit trail of every engine decision | ❌ not created |
+| `ai_context_snapshots` | Long-term memory rows (per §6) | ❌ not created |
+| `ai_rules` | Optional — only if rules go to Firestore (recommended: keep in code) | n/a |
+
+### Required platform pieces
+
+| Piece | Status | Notes |
+|---|---|---|
+| Firebase project with real credentials | ❌ currently dummy values per audit | Blocks all server-side work |
+| Cloud Functions runtime enabled | ❌ not set up | See "What runs where" map below |
+| Anthropic API key (or Gemini key) in server-side env | ❌ currently client-side per audit P0-2 | P0 security fix before any LLM work |
+| Firestore security rules deployed | ❌ none in repo | Required before any data goes near production |
+
+### Build order (hard ordering)
+
+You cannot reorder these. Each phase produces something the next phase requires.
+
+1. **First:** `EventService` exists, can write events to Firestore, can stream events out. (See `Optivus_ServiceContracts.md` §1.)
+2. **Then:** `HabitService` + `TaskService` + `StreakService` + `RoutineService` exist, each emitting its events through `EventService`. (Same doc, §2–§5.)
+3. **Then:** `NotificationService` exists, can schedule and cancel local notifications. (Same doc, §6.)
+4. **Then:** Cloud Functions are set up (deployment map below) and the LLM key is server-side.
+5. **Then, and only then:** start implementing this AI Master Engine spec.
+
+If you are reading this spec and thinking "let me start with the rule engine" — stop. The rule engine has no events to react to until phases 1–4 are done. It will compile but won't fire. The audit Phase 1 build order in §11 of this doc assumes 1–4 are complete; phase numbering in §11 is **internal to the engine build**, not the whole-app build.
+
+---
+
 # Table of Contents
 
 1. **AI Rule Engine Architecture** — the full event → response pipeline
@@ -79,14 +127,14 @@ Every coach message in Optivus flows through this exact sequence. No shortcuts.
 ## 1.2 Each stage explained
 
 ### Stage 1 — Event Arrives
-Source: `EventService` Firestore stream OR local Dart timer (Watched Conditions, see §1.4) OR Cloud Scheduler (scheduled checks).
+Source: `EventService` Firestore stream OR local Dart timer (Watched Conditions, see §1.3) OR Cloud Scheduler (scheduled checks).
 
 Event structure (all events conform):
 ```json
 {
   "event_id": "evt_01HX...",
   "user_id": "uid_abc",
-  "type": "habit.bad_logged",
+  "type": "bad_habit_slip_logged",
   "timestamp": "2026-04-26T14:23:00+05:30",
   "metadata": { "habit": "cigarettes", "count": 1 },
   "schema_version": 1
@@ -106,7 +154,7 @@ A rule is *eligible* if all its conditions return true. Ineligible rules are dro
 ### Stage 4 — Priority Selection
 Among eligible rules, pick the one with the highest `rule.priority`. Ties broken by `rule.id` lexicographic order (deterministic).
 
-If no rule is eligible: emit no message. Log `coach.no_eligible_rule` for debugging.
+If no rule is eligible: emit no message. Log `coach_no_eligible_rule` for debugging.
 
 ### Stage 5 — Context Builder
 Build the user-specific data that will be injected into the prompt. See §6 for the full schema. This is *richer* than the snapshot used for gating — includes recent message history, identity tags, time-of-day phrasing.
@@ -136,7 +184,53 @@ The engine doesn't care where events come from, but the build does:
 
 Reactive is the dominant path — most messages.
 
-## 1.4 What the engine does NOT do
+## 1.4 What runs where — deployment map
+
+The engine is a hybrid: some logic runs on the user's phone, some runs on Firebase Cloud Functions. This map is the canonical answer to "which Cloud Function do I need to write?" An engineer reading other parts of this doc and seeing "the engine does X" should refer back here for *where* X actually executes.
+
+### On-device (Flutter app, Dart)
+
+| Component | Why on-device |
+|---|---|
+| Decision Engine (rule matching, priority filter, gating) | <30s latency required; can't afford a network round-trip per event |
+| Watched-condition timer (60s tick) | Needs the user's local clock and battery state |
+| Hive boxes: `coach_budget`, `coach_last_spoke`, `coach_deferred` | Survive offline; never blocked by server |
+| Stress/crisis marker matching (regex on user text) | Privacy — user's raw chat text never leaves the device for routing decisions |
+| Output Validator (anti-pattern checks, repetition checks) | Runs on LLM output before display — no need for server |
+| Local notification scheduling | Works offline; alarms must fire in airplane mode |
+
+### On Cloud Functions (Firebase, server-side)
+
+| Cloud Function | Trigger | What it does | Why server-side |
+|---|---|---|---|
+| `cf_aiGenerate` | HTTPS callable from the app | Holds the Claude/Gemini API key; calls the LLM; returns generated text | API key cannot ship to clients (P0 audit issue). Per-user rate limits enforced here. |
+| `cf_morningBrief` | Pub/Sub schedule, hourly | For each user whose `wake_time + 5min` matches now in their timezone, emits a `morning_brief` event into their `events` collection | Devices can't be relied on to wake at exact times; server cron is reliable |
+| `cf_middayPulse` | Pub/Sub schedule, hourly | For each user at their midpoint-of-day, checks mission ring; if <30%, emits a `midday_pulse_low_completion` event | Same reliability reason |
+| `cf_dayClose` | Pub/Sub schedule, hourly | For each user whose `sleep_time − 30min` matches now, runs the day-close transaction (streak rollup + summary + new long-term memory row) | Atomic transaction across collections; can't be done client-side reliably |
+| `cf_inactivityCheck` | Pub/Sub schedule, hourly | Finds users with last_event > 24h or 48h ago; emits `user_inactive_24h` or `user_inactive_48h` | The user's app isn't running — only a server can detect their absence |
+| `cf_weeklyMemorySummary` | Pub/Sub schedule, weekly | For each user on their Sunday 23:55 local, generates one row in `ai_context_snapshots` (per §6 long-term memory) | Server-driven cadence + needs LLM access |
+| `cf_costMonitor` | Pub/Sub schedule, daily | Aggregates `coach_speak_log` for the day's total LLM spend; updates `ai:monthly_spend_usd`; toggles `ai:global_kill_switch` if at threshold | Cost controls only meaningful when computed across all users |
+| `cf_crisisAlert` | Firestore trigger on Tier 2/3 crisis events | Sends an internal Slack/email alert to founder/ops with `user_id` only (no PII) | Cannot trust client to deliver alerts reliably; needs to fan out to off-app channels |
+
+### What runs in Redis
+
+| Key | Owner | Purpose |
+|---|---|---|
+| `coach:{uid}:cooldown:{topic}` | `cf_aiGenerate` writes after each call; engine reads | Per-topic cooldown enforcement across devices for the same user |
+| `ai_tokens:{uid}:{date}` | `cf_aiGenerate` increments | Daily token budget per user |
+| `ai:monthly_spend_usd` | `cf_costMonitor` writes | Global cap counter |
+| `ai:global_kill_switch` | `cf_costMonitor` writes; `cf_aiGenerate` reads | Hard kill switch |
+| `crisis:{uid}:trigger_count_7d/14d` | `cf_aiGenerate` increments on crisis match | Tier escalation counters |
+
+### What this means for the build
+
+- **Without Cloud Functions, the AI engine cannot ship.** Specifically: `cf_aiGenerate` is the gateway to the LLM, and shipping the API key to the client is a P0 security issue (per audit).
+- **All scheduled rules (morning brief, day close, inactivity) require Cloud Functions.** A purely on-device engine can do reactive and watched conditions, but cannot do scheduled ones reliably — the user's phone might be off.
+- **The simplest viable subset is `cf_aiGenerate` alone.** That gives you reactive coaching (slips, milestones, missed routines from Watched conditions). Scheduled flows can be deferred until Phase 5 of the build (§11).
+
+A v1 deployment with only `cf_aiGenerate` is a real product. A v1.1 adds the scheduled functions. A v1.2 adds the cost/safety functions. Don't try to ship all 8 Cloud Functions in week 1.
+
+## 1.5 What the engine does NOT do
 
 To keep the brain narrow:
 
@@ -160,7 +254,7 @@ interface Rule {
   description: string;           // human-readable for debugging
 
   // Trigger
-  event: string;                 // 'habit.bad_logged' or '*' for wildcard
+  event: string;                 // 'bad_habit_slip_logged' or '*' for wildcard
   conditions: Condition[];       // ALL must be true (AND semantics)
 
   // Routing
@@ -217,7 +311,7 @@ Three deliberate choices worth flagging:
 const rule_slip_cigarette_strict_on_track = Rule(
   id: 'slip_cigarette_strict_on_track',
   description: 'First cigarette today, after a clean streak, user on track',
-  event: 'habit.bad_logged',
+  event: 'bad_habit_slip_logged',
   conditions: [
     {field: 'metadata.habit', op: 'eq', value: 'cigarettes'},
     {field: 'metadata.count_today', op: 'eq', value: 1},
@@ -279,7 +373,7 @@ Each transformation has three layers:
 const rule_missed_gym_one_off = Rule(
   id: 'missed_gym_one_off',
   description: 'User missed a single gym session, no recent pattern',
-  event: 'routine.window_missed',
+  event: 'routine_window_missed',
   conditions: [
     {field: 'metadata.routine', op: 'eq', value: 'gym'},
     {field: 'metadata.completion', op: 'eq', value: 0},
@@ -334,7 +428,7 @@ const rule_missed_gym_one_off = Rule(
 const rule_instagram_overuse_first_breach = Rule(
   id: 'instagram_overuse_first_breach',
   description: 'User crossed daily Instagram limit, first time today',
-  event: 'screen_time.exceeded',
+  event: 'screen_time_exceeded',
   conditions: [
     {field: 'metadata.app', op: 'eq', value: 'instagram'},
     {field: 'metadata.minutes_today', op: 'gte', value: 240},  // 4h
@@ -390,7 +484,7 @@ const rule_instagram_overuse_first_breach = Rule(
 const rule_smoking_pattern_4_cigs = Rule(
   id: 'smoking_pattern_4_cigs',
   description: 'User logged 4th cigarette today — pattern emerging',
-  event: 'habit.bad_logged',
+  event: 'bad_habit_slip_logged',
   conditions: [
     {field: 'metadata.habit', op: 'eq', value: 'cigarettes'},
     {field: 'metadata.count_today', op: 'gte', value: 4},
@@ -442,29 +536,29 @@ Below is the complete production rule book covering every behavioral case the co
 
 ```
 RULE A1 — single miss, on track
-WHEN routine.window_missed AND completion == 0 AND user_state == 'on_track'
+WHEN routine_window_missed AND completion == 0 AND user_state == 'on_track'
 PRIORITY 3 (awareness)
 ACTION: open inquiry, offer reschedule (see Case 1 above for gym variant)
 
 RULE A2 — single miss, slipping
-WHEN routine.window_missed AND completion == 0 AND user_state == 'slipping'
+WHEN routine_window_missed AND completion == 0 AND user_state == 'slipping'
 PRIORITY 2 (behavior)
 ACTION: note the pattern gently, ask if routine timing is wrong
 SUGGEST: [Adjust time], [Skip this week], [Talk to me]
 
 RULE A3 — single miss, relapsing or recovering
-WHEN routine.window_missed AND completion == 0 AND user_state IN ['relapsing','recovering']
+WHEN routine_window_missed AND completion == 0 AND user_state IN ['relapsing','recovering']
 PRIORITY 3 (awareness)
 ARCHETYPE: forgiving (forced)
 ACTION: no judgment; offer pause; ask what's been hardest
 SUGGEST: [Pause routine 7 days], [Talk to me]
 
 RULE A4 — partial completion
-WHEN routine.window_missed AND completion >= 0.5
+WHEN routine_window_missed AND completion >= 0.5
 DO NOT SPEAK. Partial wins are wins.
 
 RULE A5 — third consecutive miss
-WHEN routine.window_missed AND streaks.routine_miss_3day >= 3
+WHEN routine_window_missed AND streaks.routine_miss_3day >= 3
 PRIORITY 2 (escalates from 3)
 ACTION: routine isn't fitting their life — offer to redesign or pause
 SUGGEST: [Edit routine], [Pause], [Talk to me]
@@ -474,13 +568,13 @@ SUGGEST: [Edit routine], [Pause], [Talk to me]
 
 ```
 RULE B1 — small streak (7, 14, 30 days)
-WHEN streak.milestone WHERE value IN [7, 14, 30] AND user_state == 'on_track'
+WHEN streak_milestone_reached WHERE value IN [7, 14, 30] AND user_state == 'on_track'
 PRIORITY 3 (awareness, but positive)
 ARCHETYPE: celebratory (overrides accountability)
 ACTION: name the habit, name the count, name the next milestone
 
 RULE B2 — big streak (60, 90, 100, 365 days)
-WHEN streak.milestone WHERE value IN [60, 90, 100, 365]
+WHEN streak_milestone_reached WHERE value IN [60, 90, 100, 365]
 PRIORITY 2 (behavior — identity-anchoring matters)
 ARCHETYPE: celebratory + identity reinforcement
 ACTION: anchor to identityTag — "A {tag} person doesn't do {behavior}, and you've proven that for {N} days"
@@ -492,7 +586,7 @@ ACTION: one sentence. "Today was clean. Sleep well."
 SUGGEST: []
 
 RULE B4 — celebration crowding
-WHEN streak.milestone fires AND topic 'celebration' spoken in last 4h
+WHEN streak_milestone_reached fires AND topic 'celebration' spoken in last 4h
 DEFER to morning brief next day. No stacked praise.
 ```
 
@@ -500,30 +594,30 @@ DEFER to morning brief next day. No stacked praise.
 
 ```
 RULE C1 — first slip after clean streak (cigarettes/junk/scrolling)
-WHEN habit.bad_logged AND clean_streak >= 1 day AND count_today == 1
+WHEN bad_habit_slip_logged AND clean_streak >= 1 day AND count_today == 1
 PRIORITY 2 (behavior)
 ACTION: acknowledge specifically, ask trigger, offer next-time strategy
 
 RULE C2 — escalating same-day count (3+ in 4h)
-WHEN habit.bad_logged AND count_today >= 3 AND time_since_last < 7200
+WHEN bad_habit_slip_logged AND count_today >= 3 AND time_since_last < 7200
 PRIORITY 1 (critical — safety net)
 BYPASSES daily speak budget
 ARCHETYPE: forgiving regardless of accountability
 ACTION: pattern alert; ask trigger; offer 30-min lockout
 
 RULE C3 — heavy scrolling
-WHEN screen_time.exceeded AND minutes_session > 90 AND app IN user_blocked_apps
+WHEN screen_time_exceeded AND minutes_session > 90 AND app IN user_blocked_apps
 PRIORITY 2 (behavior)
 ACTION: name app + time, ask if intentional, offer break (see Case 2 production rule)
 
 RULE C4 — junk food after eating routine miss
-WHEN habit.bad_logged WHERE habit='junk_food' AND last_eating_routine_completed == false
+WHEN bad_habit_slip_logged WHERE habit='junk_food' AND last_eating_routine_completed == false
 PRIORITY 2 (behavior)
 ARCHETYPE: forgiving (forced — food shame backfires)
 ACTION: connect dots gently; offer to schedule next real meal
 
 RULE C5 — eating disorder safety lock
-WHEN habit.bad_logged AND habit IN food-related AND user.eating_disorder_flag == true
+WHEN bad_habit_slip_logged AND habit IN food-related AND user.eating_disorder_flag == true
 DO NOT SPEAK. Skip the entire C-series for food. ALWAYS.
 This rule overrides everything else in Case C.
 ```
@@ -532,7 +626,7 @@ This rule overrides everything else in Case C.
 
 ```
 RULE D1 — stress markers in chat message
-WHEN chat.user_message AND text contains §6.1 STRESS_MARKERS
+WHEN chat_user_message AND text contains §6.1 STRESS_MARKERS
 PRIORITY 1 (critical — emotional)
 ARCHETYPE: forgiving (forced)
 ACTION: validate first, reflect back, ask "vent or plan?"
@@ -555,7 +649,7 @@ This is not a bubble — it's an inline hint.
 
 ```
 RULE E1 — high-confidence crisis marker
-WHEN chat.user_message AND text matches §6.2 CRISIS_MARKERS_HIGH
+WHEN chat_user_message AND text matches §6.2 CRISIS_MARKERS_HIGH
 PRIORITY 1 (critical — overrides ALL gating)
 ARCHETYPE: crisis (special, see §10)
 ACTION: fixed non-LLM message:
@@ -573,12 +667,12 @@ Re-enable after 24h OR after user types "I'm ok" / "I want my coach back".
 
 ```
 RULE F1 — 24h inactive
-WHEN user.inactive_24h fires (server-generated)
+WHEN user_inactive_24h fires (server-generated)
 PRIORITY 4 (passive)
 ACTION: low-key check-in, no guilt, sent as push notification + queued chat bubble
 
 RULE F2 — 48h inactive (escalation)
-WHEN user.inactive_48h fires AND F1 already fired
+WHEN user_inactive_48h fires AND F1 already fired
 ACTION: chat bubble only, no push (push limit: 1 per 72h max)
 ```
 
@@ -647,7 +741,7 @@ The opposite — when the user is climbing out of a bad week:
 const rule_recovery_acknowledgment = Rule(
   id: 'recovery_acknowledgment',
   description: 'User on bad streak last week, last 2 days improving',
-  event: 'day.closed',
+  event: 'day_closed',
   conditions: [
     {field: 'user_state', op: 'eq', value: 'recovering'},
     {field: 'derived.consecutive_recovery_days', op: 'gte', value: 2},
@@ -685,7 +779,7 @@ Same routine, missed 4+ times in 7 days:
 const rule_stuck_routine = Rule(
   id: 'stuck_routine',
   description: 'Same routine missed 4+ days in last 7 — design issue',
-  event: 'routine.window_missed',
+  event: 'routine_window_missed',
   conditions: [
     {field: 'derived.routine_miss_count_7d', op: 'gte', value: 4},
     {field: 'topics_spoken_last_24h', op: 'nin', value: ['stuck_routine']},
@@ -728,6 +822,94 @@ Antigravity: implement these as pure functions in `context_builder.dart`. They t
 ---
 
 # Part 5 — Priority & Cooldown Logic
+
+## 5.0 Master kill switch — `coachEnabled`
+
+Before any priority, cooldown, budget, or rule check happens, the engine evaluates one boolean: `users/{uid}/profile/main.coachEnabled`.
+
+**If `coachEnabled === false`:**
+
+```
+short-circuit the engine. No rule evaluation.
+no rule firing. no LLM call. no event published. no notification scheduled.
+silently no-op — do NOT log this as a "drop" with a reason.
+return immediately.
+```
+
+This is **gate zero** — it runs before everything else in this section. The `coachEnabled` check is the first line of the engine's `evaluate()` function:
+
+```dart
+Future<DecisionResult> evaluate(AppEvent event, ContextSnapshot ctx) async {
+  // Gate 0 — master kill switch
+  if (ctx.identity.coach_enabled == false) {
+    return DecisionResult.silenced;  // not "dropped" — silenced, by user choice
+  }
+  // ... only then proceed to priority filter, gating, etc.
+}
+```
+
+### What `coachEnabled = false` means
+
+When the user disables the coach in Profile → Settings:
+
+| Behavior | When `coachEnabled = true` | When `coachEnabled = false` |
+|---|---|---|
+| Reactive rule firing | Normal | Suppressed |
+| Watched-condition checks | Run normally | Skip evaluation |
+| Scheduled checks (morning brief, midday pulse, day close) | Run | **Cloud Function checks `coach_enabled` first; skips user if false** |
+| LLM calls | Made via `cf_aiGenerate` | Never initiated |
+| Coach push notifications | Scheduled per rules | Cancelled; new ones not scheduled |
+| In-app coach message bubbles | Rendered | None appear |
+| User-initiated chat (user types in CoachTab) | Coach replies via LLM | Coach replies "Coach is paused. Re-enable in Profile → Settings to continue." (Static text. No LLM call.) |
+| Event log writes | Continue normally | Continue normally — events are independent of coach |
+| Streaks, mission ring, tracker | Continue normally | Continue normally — these are not coach features |
+
+**The off switch turns off the coach, not the app.** Habit logging, streak tracking, routine completion, mission ring — all continue working. Only the coach's voice is silenced.
+
+### The one exception — crisis
+
+There is exactly one carve-out. **Crisis E1 (priority-1 self-harm marker detection) still fires even when `coachEnabled = false`.** The reasoning:
+
+1. The user disabled the coach for general nagging or because they wanted space.
+2. They did not consent to be ignored if they type a self-harm phrase.
+3. The Crisis E1 message is a static, non-LLM-generated safety referral (iCall hotline) — it is not "coaching."
+4. After firing, the standard E2 silence lock applies (24h additional silence, no proactive coaching).
+
+**Crisis E2/E3 escalation tiers also fire** when `coachEnabled = false` if a Tier 2 or Tier 3 trigger would otherwise apply. Same reasoning — the user did not consent to silence for safety pathways.
+
+This carve-out is the *only* one. There are no others. Everything else respects the user's choice.
+
+### How to re-enable
+
+The user re-enables coach in Profile → Settings → Coach → toggle on. On re-enable:
+
+- `coachEnabled` flips to `true`
+- A `coach_re_enabled` event is emitted (low-priority, informational)
+- The engine resumes normal operation on the next event arrival
+- **No backlog replay.** Events that arrived during the off period are not retroactively evaluated. The coach starts fresh from the moment of re-enable.
+- A welcome-back message *may* be queued for the morning brief, but the user can disable that too via "no welcome back" toggle nearby.
+
+### Why this is a separate section, not just a flag
+
+`coachEnabled` is the user's most fundamental control over the AI Coach. Burying it as a one-line check inside a priority filter or a Q&A item misframes its importance. It is a top-level system property, on par with `accountabilityMode` and `coachStyle`.
+
+This section makes the contract explicit:
+- **One flag, complete silence** (with the documented Crisis carve-out).
+- **No partial state.** There is no "coach disabled but notifications still come through" or "coach disabled but Cloud Functions still call the LLM."
+- **Trust is preserved.** A user who toggles off and sees the coach speak anyway loses trust permanently. The implementation must be airtight on day one.
+
+### Implementation checklist
+
+For Antigravity when implementing this:
+
+- [ ] `evaluate()` checks `coachEnabled` as Gate 0, returns immediately if false
+- [ ] Watched-conditions timer skips evaluation if `coachEnabled` is false (read once per tick from cached `ContextSnapshot`)
+- [ ] Cloud Functions `cf_morningBrief`, `cf_middayPulse`, `cf_dayClose`, `cf_inactivityCheck`, `cf_weeklyMemorySummary` all read `users/{uid}/profile/main.coachEnabled` first; skip the user if false
+- [ ] When `coachEnabled` flips from true → false, run a one-shot Cloud Function that cancels all `scheduled_notifications` with `source = 'coach'` for that user (status pending or sent-not-yet-delivered)
+- [ ] CoachTab UI checks `coachEnabled` and renders a "Coach is paused" placeholder instead of the chat composer when false (with one-tap re-enable)
+- [ ] Crisis E1/E2/E3 explicitly bypass the kill switch — unit tests confirm this carve-out works
+
+---
 
 ## 5.1 Priority scale
 
@@ -893,8 +1075,8 @@ The engine builds a `ContextSnapshot` before every decision. This is what gets e
 
   "today": {
     "events": [
-      {"type": "habit.bad_logged", "habit": "cigarettes", "ts": "11:42"},
-      {"type": "routine.completed", "routine": "morning_skin_care", "ts": "07:30"}
+      {"type": "bad_habit_slip_logged", "habit": "cigarettes", "ts": "11:42"},
+      {"type": "routine_block_completed", "routine": "morning_skin_care", "ts": "07:30"}
     ],
     "habit_logs": {"cigarettes": 1, "scroll_minutes": 47},
     "routine_completion": 0.45,
@@ -1258,10 +1440,11 @@ Could rules live in Firestore, allowing remote tuning?
 **Recommendation:** code. A bad rule shouldn't be shippable without code review. Rules change with releases, not at runtime.
 
 ### Q3. How does the user turn the coach off?
-Profile setting `coachEnabled: bool` (default true). When false, all priorities < 1 are suppressed. Crisis (priority-1 + crisis archetype) still fires. Needs to be added to `UserModel` (which currently doesn't even hold these fields per audit).
+
+**Resolved (per §5.0):** Profile setting `users/{uid}/profile/main.coachEnabled` (boolean, default `true`). When `false`, the engine short-circuits at Gate 0 — no rule firing, no LLM calls, no notifications. Crisis E1/E2/E3 are the only carve-out. Full contract in §5.0 including the implementation checklist for Antigravity.
 
 ### Q4. Replies to coach messages — new flow or chat flow?
-**Recommendation:** reply enters chat as `chat.user_message` event, gets evaluated by D1 (stress) and E1 (crisis). Otherwise normal chat reply via `GeminiService.startChat` (or Claude Haiku — see Q5). No new flow.
+**Recommendation:** reply enters chat as `chat_user_message` event, gets evaluated by D1 (stress) and E1 (crisis). Otherwise normal chat reply via `GeminiService.startChat` (or Claude Haiku — see Q5). No new flow.
 
 ### Q5. Claude or Gemini in production?
 Spec is written for Claude. Existing code uses Gemini. Switching is one file (the LLM client) but requires:

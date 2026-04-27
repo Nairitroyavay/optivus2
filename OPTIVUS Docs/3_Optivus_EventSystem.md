@@ -37,6 +37,24 @@ The app is a **publish-subscribe event log**. The UI publishes events when the u
 
 The event log is **append-only**. Nothing is ever mutated or deleted. Corrections are new events, not edits. State you see on screen is always derived from the event log by replaying events through reducers — never stored as the source of truth.
 
+### Storage layout — `events` vs `events_recent`
+
+The event log is implemented as **two collections**, with clearly separated roles. This is not duplication — they serve different read patterns and have different lifetimes.
+
+| Collection | Role | Contains | Lifetime | Read by |
+|---|---|---|---|---|
+| `events` | **Source of truth.** The append-only audit log. Every event ever fired lives here forever (until the user deletes their account). | All events, full payload | Forever | Replay engines, analytics, AI memory rebuild, audit, debugging |
+| `events_recent` | **Fast UI cache.** The last 50–100 events per user, ready to read in one query. | Last N events for that user, full payload | Trimmed when older than 7 days OR exceeds 100 entries (whichever is sooner) | UI screens (Home recent activity, Coach context window), real-time listeners |
+
+**Hard rules for the two-collection model:**
+
+1. **Writes go to both.** Every event written to `events` is mirrored to `events_recent` in the same transaction. They never get out of sync.
+2. **`events_recent` is disposable.** If it gets corrupted or lost, it can be rebuilt from `events` in one batch job. It is **never** the place to recover history from.
+3. **Code reads `events_recent` for live UI**, `events` for everything else (replays, analytics, AI memory bootstrap, "show me everything from October").
+4. **`events_recent` is per-user.** It is keyed `events_recent/{user_id}/...` and capped per user. The full `events` table is global (partitioned by user but queryable across users for analytics).
+
+This split is the difference between "the home screen loads in 200ms" and "the home screen loads in 4 seconds because it just queried the entire user history." It also means analytics queries running over the full history don't touch the hot path.
+
 ---
 
 ## 2. Event taxonomy & naming rules
@@ -52,20 +70,60 @@ The event log is **append-only**. Nothing is ever mutated or deleted. Correction
 - **Lowercase, snake_case**, no abbreviations (`habit` not `hbt`, `notification` not `notif`)
 - Names are **stable forever**. Payloads can grow but never break backwards compatibility — version the payload (`payload_v: 2`) instead of renaming the event.
 
+### Naming is authoritative — no dots, no exceptions
+
+This document is the **single source of truth** for every event name in the Optivus system. Any other document, code file, or spec that names an event must match the format above exactly.
+
+**Forbidden formats** (sometimes seen in earlier drafts of other docs):
+- ❌ `user.day_closed` — dotted/dot-namespaced. Wrong.
+- ❌ `User.DayClosed` — PascalCase. Wrong.
+- ❌ `userDayClosed` — camelCase. Wrong.
+
+**Correct format:**
+- ✅ `day_closed` — domain prefix already implicit; if disambiguation is needed, the domain becomes part of the name itself (e.g., `user_day_closed` only if there's also a `routine_day_closed`).
+
+If you see a dotted event name anywhere — in the AI Master Engine doc, the Database Schema doc, in code, or in a code review — it is a bug to be corrected against this doc, not the other way around. The Master Event Catalog (Section 3) is the canonical list. If an event isn't in the catalog, it does not exist.
+
 ### Event envelope (every event has these fields)
 
 ```
 {
-  event_id:    UUID                    // unique per event
+  event_id:    UUID                    // unique per event — idempotency key
   event_name:  string                  // e.g. "task_completed"
   user_id:     string                  // owner
   ts:          ISO-8601 timestamp      // when it happened
   device_id:   string                  // which device emitted it
   source:      "ui" | "system" | "ai"  // who emitted it
+  priority:    "low" | "medium"        // optional — emitter hint, default "medium"
+             | "high" | "critical"      //          see "Priority semantics" below
   payload_v:   integer                 // schema version
   payload:     object                  // event-specific data
 }
 ```
+
+#### Priority semantics
+
+`priority` is an **emitter-set hint**, not a binding contract. Most events should leave it at the default `medium` and let downstream consumers (rule engine, notification service) decide what to do.
+
+**When to set it explicitly:**
+
+| Value | When to use | Example |
+|---|---|---|
+| `critical` | Event represents a safety or health concern that downstream consumers must not drop or batch-defer | `bad_habit_slip_logged` with `count_today >= 3` AND `time_since_last < 2h` (the AI safety-net case) |
+| `high` | Event is time-sensitive — should bypass normal cooldown/budget limits | `streak_broken` for streaks > 30 days; first slip after a long clean streak |
+| `medium` | Default. Normal coach evaluation flow. | Most habit logs, task completions, routine completions |
+| `low` | Background informational events that the AI does not need to react to in real time | `notification_sent`, `device_unlock`, internal heartbeat events |
+
+**Hard rules:**
+
+1. **Priority is not authority.** The Coach Decision Engine still applies its own rule-based priority (per AI Master Engine §1.2 priority ladder). An event marked `priority: critical` does *not* automatically produce a critical-priority coach message — the rule engine evaluates and may still suppress it if cooldowns or budgets apply. The exception is `priority: critical` events which bypass speak budget but still respect crisis silence locks.
+2. **Notification tier ≠ event priority.** Notifications have their own `tier: 1–6` field (per Database Schema §1A.5 `scheduled_notifications`). Notification tier is set by the rule that scheduled the notification, not inherited from the event. They are decoupled by design.
+3. **Most events should be `medium`.** If you find yourself setting `high` or `critical` on >10% of emitted events, the gradient is wrong — either lower the bar for `medium` or your event taxonomy is conflating signal types.
+4. **The AI uses `priority` for filtering, not routing.** When the AI Memory builder loads recent events for context, it can filter `priority >= medium` to skip the noise. But routing (which rules fire on which events) is by `event_name`, not priority.
+
+#### Idempotency rule (reinforced from §16.6)
+
+Every event MUST carry an `event_id`. The server MUST reject duplicate `event_id` writes — see the full contract in §16.6. This is repeated here because the event envelope is the most-read part of this doc, and the idempotency rule is the most consequential. **A duplicate event corrupts streaks, fires AI triggers twice, and breaks analytics.** The contract is non-negotiable.
 
 ### Domains
 
@@ -874,10 +932,27 @@ This is enforced at the UI layer via a curated string pack — copywriters work 
 - All events are written to a local event store first, then synced
 - Local store survives app kills and reboots
 - On reconnect, sync pushes events in chronological order
-- Server reconciles by event_id (idempotent) — duplicate events are dropped
 - If a local event references a server-only ID that doesn't exist yet, it's queued in a pending bucket and retried after sync
 
-### 16.6 Clock drift
+### 16.6 Idempotency contract
+
+Every event MUST carry an `event_id` (UUID, generated at the moment the action happened on the device — not at send time). This `event_id` IS the idempotency key. There is no separate `idempotency_id` field; using the `event_id` itself avoids the bug where the two get out of sync.
+
+**The contract:**
+
+1. **Client side (writer):** generate `event_id` at the action moment. Persist it to the local store before any network attempt. On retry — whether after network failure, app crash, or the user reopening the app days later — reuse the same `event_id`. Never regenerate.
+2. **Server side (reader):** treat `event_id` as a unique key. Use Postgres `INSERT ... ON CONFLICT (event_id) DO NOTHING` (or the Firestore equivalent: a transaction that checks existence first). The second arrival of the same `event_id` is a no-op — the server returns success but does not duplicate the row, does not re-fire listeners, does not recompute derived state.
+3. **Listeners:** must themselves be idempotent against `event_id`. Streak service, mission ring, AI memory — all of them check "have I already processed this event_id?" before acting. The ledger of processed event_ids per listener can live in Redis with a 30-day TTL.
+
+**Why this rule is non-negotiable:** without idempotency, a network blip during a `task_completed` write turns into a double-counted task, an incorrectly-doubled streak, and a coach message that fires twice. Optivus is fully event-driven, so a duplicate event corrupts every downstream system at once. This rule is the seatbelt.
+
+**What this prevents:**
+- Retry storms creating duplicate logs
+- App-crash-during-send creating ghost events on next launch
+- The user double-tapping a button creating two `task_completed` events (the UI dedupes, but the contract catches it server-side too)
+- Two devices logged into the same account both flushing their offline queues
+
+### 16.7 Clock drift
 
 User changes phone time, travels timezones, or has a wrong clock.
 - Every event captures both `device_local_ts` and `server_ts` (set by Firestore on write)
@@ -885,13 +960,13 @@ User changes phone time, travels timezones, or has a wrong clock.
 - `device_local_ts` is used only for UI display
 - If `|device_local_ts − server_ts| > 1 hour` → flag the user record and use server time exclusively until they sync
 
-### 16.7 The user uninstalls and reinstalls
+### 16.8 The user uninstalls and reinstalls
 
 - On reinstall, login restores everything: identity profile, biometrics, schedule, all events, all streaks (paused at the install moment)
 - A `comeback_initiated` event fires if gap ≥ 3 days
 - All settings are restored from the cloud — the user does **not** redo onboarding
 
-### 16.8 The user deletes their account
+### 16.9 The user deletes their account
 
 - `account_deleted` event fires
 - 7-day soft-delete window: user can re-login to restore
