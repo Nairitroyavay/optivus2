@@ -13,8 +13,13 @@ import 'package:flutter/material.dart';
 /// The widget is self-contained – it drives its own timers.
 class WavyLoadingIndicator extends StatefulWidget {
   final double size;
+  final Future<void>? operation;
 
-  const WavyLoadingIndicator({super.key, this.size = 40});
+  const WavyLoadingIndicator({
+    super.key,
+    this.size = 40,
+    this.operation,
+  });
 
   @override
   State<WavyLoadingIndicator> createState() => _WavyLoadingIndicatorState();
@@ -80,12 +85,11 @@ class _WavyLoadingIndicatorState extends State<WavyLoadingIndicator>
       ),
     );
 
-    // Switch to Phase 2 after the auth call would finish (driven externally
-    // by the parent replacing this widget, but we keep a local demo timer
-    // so it works standalone too).
-    Future.delayed(const Duration(seconds: 13), () {
-      if (mounted) _triggerSuccess();
-    });
+    if (widget.operation != null) {
+      widget.operation!.then((_) {
+        if (mounted) _triggerSuccess();
+      }).catchError((_) {});
+    }
   }
 
   void _triggerSuccess() {

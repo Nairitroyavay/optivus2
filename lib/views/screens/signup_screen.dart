@@ -75,6 +75,7 @@ class _SignupScreenState extends State<SignupScreen>
   bool _obscurePass    = true;
   bool _obscureConfirm = true;
   bool _loading        = false;
+  Future<void>? _authOperation;
   bool _showRules      = false; // shows rules panel once user starts typing password
   String? _errorMsg;
 
@@ -148,14 +149,19 @@ class _SignupScreenState extends State<SignupScreen>
       return;
     }
 
-    setState(() { _loading = true; _errorMsg = null; });
+    final authCall = FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email:    _emailCtrl.text.trim(),
+      password: _passCtrl.text,
+    );
+
+    setState(() { 
+      _loading = true; 
+      _errorMsg = null;
+      _authOperation = authCall.then((_) {});
+    });
 
     try {
-      final credential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-        email:    _emailCtrl.text.trim(),
-        password: _passCtrl.text,
-      );
+      final credential = await authCall;
 
       // Update display name
       await credential.user?.updateDisplayName(_nameCtrl.text.trim());
@@ -163,6 +169,7 @@ class _SignupScreenState extends State<SignupScreen>
       // GoRouter redirect handles navigation after auth state changes.
     } on FirebaseAuthException catch (e) {
       setState(() {
+        _loading = false;
         switch (e.code) {
           case 'email-already-in-use':
             _errorMsg = 'An account with this email already exists.';
@@ -181,9 +188,10 @@ class _SignupScreenState extends State<SignupScreen>
         }
       });
     } catch (_) {
-      setState(() => _errorMsg = 'Something went wrong. Please try again.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _errorMsg = 'Something went wrong. Please try again.';
+      });
     }
   }
 
@@ -353,7 +361,7 @@ class _SignupScreenState extends State<SignupScreen>
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: _loading
-                    ? _LoadingButton()
+                    ? _LoadingButton(operation: _authOperation)
                     : AppButton(
                         text: 'Create Account',
                         onPressed: _createAccount,
@@ -550,6 +558,10 @@ class _ErrorBanner extends StatelessWidget {
 // LOADING BUTTON — glass pill with wavy spinner, mirrors AppButton dimensions
 // ─────────────────────────────────────────────────────────────────────────────
 class _LoadingButton extends StatelessWidget {
+  final Future<void>? operation;
+
+  const _LoadingButton({this.operation});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -583,8 +595,8 @@ class _LoadingButton extends StatelessWidget {
               width: 1.5,
             ),
           ),
-          child: const Center(
-            child: WavyLoadingIndicator(size: 36),
+          child: Center(
+            child: WavyLoadingIndicator(size: 36, operation: operation),
           ),
         ),
       ),

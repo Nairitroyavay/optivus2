@@ -36,6 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool    _obscurePass = true;
   bool    _loading     = false;
+  Future<void>? _authOperation;
   String? _errorMsg;
 
   @override
@@ -75,16 +76,23 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() { _loading = true; _errorMsg = null; });
+    final authCall = FirebaseAuth.instance.signInWithEmailAndPassword(
+      email:    _emailCtrl.text.trim(),
+      password: _passCtrl.text,
+    );
+
+    setState(() { 
+      _loading = true; 
+      _errorMsg = null;
+      _authOperation = authCall.then((_) {});
+    });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email:    _emailCtrl.text.trim(),
-        password: _passCtrl.text,
-      );
+      await authCall;
       // GoRouter redirect handles navigation after auth state changes.
     } on FirebaseAuthException catch (e) {
       setState(() {
+        _loading = false;
         switch (e.code) {
           case 'user-not-found':
             _errorMsg = 'No account found with this email.';
@@ -109,9 +117,10 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       });
     } catch (_) {
-      setState(() => _errorMsg = 'Something went wrong. Please try again.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _errorMsg = 'Something went wrong. Please try again.';
+      });
     }
   }
 
@@ -269,7 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: _loading
-                    ? _LoadingButton()
+                    ? _LoadingButton(operation: _authOperation)
                     : AppButton(
                         text: 'Sign In',
                         onPressed: _signIn,
@@ -367,6 +376,10 @@ class _ErrorBanner extends StatelessWidget {
 // LOADING BUTTON — glass pill with wavy spinner, mirrors AppButton dimensions
 // ─────────────────────────────────────────────────────────────────────────────
 class _LoadingButton extends StatelessWidget {
+  final Future<void>? operation;
+
+  const _LoadingButton({this.operation});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -400,8 +413,8 @@ class _LoadingButton extends StatelessWidget {
               width: 1.5,
             ),
           ),
-          child: const Center(
-            child: WavyLoadingIndicator(size: 36),
+          child: Center(
+            child: WavyLoadingIndicator(size: 36, operation: operation),
           ),
         ),
       ),
