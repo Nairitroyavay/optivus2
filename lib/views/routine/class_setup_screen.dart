@@ -597,7 +597,7 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
         if (!item.isAdd) {
           String colorHex = '#FFFFFF';
           if (item.color != null) {
-            colorHex = '#${(item.color!.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+            colorHex = '#${(item.color!.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
           }
           allClasses.add(ClassItem(
             subject: item.subject,

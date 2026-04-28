@@ -691,8 +691,6 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    
     // Gradient tape header colors matching image (Blue, Cyan, Green, Pink)
     const headerColors = [
       Color(0xFFA7F3D0),

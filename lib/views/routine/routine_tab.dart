@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'skin_care_setup_screen.dart';
 import 'eating_setup_screen.dart';
 import 'class_setup_screen.dart';
-
 
 import 'fixed_schedule_setup_screen.dart';
 
@@ -83,7 +84,10 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     }
   }
 
-  Map<DateTime, List<DisplayBlock>> _buildAllBlocks(RoutineState s) {
+  Map<DateTime, List<DisplayBlock>> _buildAllBlocks(
+    RoutineState s, {
+    List<TaskModel> firestoreTasks = const [],
+  }) {
     Map<DateTime, List<DisplayBlock>> days = {};
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
@@ -91,7 +95,9 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     // Build blocks for the next 14 days
     for (int i = 0; i < 14; i++) {
        DateTime d = today.add(Duration(days: i));
-       List<DisplayBlock> b = _buildBlocksForDay(s, d);
+       // Only inject Firestore tasks for today
+       final tasksForDay = (i == 0) ? firestoreTasks : const <TaskModel>[];
+       List<DisplayBlock> b = _buildBlocksForDay(s, d, firestoreTasks: tasksForDay);
        if (b.isNotEmpty || i == 0) { // always include today even if empty
            days[d] = b;
        }
@@ -99,12 +105,68 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     return days;
   }
 
-  List<DisplayBlock> _buildBlocksForDay(RoutineState s, DateTime date) {
+  List<DisplayBlock> _buildBlocksForDay(
+    RoutineState s,
+    DateTime date, {
+    List<TaskModel> firestoreTasks = const [],
+  }) {
     final dayIdx = (date.weekday - 1).clamp(0, 6);
     final blocks = <DisplayBlock>[];
 
+    // Collect Firestore task IDs so we can deduplicate against routine blocks
+    final firestoreTaskTimes = <String>{};
+
     // 1) First generate a flat list of actual scheduled events
     final scheduled = <DisplayBlock>[];
+
+    // 1a) Inject Firestore-backed tasks (these carry lifecycle state)
+    for (final task in firestoreTasks) {
+      final timeStr = tlFmtMin(task.plannedStart.hour * 60 + task.plannedStart.minute);
+      firestoreTaskTimes.add('${timeStr}_${task.title}');
+
+      Color accent;
+      String emoji;
+      RoutineFilter blockType;
+      switch (task.type) {
+        case TaskType.skinCare:
+          accent = kMint;
+          emoji = task.emoji ?? '🌿';
+          blockType = RoutineFilter.skinCare;
+        case TaskType.eating:
+          accent = kRose;
+          emoji = task.emoji ?? '🍽️';
+          blockType = RoutineFilter.eating;
+        case TaskType.classBlock:
+          accent = const Color(0xFF60B8FF);
+          emoji = task.emoji ?? '🎓';
+          blockType = RoutineFilter.classes;
+        case TaskType.fixed:
+          accent = kPurple;
+          emoji = task.emoji ?? '📌';
+          blockType = RoutineFilter.all;
+        default:
+          accent = kPurple;
+          emoji = task.emoji ?? '✨';
+          blockType = RoutineFilter.all;
+      }
+
+      if (_filter != RoutineFilter.all && _filter != blockType) continue;
+
+      final endTimeStr = tlFmtMin(task.plannedEnd.hour * 60 + task.plannedEnd.minute);
+
+      scheduled.add(DisplayBlock(
+        time: timeStr,
+        title: task.title,
+        subtitle: '$timeStr – $endTimeStr',
+        accentColor: task.color != null ? tlHexColor(task.color!) : accent,
+        emoji: emoji,
+        type: blockType,
+        subtasks: task.subtasks.map((st) => st.title).toList(),
+        taskId: task.id,
+        taskState: task.state,
+        actualStart: task.actualStart,
+      ));
+    }
 
     // Fixed blocks repeat every day — include them for all days in the list
     if (_filter == RoutineFilter.all) {
@@ -346,7 +408,9 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(routineProvider);
-    final days = _buildAllBlocks(s);
+    final todayTasksAsync = ref.watch(todayTasksProvider);
+    final firestoreTasks = todayTasksAsync.valueOrNull ?? [];
+    final days = _buildAllBlocks(s, firestoreTasks: firestoreTasks);
     
     final displayDate = (_activeDate != null && days.containsKey(_activeDate)) 
         ? _activeDate! 
@@ -481,6 +545,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                                                      index: i,
                                                      showHourLabel: i == 0 || entry.value[i].time.split(':')[0] != entry.value[i-1].time.split(':')[0],
                                                      isLast: i == entry.value.length - 1,
+                                                     onStart: (taskId) => ref.read(taskServiceProvider).startTask(taskId),
+                                                     onComplete: (taskId) => ref.read(taskServiceProvider).completeTask(taskId),
                                                    ),
                                                    childCount: entry.value.length,
                                                  ),

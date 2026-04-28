@@ -27,6 +27,20 @@ class TaskService {
   CollectionReference<Map<String, dynamic>> get _tasksRef =>
       _firestore.collection('users').doc(_uid).collection('tasks');
 
+  /// Real-time stream of tasks whose plannedStart falls within [date]'s day.
+  Stream<List<TaskModel>> tasksFor(DateTime date) {
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    return _tasksRef
+        .where('plannedStart',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(dayStart))
+        .where('plannedStart', isLessThan: Timestamp.fromDate(dayEnd))
+        .orderBy('plannedStart')
+        .snapshots()
+        .map((snap) => snap.docs.map(TaskModel.fromFirestore).toList());
+  }
+
   Future<void> createTask(TaskModel task) async {
     final docRef = _tasksRef.doc(task.id);
     final batch = _firestore.batch();

@@ -4,6 +4,7 @@ import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/services/task_service.dart';
+import 'package:optivus2/models/task_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DI — Single source of truth for service & repository providers
@@ -36,3 +37,9 @@ final userRepositoryProvider = Provider<UserRepository>(
 final routineRepositoryProvider = Provider<RoutineRepository>(
   (ref) => RoutineRepository(ref.read(firestoreServiceProvider)),
 );
+
+/// Real-time stream of today's Firestore-backed tasks.
+final todayTasksProvider = StreamProvider<List<TaskModel>>((ref) {
+  final taskService = ref.watch(taskServiceProvider);
+  return taskService.tasksFor(DateTime.now());
+});

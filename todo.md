@@ -138,7 +138,7 @@ How to verify:
 
 Estimate: 3h
 
-* [ ] Done
+* [x] Done
 
 ⸻
 

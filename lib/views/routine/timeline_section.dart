@@ -8,10 +8,13 @@
 //   • TimelineRow              – single event card (public so other widgets can render one)
 //   • timeline helpers         – _hexColor, _fmtMin, _parseMin, _mealLabel, _normalizeTime
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/models/task_model.dart';
 import 'glass_filter_dropdown.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 
@@ -26,6 +29,12 @@ class DisplayBlock {
   final List<String> subtasks;
   final bool isNow;
   final bool isEmptyPlaceholder; // true when rendering an empty hour slot
+
+  // ── Firestore task fields (null for legacy routine-only blocks) ──
+  final String? taskId;
+  final TaskState? taskState;
+  final DateTime? actualStart;
+
   const DisplayBlock({
     required this.time,
     required this.title,
@@ -36,6 +45,9 @@ class DisplayBlock {
     this.subtasks = const [],
     this.isNow = false,
     this.isEmptyPlaceholder = false,
+    this.taskId,
+    this.taskState,
+    this.actualStart,
   });
 }
 
@@ -99,12 +111,18 @@ class TimelineRow extends StatefulWidget {
   final bool isLast;
   final int index; // used for staggered entrance
 
+  // ── Task action callbacks (null when block has no taskId) ──
+  final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onComplete;
+
   const TimelineRow({
     super.key,
     required this.block,
     required this.showHourLabel,
     required this.isLast,
     this.index = 0,
+    this.onStart,
+    this.onComplete,
   });
 
   @override
@@ -252,6 +270,8 @@ class _TimelineRowState extends State<TimelineRow>
                 onToggle: (i) => setState(() {
                   _checked.contains(i) ? _checked.remove(i) : _checked.add(i);
                 }),
+                onStart: widget.onStart,
+                onComplete: widget.onComplete,
               ),
             ),
           ),
@@ -414,11 +434,15 @@ class _EventCard extends StatefulWidget {
   final DisplayBlock block;
   final Set<int> checked;
   final ValueChanged<int> onToggle;
+  final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onComplete;
 
   const _EventCard({
     required this.block,
     required this.checked,
     required this.onToggle,
+    this.onStart,
+    this.onComplete,
   });
 
   @override
@@ -594,6 +618,15 @@ class _EventCardState extends State<_EventCard>
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      // ── Task action row ──────────────────────────────
+                      if (b.taskId != null) ...[
+                        const SizedBox(height: 10),
+                        _TaskActionRow(
+                          block: b,
+                          onStart: widget.onStart,
+                          onComplete: widget.onComplete,
+                        ),
+                      ],
                       // Subtasks
                       if (b.subtasks.isNotEmpty) ...[
                         const SizedBox(height: 11),
@@ -839,6 +872,323 @@ class TimelineEmptyState extends StatelessWidget {
                   label: 'Set up ${m.label}',
                   color: m.color,
                   onTap: onSetup),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TASK ACTION ROW — Start / Complete buttons + state badges
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TaskActionRow extends StatelessWidget {
+  final DisplayBlock block;
+  final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onComplete;
+
+  const _TaskActionRow({
+    required this.block,
+    this.onStart,
+    this.onComplete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final state = block.taskState ?? TaskState.scheduled;
+    final taskId = block.taskId!;
+
+    switch (state) {
+      case TaskState.scheduled:
+        return _ActionPill(
+          label: '▶  Start',
+          colors: [const Color(0xFF60D4A0), const Color(0xFF4EC890)],
+          textColor: Colors.white,
+          onTap: () {
+            HapticFeedback.mediumImpact();
+            onStart?.call(taskId);
+          },
+        );
+      case TaskState.started:
+        return Row(
+          children: [
+            _ElapsedTimerChip(startedAt: block.actualStart ?? DateTime.now()),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ActionPill(
+                label: '✓  Done',
+                colors: [const Color(0xFF34D399), const Color(0xFF10B981)],
+                textColor: Colors.white,
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  onComplete?.call(taskId);
+                },
+              ),
+            ),
+          ],
+        );
+      case TaskState.completed:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFF34D399).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_rounded,
+                  size: 14, color: Color(0xFF10B981)),
+              const SizedBox(width: 5),
+              Text(
+                'Completed',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF10B981),
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        );
+      case TaskState.abandoned:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: kSub.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.close_rounded, size: 13, color: kSub),
+              const SizedBox(width: 4),
+              Text(
+                'Skipped',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: kSub,
+                ),
+              ),
+            ],
+          ),
+        );
+      case TaskState.paused:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFBBF24).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.pause_circle_filled_rounded,
+                  size: 14, color: Color(0xFFF59E0B)),
+              const SizedBox(width: 5),
+              Text(
+                'Paused',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFFF59E0B),
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        );
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ACTION PILL — glass-style tap button for Start / Complete
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ActionPill extends StatefulWidget {
+  final String label;
+  final List<Color> colors;
+  final Color textColor;
+  final VoidCallback onTap;
+
+  const _ActionPill({
+    required this.label,
+    required this.colors,
+    required this.textColor,
+    required this.onTap,
+  });
+
+  @override
+  State<_ActionPill> createState() => _ActionPillState();
+}
+
+class _ActionPillState extends State<_ActionPill>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 100));
+    _scale = Tween<double>(begin: 1.0, end: 0.94)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _ctrl.forward(),
+      onTapUp: (_) {
+        _ctrl.reverse();
+        widget.onTap();
+      },
+      onTapCancel: () => _ctrl.reverse(),
+      child: AnimatedBuilder(
+        animation: _scale,
+        builder: (_, child) =>
+            Transform.scale(scale: _scale.value, child: child),
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(17),
+            gradient: LinearGradient(
+              colors: widget.colors,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: widget.colors.first.withValues(alpha: 0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: widget.textColor,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ELAPSED TIMER CHIP — live elapsed-time display for active tasks
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ElapsedTimerChip extends StatefulWidget {
+  final DateTime startedAt;
+  const _ElapsedTimerChip({required this.startedAt});
+
+  @override
+  State<_ElapsedTimerChip> createState() => _ElapsedTimerChipState();
+}
+
+class _ElapsedTimerChipState extends State<_ElapsedTimerChip>
+    with SingleTickerProviderStateMixin {
+  late Timer _timer;
+  Duration _elapsed = Duration.zero;
+
+  late AnimationController _pulse;
+  late Animation<double> _glowOpacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _elapsed = DateTime.now().difference(widget.startedAt);
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _elapsed = DateTime.now().difference(widget.startedAt);
+        });
+      }
+    });
+
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+    _glowOpacity = Tween<double>(begin: 0.3, end: 0.8)
+        .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _glowOpacity,
+      builder: (_, __) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF34D399).withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: Color(0xFF34D399)
+                .withValues(alpha: _glowOpacity.value * 0.5),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF34D399)
+                  .withValues(alpha: _glowOpacity.value * 0.20),
+              blurRadius: 8,
+              spreadRadius: 0,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.timer_rounded,
+                size: 13,
+                color: const Color(0xFF10B981)
+                    .withValues(alpha: 0.5 + _glowOpacity.value * 0.5)),
+            const SizedBox(width: 4),
+            Text(
+              _fmt(_elapsed),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF10B981),
+                fontFeatures: [FontFeature.tabularFigures()],
+                letterSpacing: 0.5,
+              ),
             ),
           ],
         ),
