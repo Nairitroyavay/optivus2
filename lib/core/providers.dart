@@ -4,6 +4,7 @@ import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/services/task_service.dart';
+import 'package:optivus2/services/habit_service.dart';
 import 'package:optivus2/models/task_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,6 +25,13 @@ final eventServiceProvider = Provider<EventService>(
 /// Task state transition and logging service.
 final taskServiceProvider = Provider<TaskService>(
   (ref) => TaskService(
+    eventService: ref.read(eventServiceProvider),
+  ),
+);
+
+/// Habit tracking and logging service.
+final habitServiceProvider = Provider<HabitService>(
+  (ref) => HabitService(
     eventService: ref.read(eventServiceProvider),
   ),
 );
