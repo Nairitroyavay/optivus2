@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/services/event_service.dart';
+import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/core/utils/uuid_generator.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODELS
@@ -194,7 +197,7 @@ class CustomTask {
 
   Map<String, dynamic> toMap() => {
     'id': id, 'title': title, 'emoji': emoji, 'time': time,
-    'date': date.toIso8601String(), 'color': color.value,
+    'date': date.toIso8601String(), 'color': color.toARGB32(),
   };
 
   factory CustomTask.fromMap(Map<String, dynamic> m) => CustomTask(
@@ -358,9 +361,10 @@ class RoutineState {
 
 class RoutineNotifier extends StateNotifier<RoutineState> {
   final RoutineRepository _repo;
+  final EventService _eventService;
   Timer? _debounce;
 
-  RoutineNotifier(this._repo) : super(const RoutineState()) {
+  RoutineNotifier(this._repo, this._eventService) : super(const RoutineState()) {
     _loadRoutine();
   }
 
@@ -438,6 +442,18 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       fixedScheduleSetUp: true,
     );
     _saveDebounced();
+
+    for (final block in blocks) {
+      _eventService.emit(
+        eventName: EventNames.taskScheduled,
+        payload: {
+          'taskId': block.id,
+          'type': 'fixed_block',
+          'plannedStart': block.startLabel,
+          'plannedEnd': block.endLabel,
+        },
+      );
+    }
   }
 
   void updateFixedBlock(FixedBlock updated) {
@@ -445,6 +461,16 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
         b.id == updated.id ? updated : b).toList();
     state = state.copyWith(fixedBlocks: list);
     _saveDebounced();
+
+    _eventService.emit(
+      eventName: EventNames.taskScheduled,
+      payload: {
+        'taskId': updated.id,
+        'type': 'fixed_block',
+        'plannedStart': updated.startLabel,
+        'plannedEnd': updated.endLabel,
+      },
+    );
   }
 
   // ── Skin care ────────────────────────────────────────────────────────────
@@ -454,6 +480,22 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     plans[dayIndex] = plan;
     state = state.copyWith(skinCarePlans: plans, skinCareSetUp: true);
     _saveDebounced();
+
+    void emitSkinStep(SkinStep step, String period) {
+      _eventService.emit(
+        eventName: EventNames.taskScheduled,
+        payload: {
+          'taskId': generateId(),
+          'type': 'skin_care',
+          'plannedStart': period,
+          'plannedEnd': period,
+        },
+      );
+    }
+
+    for (final step in plan.morning) { emitSkinStep(step, 'morning'); }
+    for (final step in plan.afternoon) { emitSkinStep(step, 'afternoon'); }
+    for (final step in plan.night) { emitSkinStep(step, 'night'); }
   }
 
   void markSkinCareSetUp() {
@@ -468,6 +510,18 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     plans[dayIndex] = plan;
     state = state.copyWith(mealPlans: plans, eatingSetUp: true);
     _saveDebounced();
+
+    for (final meal in plan.meals) {
+      _eventService.emit(
+        eventName: EventNames.taskScheduled,
+        payload: {
+          'taskId': generateId(),
+          'type': 'meal',
+          'plannedStart': meal.time,
+          'plannedEnd': meal.time,
+        },
+      );
+    }
   }
 
   void markEatingSetUp() {
@@ -480,6 +534,18 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   void setClasses(List<ClassItem> classes) {
     state = state.copyWith(classes: classes, classesSetUp: true);
     _saveDebounced();
+
+    for (final c in classes) {
+      _eventService.emit(
+        eventName: EventNames.taskScheduled,
+        payload: {
+          'taskId': generateId(),
+          'type': 'class',
+          'plannedStart': c.startTime,
+          'plannedEnd': c.endTime,
+        },
+      );
+    }
   }
 
   void addClass(ClassItem c) {
@@ -488,6 +554,16 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       classesSetUp: true,
     );
     _saveDebounced();
+
+    _eventService.emit(
+      eventName: EventNames.taskScheduled,
+      payload: {
+        'taskId': generateId(),
+        'type': 'class',
+        'plannedStart': c.startTime,
+        'plannedEnd': c.endTime,
+      },
+    );
   }
 
   void removeClass(ClassItem c) {
@@ -503,11 +579,33 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   void setLongTermGoals(List<LongTermGoal> goals) {
     state = state.copyWith(longTermGoals: goals);
     _saveDebounced();
+
+    for (final goal in goals) {
+      _eventService.emit(
+        eventName: EventNames.taskScheduled,
+        payload: {
+          'taskId': goal.id,
+          'type': 'long_term_goal',
+          'plannedStart': goal.startDate.toIso8601String(),
+          'plannedEnd': goal.endDate.toIso8601String(),
+        },
+      );
+    }
   }
 
   void addLongTermGoal(LongTermGoal goal) {
     state = state.copyWith(longTermGoals: [...state.longTermGoals, goal]);
     _saveDebounced();
+
+    _eventService.emit(
+      eventName: EventNames.taskScheduled,
+      payload: {
+        'taskId': goal.id,
+        'type': 'long_term_goal',
+        'plannedStart': goal.startDate.toIso8601String(),
+        'plannedEnd': goal.endDate.toIso8601String(),
+      },
+    );
   }
 
   void removeLongTermGoal(String id) {
@@ -524,7 +622,10 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
 
 final routineProvider =
     StateNotifierProvider<RoutineNotifier, RoutineState>(
-  (ref) => RoutineNotifier(ref.read(routineRepositoryProvider)),
+  (ref) => RoutineNotifier(
+    ref.read(routineRepositoryProvider),
+    ref.read(eventServiceProvider),
+  ),
 );
 
 final customTasksProvider =
