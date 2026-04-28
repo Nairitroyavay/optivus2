@@ -83,15 +83,15 @@ class EventOrchestrator {
         break;
 
       // ── Habit tracking ────────────────────────────────────────────────
+      // Intra-day log events are recorded by HabitService.  Streak changes
+      // are computed atomically at day-close via runDayCloseRollup rather
+      // than incrementally, so we only log here for observability.
       case EventNames.goodHabitLogged:
-        // TODO: Call _streakService.extendOrCreate() for the habit.
-        // TODO: Check if a streak milestone was reached and fire
-        //       EventNames.streakMilestoneReached if so.
+        debugPrint('[EventOrchestrator] goodHabitLogged — streak updated at day-close.');
         break;
 
       case EventNames.badHabitSlipLogged:
-        // TODO: Call _streakService to reset or decrement the clean streak.
-        // TODO: Check for EventNames.slipStreakDetected pattern.
+        debugPrint('[EventOrchestrator] badHabitSlipLogged — streak updated at day-close.');
         break;
 
       // ── Streaks ───────────────────────────────────────────────────────
@@ -105,7 +105,14 @@ class EventOrchestrator {
 
       // ── Day lifecycle ─────────────────────────────────────────────────
       case EventNames.dayClosed:
-        // TODO: Call _streakService.runDayCloseRollup(date) for all habits.
+        // Primary trigger for the streak rollup.  The date is carried in the
+        // event payload; fall back to today if somehow absent.
+        final date = event.payload['date'] as String? ??
+            _todayString();
+        debugPrint('[EventOrchestrator] dayClosed → runDayCloseRollup($date)');
+        _streakService.runDayCloseRollup(date).catchError((Object e) {
+          debugPrint('[EventOrchestrator] runDayCloseRollup error: $e');
+        });
         // TODO: Call _notificationService to deliver the day summary.
         break;
 
@@ -131,5 +138,15 @@ class EventOrchestrator {
       default:
         break;
     }
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+
+  /// Returns today's date as a `YYYY-MM-DD` string in local time.
+  static String _todayString() {
+    final now = DateTime.now();
+    return '${now.year}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
   }
 }

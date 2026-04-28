@@ -42,7 +42,9 @@ final habitServiceProvider = Provider<HabitService>(
 
 /// Streak rollup and maintenance service.
 final streakServiceProvider = Provider<StreakService>(
-  (_) => StreakService(),
+  (ref) => StreakService(
+    eventService: ref.read(eventServiceProvider),
+  ),
 );
 
 /// Local and push notification scheduling service.
