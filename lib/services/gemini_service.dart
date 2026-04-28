@@ -34,8 +34,8 @@ class GeminiService {
   }
 
   /// Start a multi-turn chat
-  GeminiChatSession startChat(String systemPrompt) {
-    return GeminiChatSession(systemPrompt: systemPrompt, service: this);
+  GeminiChatSession startChat(String systemPrompt, {List<Map<String, dynamic>>? initialHistory}) {
+    return GeminiChatSession(systemPrompt: systemPrompt, service: this, initialHistory: initialHistory);
   }
 }
 
@@ -44,12 +44,13 @@ class GeminiChatSession {
   final GeminiService service;
   
   // Track chat history locally
-  final List<Map<String, dynamic>> _history = [];
+  final List<Map<String, dynamic>> _history;
 
   GeminiChatSession({
     required this.systemPrompt,
     required this.service,
-  });
+    List<Map<String, dynamic>>? initialHistory,
+  }) : _history = initialHistory ?? [];
 
   Future<String> sendMessage(String message) async {
     try {

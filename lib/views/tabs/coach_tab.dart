@@ -7,7 +7,8 @@ import 'package:optivus2/services/firestore_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/services/gemini_service.dart';
-
+import 'package:uuid/uuid.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Model
@@ -793,24 +794,49 @@ class _CoachTabState extends ConsumerState<CoachTab> {
   String _coachName = 'AI Coach';
   GeminiChatSession? _chatSession;
 
-  final List<_CoachMessage> _messages = [
-    _CoachMessage(text: 'I noticed that today u smoked 2 cigarettes .', isUser: false),
-    _CoachMessage(text: 'i smoked because i felt stressed', isUser: true),
-    _CoachMessage(text: 'but u have to control on smoking.', isUser: false),
-    _CoachMessage(
-      text: "tomorrow strictly i can't smoke , if u felt too much stress then 1st 10 min control yourself then go for 1.",
-      isUser: false,
-    ),
-  ];
+  final List<_CoachMessage> _messages = [];
+  final List<Map<String, dynamic>> _geminiHistory = [];
 
   @override
   void initState() {
     super.initState();
     _fetchCoachName();
+    _loadHistory();
     _ctrl.addListener(() {
       final has = _ctrl.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
     });
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final turns = await FirestoreService().getCoachChatTurns('main_thread');
+      if (turns.isNotEmpty && mounted) {
+        setState(() {
+          _messages.clear();
+          _geminiHistory.clear();
+          for (final turn in turns) {
+            final isUser = turn['isUser'] as bool;
+            final text = turn['text'] as String;
+            _messages.add(_CoachMessage(text: text, isUser: isUser));
+            _geminiHistory.add({
+              'role': isUser ? 'user' : 'model',
+              'parts': [{'text': text}],
+            });
+          }
+        });
+        _scrollToBottom();
+      } else if (mounted) {
+        setState(() {
+          _messages.add(_CoachMessage(
+            text: "Hello! I'm $_coachName, your personal AI coach. How can I support you today?",
+            isUser: false,
+          ));
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading coach chat history: $e');
+    }
   }
 
   Future<void> _fetchCoachName() async {
@@ -860,6 +886,14 @@ class _CoachTabState extends ConsumerState<CoachTab> {
     _scrollToBottom();
     
     try {
+      final userTurnId = const Uuid().v4();
+      await FirestoreService().saveCoachChatTurn('main_thread', userTurnId, {
+        'id': userTurnId,
+        'text': text,
+        'isUser': true,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
       if (_chatSession == null) {
         final ob = ref.read(onboardingProvider);
         final goals = ob.goals.join(', ');
@@ -872,10 +906,19 @@ User's main goals: $goals.
 Habits trying to break: $habits.
 You are embedded in their daily timeline app. Keep responses engaging, supportive, and relatively concise (1-3 paragraphs max) so they fit well in a chat bubble.''';
 
-        _chatSession = GeminiService().startChat(sysPrompt);
+        _chatSession = GeminiService().startChat(sysPrompt, initialHistory: List.from(_geminiHistory));
       }
       
       final reply = await _chatSession!.sendMessage(text);
+      
+      final coachTurnId = const Uuid().v4();
+      await FirestoreService().saveCoachChatTurn('main_thread', coachTurnId, {
+        'id': coachTurnId,
+        'text': reply,
+        'isUser': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
       if (!mounted) return;
       
       setState(() {

@@ -66,6 +66,16 @@ class FirestoreService {
     return doc.exists ? doc.data() : null;
   }
 
+  // ── Coach Chats (subcollection: /users/{uid}/coach_chats/{threadId}/turns) ────────────────────
+
+  Future<void> saveCoachChatTurn(String threadId, String turnId, Map<String, dynamic> turnData) =>
+      userDoc.collection('coach_chats').doc(threadId).collection('turns').doc(turnId).set(turnData);
+
+  Future<List<Map<String, dynamic>>> getCoachChatTurns(String threadId) async {
+    final snap = await userDoc.collection('coach_chats').doc(threadId).collection('turns').orderBy('timestamp').get();
+    return snap.docs.map((d) => d.data()).toList();
+  }
+
   // ── Account Deletion (cascade all subcollections) ─────────────────────────
 
   Future<void> deleteAllUserData() async {
