@@ -82,9 +82,11 @@ class AppRouter {
       if (loggedIn) {
         final userModel = _authNotifier.userModel;
         
-        // If we just logged in but userModel hasn't arrived yet from Firestore
-        // return null to stay on the current loading screen until the doc loads.
-        if (userModel == null) return null;
+        // 🚨 CRITICAL FIX: Treat as new user until proven otherwise
+        // Prevents onboarding skip due to async race condition
+        if (userModel == null) {
+          return '/onboarding';
+        }
 
         if (userModel.hasCompletedOnboarding) {
           // If completed onboarding, go to home
