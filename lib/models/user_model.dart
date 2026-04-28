@@ -25,6 +25,27 @@ class UserModel {
     this.schemaVersion = 1,
   });
 
+  factory UserModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data()!;
+    return UserModel(
+      id: data['id'] as String? ?? data['uid'] as String? ?? doc.id,
+      email: data['email'] as String? ?? '',
+      name: data['name'] as String? ?? data['displayName'] as String?,
+      timezone: data['timezone'] as String?,
+      createdAt: data['createdAt'] != null
+          ? (data['createdAt'] is Timestamp
+              ? (data['createdAt'] as Timestamp).toDate()
+              : DateTime.parse(data['createdAt'] as String))
+          : DateTime.now(),
+      updatedAt: data['updatedAt'] != null
+          ? (data['updatedAt'] is Timestamp
+              ? (data['updatedAt'] as Timestamp).toDate()
+              : DateTime.parse(data['updatedAt'] as String))
+          : DateTime.now(),
+      schemaVersion: data['schemaVersion'] as int? ?? 1,
+    );
+  }
+
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       id: map['id'] as String? ?? map['uid'] as String? ?? '',
@@ -45,7 +66,7 @@ class UserModel {
     );
   }
 
-  Map<String, dynamic> toMap() {
+  Map<String, dynamic> toFirestore() {
     return {
       'id': id,
       'email': email,
@@ -56,6 +77,8 @@ class UserModel {
       'schemaVersion': schemaVersion,
     };
   }
+
+  Map<String, dynamic> toMap() => toFirestore();
 
   UserModel copyWith({
     String? email,
