@@ -5,6 +5,7 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'config/firebase_options.dart';
 import 'core/router/app_router.dart';
+import 'core/providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,11 +32,15 @@ void main() async {
   runApp(const ProviderScope(child: OptivusApp()));
 }
 
-class OptivusApp extends StatelessWidget {
+class OptivusApp extends ConsumerWidget {
   const OptivusApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Eagerly initialize the EventOrchestrator so it starts
+    // listening to the event bus as soon as the app launches.
+    ref.read(eventOrchestratorProvider);
+
     return MaterialApp.router(
       title: 'Optivus',
       debugShowCheckedModeBanner: false,
@@ -48,3 +53,4 @@ class OptivusApp extends StatelessWidget {
     );
   }
 }
+

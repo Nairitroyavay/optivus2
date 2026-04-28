@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/services/firestore_service.dart';
 import 'package:optivus2/services/event_service.dart';
+import 'package:optivus2/services/streak_service.dart';
+import 'package:optivus2/services/notification_service.dart';
+import 'package:optivus2/core/event_orchestrator.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/services/task_service.dart';
@@ -36,6 +39,30 @@ final habitServiceProvider = Provider<HabitService>(
     eventService: ref.read(eventServiceProvider),
   ),
 );
+
+/// Streak rollup and maintenance service.
+final streakServiceProvider = Provider<StreakService>(
+  (_) => StreakService(),
+);
+
+/// Local and push notification scheduling service.
+final notificationServiceProvider = Provider<NotificationService>(
+  (_) => NotificationService(),
+);
+
+/// Central side-effect dispatcher — listens to the event bus and
+/// calls StreakService, NotificationService, etc. as appropriate.
+/// Calling init() eagerly so it starts listening on first read.
+final eventOrchestratorProvider = Provider<EventOrchestrator>((ref) {
+  final orchestrator = EventOrchestrator(
+    eventService: ref.read(eventServiceProvider),
+    streakService: ref.read(streakServiceProvider),
+    notificationService: ref.read(notificationServiceProvider),
+  );
+  orchestrator.init();
+  ref.onDispose(orchestrator.dispose);
+  return orchestrator;
+});
 
 /// User profile + onboarding persistence.
 final userRepositoryProvider = Provider<UserRepository>(
