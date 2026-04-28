@@ -283,10 +283,14 @@ class TaskModel {
       plannedStart: map['time'] != null
           ? DateTime.parse(map['time'] as String)
           : (map['plannedStart'] != null
-              ? (map['plannedStart'] as Timestamp).toDate()
+              ? (map['plannedStart'] is Timestamp
+                  ? (map['plannedStart'] as Timestamp).toDate()
+                  : DateTime.parse(map['plannedStart'] as String))
               : DateTime.now()),
       plannedEnd: map['plannedEnd'] != null
-          ? (map['plannedEnd'] as Timestamp).toDate()
+          ? (map['plannedEnd'] is Timestamp
+              ? (map['plannedEnd'] as Timestamp).toDate()
+              : DateTime.parse(map['plannedEnd'] as String))
           : DateTime.now().add(const Duration(hours: 1)),
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),

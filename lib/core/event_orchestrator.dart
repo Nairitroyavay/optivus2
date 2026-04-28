@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/constants/event_names.dart';
 import '../models/event_model.dart';
+import '../models/task_model.dart';
 import '../services/event_service.dart';
 import '../services/streak_service.dart';
 import '../services/notification_service.dart';
@@ -44,6 +45,8 @@ class EventOrchestrator {
       return true;
     }());
 
+    _notificationService.init();
+
     _subscription?.cancel();
     _subscription = _eventService.onAny().listen(
       _handleEvent,
@@ -68,6 +71,15 @@ class EventOrchestrator {
 
     switch (event.eventName) {
       // ── Task engine ───────────────────────────────────────────────────
+      case EventNames.taskScheduled:
+        try {
+          final task = TaskModel.fromMap(event.payload);
+          _notificationService.scheduleTaskAlarm(task);
+        } catch (e) {
+          debugPrint('[EventOrchestrator] Failed to schedule task alarm: $e');
+        }
+        break;
+
       case EventNames.taskCompleted:
         // TODO: Call _streakService to check if a streak should be extended.
         // TODO: Call _notificationService to send a "task done" confirmation.
