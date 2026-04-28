@@ -29,6 +29,45 @@ class HabitService {
   CollectionReference<Map<String, dynamic>> get _habitsRef =>
       _firestore.collection('users').doc(_uid).collection('habits');
 
+  /// Real-time stream of all active habits for the current user.
+  Stream<List<HabitModel>> habits() {
+    return _habitsRef
+        .where('state', isEqualTo: HabitState.active.name)
+        .snapshots()
+        .map((snap) => snap.docs.map(HabitModel.fromFirestore).toList());
+  }
+
+  /// Returns the count of log items for [habitId] on [date].
+  Future<int> dailyLogCount(String habitId, DateTime date) async {
+    final dateString =
+        "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+    final snap = await _habitsRef
+        .doc(habitId)
+        .collection('logs')
+        .doc(dateString)
+        .collection('items')
+        .count()
+        .get();
+    return snap.count ?? 0;
+  }
+
+  /// Returns the sum of quantities for a good habit on [date].
+  Future<num> dailyTotal(String habitId, DateTime date) async {
+    final dateString =
+        "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+    final snap = await _habitsRef
+        .doc(habitId)
+        .collection('logs')
+        .doc(dateString)
+        .collection('items')
+        .get();
+    num total = 0;
+    for (final doc in snap.docs) {
+      total += (doc.data()['quantity'] as num?) ?? 1;
+    }
+    return total;
+  }
+
   Future<void> createHabit(HabitModel habit) async {
     final docRef = _habitsRef.doc(habit.id);
     final batch = _firestore.batch();

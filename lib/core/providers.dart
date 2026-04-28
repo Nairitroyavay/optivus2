@@ -6,6 +6,7 @@ import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/habit_service.dart';
 import 'package:optivus2/models/task_model.dart';
+import 'package:optivus2/models/habit_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DI — Single source of truth for service & repository providers
@@ -51,3 +52,10 @@ final todayTasksProvider = StreamProvider<List<TaskModel>>((ref) {
   final taskService = ref.watch(taskServiceProvider);
   return taskService.tasksFor(DateTime.now());
 });
+
+/// Real-time stream of all active habits.
+final habitsProvider = StreamProvider<List<HabitModel>>((ref) {
+  final habitService = ref.watch(habitServiceProvider);
+  return habitService.habits();
+});
+
