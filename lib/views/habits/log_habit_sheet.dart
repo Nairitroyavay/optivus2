@@ -102,7 +102,7 @@ class LogHabitSheet extends ConsumerWidget {
                       tint: Colors.grey[50], // subtle tint
                       child: Row(
                         children: [
-                          if (habit.icon.isNotEmpty)
+                          if (habit.emoji != null && habit.emoji!.isNotEmpty)
                             Container(
                               width: 44,
                               height: 44,
@@ -118,7 +118,7 @@ class LogHabitSheet extends ConsumerWidget {
                                 ],
                               ),
                               child: Center(
-                                child: Text(habit.icon, style: const TextStyle(fontSize: 22)),
+                                child: Text(habit.emoji!, style: const TextStyle(fontSize: 22)),
                               ),
                             )
                           else
@@ -153,10 +153,10 @@ class LogHabitSheet extends ConsumerWidget {
                                     color: Color(0xFF0F111A), // _kInk
                                   ),
                                 ),
-                                if (habit.category.isNotEmpty) ...[
+                                if (habit.trackerType.isNotEmpty) ...[
                                   const SizedBox(height: 2),
                                   Text(
-                                    habit.category,
+                                    habit.trackerType,
                                     style: const TextStyle(
                                       fontSize: 12,
                                       color: Color(0xFF6B7280), // _kSubtext

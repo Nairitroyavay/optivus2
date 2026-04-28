@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/services/firestore_service.dart';
+import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 
@@ -10,6 +11,12 @@ import 'package:optivus2/repositories/routine_repository.dart';
 /// Wraps Firebase instances — never access Firebase directly outside this.
 final firestoreServiceProvider = Provider<FirestoreService>(
   (_) => FirestoreService(),
+);
+
+/// The event bus — pub-sub backbone of the entire system.
+/// Every other service depends on this.
+final eventServiceProvider = Provider<EventService>(
+  (_) => EventService(),
 );
 
 /// User profile + onboarding persistence.

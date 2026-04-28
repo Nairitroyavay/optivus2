@@ -29,6 +29,13 @@ dependencies:
   flutter_spinkit: ^5.2.2
   cloud_functions: ^6.2.0
 
+  # IDs & crypto
+  uuid: ^4.5.1
+  crypto: ^3.0.6
+
+  # Local persistence
+  shared_preferences: ^2.3.4
+
 # ---------------------------------------------------------------------------
 # Development dependencies
 # ---------------------------------------------------------------------------
