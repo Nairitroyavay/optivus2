@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/views/habits/log_habit_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA MODELS
@@ -138,6 +139,28 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
           left: 0,
           right: 0,
           child: _header(topPad: topPad),
+        ),
+
+        // ── Floating Action Button ────────────────────────────────────────
+        Positioned(
+          bottom: 24,
+          right: 24,
+          child: SafeArea(
+            child: FloatingActionButton(
+              heroTag: 'logHabitFab',
+              backgroundColor: _kInk,
+              foregroundColor: Colors.white,
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => const LogHabitSheet(),
+                );
+              },
+              child: const Icon(Icons.add, size: 28),
+            ),
+          ),
         ),
       ],
     );

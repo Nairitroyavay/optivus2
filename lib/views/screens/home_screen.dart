@@ -7,6 +7,7 @@ import 'package:optivus2/views/tabs/tracker_tab.dart';
 import 'package:optivus2/views/tabs/coach_tab.dart';
 import 'package:optivus2/views/tabs/goals_tab.dart';
 import 'package:optivus2/views/tabs/profile_tab.dart';
+import 'package:optivus2/views/habits/log_habit_sheet.dart';
 
 // Per-tab gradient definitions
 const List<List<Color>> _tabGradients = [
@@ -79,6 +80,21 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ),
+      floatingActionButton: _currentIndex == 0 ? FloatingActionButton(
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) => const LogHabitSheet(),
+          );
+        },
+        backgroundColor: const Color(0xFF0F111A),
+        foregroundColor: Colors.white,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Icon(Icons.add_rounded, size: 32),
+      ) : null,
       bottomNavigationBar: LiquidGlassTabBar(
         currentIndex: _currentIndex,
         onTap: (index) {
