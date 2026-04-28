@@ -28,7 +28,23 @@ class _AuthNotifier extends ChangeNotifier {
           if (doc.exists) {
             userModel = UserModel.fromFirestore(doc);
           } else {
-            userModel = null;
+            // 🚨 Auto-create user document (failsafe) — prevents null userModel
+            final currentUser = FirebaseAuth.instance.currentUser!;
+            final newUser = UserModel(
+              id: currentUser.uid,
+              email: currentUser.email ?? '',
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
+              hasCompletedOnboarding: false,
+              onboardingStep: 0,
+            );
+
+            FirebaseFirestore.instance
+                .collection('users')
+                .doc(currentUser.uid)
+                .set(newUser.toMap());
+
+            userModel = newUser;
           }
           notifyListeners();
         });
