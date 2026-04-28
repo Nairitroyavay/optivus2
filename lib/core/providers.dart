@@ -10,6 +10,7 @@ import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/habit_service.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
+import 'package:optivus2/services/routine_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DI — Single source of truth for service & repository providers
@@ -65,6 +66,14 @@ final eventOrchestratorProvider = Provider<EventOrchestrator>((ref) {
   ref.onDispose(orchestrator.dispose);
   return orchestrator;
 });
+
+/// Routine side-effect service.
+final routineServiceProvider = Provider<RoutineService>(
+  (ref) => RoutineService(
+    eventService: ref.read(eventServiceProvider),
+    streakService: ref.read(streakServiceProvider),
+  ),
+);
 
 /// User profile + onboarding persistence.
 final userRepositoryProvider = Provider<UserRepository>(

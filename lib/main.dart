@@ -40,6 +40,9 @@ class OptivusApp extends ConsumerWidget {
     // Eagerly initialize the EventOrchestrator so it starts
     // listening to the event bus as soon as the app launches.
     ref.read(eventOrchestratorProvider);
+    
+    // Check if we need to close the previous day
+    ref.read(routineServiceProvider).runDayCloseIfNeeded();
 
     return MaterialApp.router(
       title: 'Optivus',

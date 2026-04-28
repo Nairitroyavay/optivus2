@@ -16,6 +16,7 @@ class UserModel {
   final int schemaVersion;
   final bool hasCompletedOnboarding;
   final int onboardingStep;
+  final String? lastDayClosed;
 
   const UserModel({
     required this.id,
@@ -27,6 +28,7 @@ class UserModel {
     this.schemaVersion = 1,
     this.hasCompletedOnboarding = false,
     this.onboardingStep = 0,
+    this.lastDayClosed,
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -49,6 +51,7 @@ class UserModel {
       schemaVersion: data['schemaVersion'] as int? ?? 1,
       hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
       onboardingStep: data['onboardingStep'] as int? ?? 0,
+      lastDayClosed: data['lastDayClosed'] as String?,
     );
   }
 
@@ -71,6 +74,7 @@ class UserModel {
       schemaVersion: map['schemaVersion'] as int? ?? 1,
       hasCompletedOnboarding: map['hasCompletedOnboarding'] as bool? ?? false,
       onboardingStep: map['onboardingStep'] as int? ?? 0,
+      lastDayClosed: map['lastDayClosed'] as String?,
     );
   }
 
@@ -85,6 +89,7 @@ class UserModel {
       'schemaVersion': schemaVersion,
       'hasCompletedOnboarding': hasCompletedOnboarding,
       'onboardingStep': onboardingStep,
+      if (lastDayClosed != null) 'lastDayClosed': lastDayClosed,
     };
   }
 
@@ -97,6 +102,7 @@ class UserModel {
     DateTime? updatedAt,
     bool? hasCompletedOnboarding,
     int? onboardingStep,
+    String? lastDayClosed,
   }) {
     return UserModel(
       id: id,
@@ -108,6 +114,7 @@ class UserModel {
       schemaVersion: schemaVersion,
       hasCompletedOnboarding: hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       onboardingStep: onboardingStep ?? this.onboardingStep,
+      lastDayClosed: lastDayClosed ?? this.lastDayClosed,
     );
   }
 }
