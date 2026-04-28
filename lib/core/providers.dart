@@ -11,6 +11,7 @@ import 'package:optivus2/services/habit_service.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/services/routine_service.dart';
+import 'package:optivus2/services/coach_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DI — Single source of truth for service & repository providers
@@ -72,6 +73,16 @@ final routineServiceProvider = Provider<RoutineService>(
   (ref) => RoutineService(
     eventService: ref.read(eventServiceProvider),
     streakService: ref.read(streakServiceProvider),
+  ),
+);
+
+/// AI Coach Service
+final coachServiceProvider = Provider<CoachService>(
+  (ref) => CoachService(
+    taskService: ref.read(taskServiceProvider),
+    streakService: ref.read(streakServiceProvider),
+    habitService: ref.read(habitServiceProvider),
+    userRepo: ref.read(userRepositoryProvider),
   ),
 );
 

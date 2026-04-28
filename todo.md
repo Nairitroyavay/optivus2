@@ -333,7 +333,7 @@ How to verify:
 
 Estimate: 3h
 
-* [ ] Done
+* [x] Done
 
 ⸻
 
@@ -357,7 +357,7 @@ How to verify:
 
 Estimate: 2h
 
-* [ ] Done
+* [x] Done
 
 ⸻
 

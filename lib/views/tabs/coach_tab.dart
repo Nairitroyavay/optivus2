@@ -9,6 +9,7 @@ import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/services/gemini_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:optivus2/core/providers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Model
@@ -896,17 +897,10 @@ class _CoachTabState extends ConsumerState<CoachTab> {
 
       if (_chatSession == null) {
         final ob = ref.read(onboardingProvider);
-        final goals = ob.goals.join(', ');
-        final habits = ob.badHabits.join(', ');
         final tone = ob.coachStyle.isEmpty ? 'Empathetic and motivating' : ob.coachStyle;
+        final coachService = ref.read(coachServiceProvider);
         
-        final sysPrompt = '''You are the user's personal Optivus AI life coach. Your name is $_coachName.
-Your tone should be: $tone.
-User's main goals: $goals.
-Habits trying to break: $habits.
-You are embedded in their daily timeline app. Keep responses engaging, supportive, and relatively concise (1-3 paragraphs max) so they fit well in a chat bubble.''';
-
-        _chatSession = GeminiService().startChat(sysPrompt, initialHistory: List.from(_geminiHistory));
+        _chatSession = await coachService.startChat(_coachName, tone, initialHistory: List.from(_geminiHistory));
       }
       
       final reply = await _chatSession!.sendMessage(text);
