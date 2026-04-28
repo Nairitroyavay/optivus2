@@ -8,6 +8,7 @@ import '../../views/screens/login_screen.dart';
 import '../../views/screens/signup_screen.dart';
 import '../../views/screens/onboarding_screen.dart';
 import '../../views/screens/home_screen.dart';
+import '../../views/screens/loading_screen.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/user_model.dart';
@@ -19,7 +20,11 @@ class _AuthNotifier extends ChangeNotifier {
   _AuthNotifier() {
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       _userDocSub?.cancel();
+
       if (user != null) {
+        // Mark loading until the first Firestore snapshot arrives
+        _isLoading = true;
+
         _userDocSub = FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -46,10 +51,15 @@ class _AuthNotifier extends ChangeNotifier {
 
             userModel = newUser;
           }
+
+          // First snapshot received — loading complete
+          _isLoading = false;
           notifyListeners();
         });
       } else {
+        // Logged out — immediately resolved (no doc to wait for)
         userModel = null;
+        _isLoading = false;
         notifyListeners();
       }
     });
@@ -57,7 +67,13 @@ class _AuthNotifier extends ChangeNotifier {
 
   late final StreamSubscription<User?> _authSub;
   StreamSubscription<DocumentSnapshot>? _userDocSub;
+
   UserModel? userModel;
+
+  /// True while we are waiting for the first Firestore userModel snapshot.
+  /// During this window we show [LoadingScreen] to avoid premature redirects.
+  bool _isLoading = true;
+  bool get isLoading => _isLoading;
 
   @override
   void dispose() {
@@ -80,13 +96,22 @@ class AppRouter {
   /// The app-wide [GoRouter] instance.
   /// Pass this to [MaterialApp.router] via `routerConfig`.
   static final GoRouter router = GoRouter(
-    initialLocation: '/',
+    initialLocation: '/loading',
     refreshListenable: _authNotifier,
 
     // ── Redirect logic (the brain) ────────────────────────────────────────
     redirect: (BuildContext context, GoRouterState state) {
+      final loading = _authNotifier.isLoading;
       final loggedIn = FirebaseAuth.instance.currentUser != null;
       final location = state.matchedLocation;
+
+      // ── Loading gate ──────────────────────────────────────────────────
+      // Hold all traffic on /loading until userModel resolves.
+      if (loading) {
+        return location == '/loading' ? null : '/loading';
+      }
+
+      // Past this point, userModel has resolved (may still be null if logged out).
 
       // Routes that unauthenticated users are allowed to visit
       final isAuthRoute =
@@ -95,20 +120,27 @@ class AppRouter {
       // Not logged in → only allow auth routes; otherwise send to welcome
       if (!loggedIn && !isAuthRoute) return '/';
 
+      // Leave /loading as soon as resolved
+      if (location == '/loading') {
+        if (!loggedIn) return '/';
+        // Fall through to logged-in checks below
+      }
+
       if (loggedIn) {
         final userModel = _authNotifier.userModel;
-        
-        // 🚨 CRITICAL FIX: Treat as new user until proven otherwise
-        // Prevents onboarding skip due to async race condition
-        if (userModel == null) {
-          return '/onboarding';
-        }
+
+        // Treat unresolved doc as new user (extra safety net)
+        if (userModel == null) return '/onboarding';
 
         if (userModel.hasCompletedOnboarding) {
-          // If completed onboarding, go to home
-          if (isAuthRoute || location == '/onboarding') return '/home';
+          // Onboarding done → send to home
+          if (isAuthRoute ||
+              location == '/onboarding' ||
+              location == '/loading') {
+            return '/home';
+          }
         } else {
-          // If not completed onboarding, go to onboarding
+          // Onboarding pending → keep on /onboarding
           if (location != '/onboarding') return '/onboarding';
         }
       }
@@ -119,6 +151,10 @@ class AppRouter {
 
     // ── Route table ───────────────────────────────────────────────────────
     routes: [
+      GoRoute(
+        path: '/loading',
+        builder: (_, __) => const LoadingScreen(),
+      ),
       GoRoute(
         path: '/',
         builder: (_, __) => const WelcomeScreen(),
