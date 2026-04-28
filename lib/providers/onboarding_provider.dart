@@ -73,10 +73,10 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     super.dispose();
   }
 
-  void saveToFirestoreDebounced() {
+  void saveToFirestoreDebounced(int step) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 2), () {
-      saveToFirestore(); // Fire-and-forget; errors are handled inside.
+      saveToFirestore(step: step); // Fire-and-forget; errors are handled inside.
     });
   }
 
@@ -89,14 +89,26 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void updateAccountability(String type) => state = state.copyWith(accountabilityType: type);
   void updateScheduleItems(List<Map<String, dynamic>> items) => state = state.copyWith(scheduleItems: items);
 
-  Future<bool> saveToFirestore() async {
+  Future<bool> saveToFirestore({int step = 0}) async {
     if (!_userRepo.isLoggedIn) return false;
 
     try {
-      await _userRepo.saveOnboardingData(state.toMap());
+      await _userRepo.saveOnboardingData(state.toMap(), step: step);
       return true;
     } catch (e) {
       debugPrint('Error saving onboarding data: $e');
+      return false;
+    }
+  }
+
+  Future<bool> completeOnboarding() async {
+    if (!_userRepo.isLoggedIn) return false;
+
+    try {
+      await _userRepo.completeOnboarding(state.toMap());
+      return true;
+    } catch (e) {
+      debugPrint('Error completing onboarding: $e');
       return false;
     }
   }

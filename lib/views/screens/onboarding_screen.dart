@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:optivus2/core/router/app_router.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_0.dart';
@@ -29,7 +30,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  final PageController _pageController = PageController();
+  late final PageController _pageController;
   late final _PageOffsetNotifier _pageOffset;
   int _currentPage = 0;
 
@@ -45,6 +46,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
+    final initialPage = AppRouter.currentUserModel?.onboardingStep ?? 0;
+    _currentPage = initialPage;
+    _pageController = PageController(initialPage: initialPage);
     _pageOffset = _PageOffsetNotifier(_pageController);
   }
 
@@ -89,7 +93,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      final ok = await ref.read(onboardingProvider.notifier).saveToFirestore();
+      final ok = await ref.read(onboardingProvider.notifier).completeOnboarding();
       if (!ok) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -134,7 +138,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   physics: const BouncingScrollPhysics(),
                   onPageChanged: (i) {
                     setState(() => _currentPage = i);
-                    ref.read(onboardingProvider.notifier).saveToFirestoreDebounced();
+                    ref.read(onboardingProvider.notifier).saveToFirestoreDebounced(i);
                   },
                   children: const [
                     OnboardingPage0(),
@@ -244,7 +248,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                 ? _OnboardingSaveButton(
                                     key: ValueKey('save_$_currentPage'),
                                     globalKey: _saveButtonKey,
-                                    onSave: () => ref.read(onboardingProvider.notifier).saveToFirestore(),
+                                    onSave: () => ref.read(onboardingProvider.notifier).saveToFirestore(step: _currentPage),
                                   )
                                 : const SizedBox.shrink(key: ValueKey('no_save')),
                           ),

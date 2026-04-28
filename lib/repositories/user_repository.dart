@@ -36,9 +36,20 @@ class UserRepository {
   // ── Onboarding Data ─────────────────────────────────────────────────────────
 
   /// Save onboarding data merged into the user profile document.
-  Future<void> saveOnboardingData(Map<String, dynamic> onboardingMap) async {
+  Future<void> saveOnboardingData(Map<String, dynamic> onboardingMap, {int step = 0}) async {
     await _service.saveUserProfile({
       'onboarding': onboardingMap,
+      'onboardingStep': step,
+      'updatedAt': DateTime.now().toIso8601String(),
+    }, merge: true);
+  }
+
+  /// Complete onboarding by setting hasCompletedOnboarding to true.
+  Future<void> completeOnboarding(Map<String, dynamic> onboardingMap) async {
+    await _service.saveUserProfile({
+      'onboarding': onboardingMap,
+      'hasCompletedOnboarding': true,
+      'onboardingStep': 9, // The final step
       'updatedAt': DateTime.now().toIso8601String(),
     }, merge: true);
   }

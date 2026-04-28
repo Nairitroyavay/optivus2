@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/widgets/liquid_glass_panel.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:optivus2/models/user_model.dart';
 import 'package:optivus2/widgets/wavy_loading_indicator.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,6 +164,18 @@ class _SignupScreenState extends State<SignupScreen>
 
     try {
       final credential = await authCall;
+
+      // Create the user document in Firestore
+      final userModel = UserModel(
+        id: credential.user!.uid,
+        email: credential.user!.email ?? _emailCtrl.text.trim(),
+        name: _nameCtrl.text.trim(),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        hasCompletedOnboarding: false,
+        onboardingStep: 0,
+      );
+      await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set(userModel.toMap());
 
       // Update display name
       await credential.user?.updateDisplayName(_nameCtrl.text.trim());

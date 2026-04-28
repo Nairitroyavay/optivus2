@@ -14,6 +14,8 @@ class UserModel {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int schemaVersion;
+  final bool hasCompletedOnboarding;
+  final int onboardingStep;
 
   const UserModel({
     required this.id,
@@ -23,6 +25,8 @@ class UserModel {
     required this.createdAt,
     required this.updatedAt,
     this.schemaVersion = 1,
+    this.hasCompletedOnboarding = false,
+    this.onboardingStep = 0,
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -43,6 +47,8 @@ class UserModel {
               : DateTime.parse(data['updatedAt'] as String))
           : DateTime.now(),
       schemaVersion: data['schemaVersion'] as int? ?? 1,
+      hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
+      onboardingStep: data['onboardingStep'] as int? ?? 0,
     );
   }
 
@@ -63,6 +69,8 @@ class UserModel {
               : DateTime.parse(map['updatedAt'] as String))
           : DateTime.now(),
       schemaVersion: map['schemaVersion'] as int? ?? 1,
+      hasCompletedOnboarding: map['hasCompletedOnboarding'] as bool? ?? false,
+      onboardingStep: map['onboardingStep'] as int? ?? 0,
     );
   }
 
@@ -75,6 +83,8 @@ class UserModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
+      'hasCompletedOnboarding': hasCompletedOnboarding,
+      'onboardingStep': onboardingStep,
     };
   }
 
@@ -85,6 +95,8 @@ class UserModel {
     String? name,
     String? timezone,
     DateTime? updatedAt,
+    bool? hasCompletedOnboarding,
+    int? onboardingStep,
   }) {
     return UserModel(
       id: id,
@@ -94,6 +106,8 @@ class UserModel {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion,
+      hasCompletedOnboarding: hasCompletedOnboarding ?? this.hasCompletedOnboarding,
+      onboardingStep: onboardingStep ?? this.onboardingStep,
     );
   }
 }
