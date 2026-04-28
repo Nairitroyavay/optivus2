@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 
 final habitsProvider = StreamProvider<List<HabitModel>>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -19,19 +21,19 @@ final habitsProvider = StreamProvider<List<HabitModel>>((ref) {
 class LogHabitSheet extends ConsumerWidget {
   const LogHabitSheet({super.key});
 
-  Future<void> _logHabit(BuildContext context, HabitModel habit) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('habit_logs')
-        .add({
-      'habitId': habit.id,
-      'occurredAt': FieldValue.serverTimestamp(),
-      'quantity': 1,
-    });
+  Future<void> _logHabit(BuildContext context, WidgetRef ref, HabitModel habit) async {
+    final eventName = habit.kind == HabitKind.good
+        ? EventNames.goodHabitLogged
+        : EventNames.badHabitSlipLogged;
+
+    await ref.read(eventServiceProvider).emit(
+      eventName: eventName,
+      payload: {
+        'habitId': habit.id,
+        'amount': 1,
+        'timestamp': DateTime.now().toIso8601String(),
+      },
+    );
     
     if (context.mounted) {
       Navigator.pop(context);
@@ -170,7 +172,7 @@ class LogHabitSheet extends ConsumerWidget {
                           LiquidIconBtn(
                             icon: Icons.add_rounded,
                             size: 40,
-                            onTap: () => _logHabit(context, habit),
+                            onTap: () => _logHabit(context, ref, habit),
                           ),
                         ],
                       ),
