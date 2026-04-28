@@ -113,7 +113,7 @@ How to verify:
 
 Estimate: 2h
 
-* [ ] Done
+* [x] Done
 
 ⸻
 

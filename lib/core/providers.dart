@@ -3,6 +3,7 @@ import 'package:optivus2/services/firestore_service.dart';
 import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
+import 'package:optivus2/services/task_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DI — Single source of truth for service & repository providers
@@ -17,6 +18,13 @@ final firestoreServiceProvider = Provider<FirestoreService>(
 /// Every other service depends on this.
 final eventServiceProvider = Provider<EventService>(
   (_) => EventService(),
+);
+
+/// Task state transition and logging service.
+final taskServiceProvider = Provider<TaskService>(
+  (ref) => TaskService(
+    eventService: ref.read(eventServiceProvider),
+  ),
 );
 
 /// User profile + onboarding persistence.
