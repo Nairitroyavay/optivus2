@@ -7,8 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'config/firebase_options.dart';
 import 'core/router/app_router.dart';
 import 'core/providers.dart';
+import 'services/global_error_handler.dart';
 
 void main() async {
+  // ① Hook error handlers first — before anything else — so no error slips
+  // through during the Firebase / plugin bootstrap sequence.
+  GlobalErrorHandler.initialize();
+
   WidgetsFlutterBinding.ensureInitialized();
 
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -21,14 +26,16 @@ void main() async {
   ));
 
   try {
+    // ② Initialize Firebase.
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
     FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
-    FlutterError.onError =
-        FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+    // ③ Firebase is healthy — enable the Crashlytics pipe.
+    GlobalErrorHandler.setCrashlyticsEnabled();
   } catch (e) {
-    debugPrint('Firebase init failed: $e');
+    debugPrint('🔴 [main] Firebase init failed: $e');
   }
 
   runApp(const ProviderScope(child: OptivusApp()));

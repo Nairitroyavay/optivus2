@@ -107,7 +107,7 @@ CREATE a `GlobalErrorHandler` service. Hook into `FlutterError.onError` for Flut
 
 **Estimate:** 1 hour
 
-- [ ] Done
+- [x] Done
 
 ---
 
