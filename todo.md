@@ -84,7 +84,7 @@ MODIFY the `AuthService` signup method. After `createUserWithEmailAndPassword`, 
 
 **Estimate:** 1 hour
 
-- [ ] Done
+- [X] Done
 
 ---
 
