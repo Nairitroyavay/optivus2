@@ -1,371 +1,312 @@
-# Optivus Production Implementation Plan
+# Optivus Production Roadmap (66/100 → 100/100)
 
-## 1. Summary
-Optivus is an AI-powered life operating system designed for young professionals and students to align daily habits with long-term identity goals. The application combines a daily routine planner, habit tracker, long-term goals system, and an AI coach into a single cohesive experience. 
+## 1. Summary of Current System
+Optivus currently has a clean Flutter architecture with Riverpod and GoRouter, plus basic Firebase Auth and UI screens. However, it lacks a deterministic initialization flow, causing critical race conditions where routing occurs before Firestore data is loaded (skipping onboarding). Core services (habits, tasks) are skeletal, and the foundational Event System and AI Master Engine described in the design documents are not yet implemented.
 
-The architecture relies heavily on an **Event-Driven System**. Every state change in the app emits an event (e.g., `task_completed`, `habit_logged`) to the `EventService`. Other services (`StreakService`, `TaskService`) listen to these events rather than communicating directly. This decoupled approach ensures data integrity, makes the system testable, and provides a rich event log that the AI Coach reads to understand the user's actual behavior over time.
+## 2. Key Problems Blocking 100/100
+1. **Critical Race Condition:** Router evaluates state before Firebase/Firestore is ready.
+2. **No Bootstrap Layer:** The app lacks a single source of truth for initialization.
+3. **Missing Event Bus:** Services don't emit standardized events, breaking the decoupled architecture.
+4. **Incomplete Service Contracts:** Task, Habit, and Streak services lack production CRUD and event emissions.
+5. **No Context Aggregation:** The AI cannot see user state because `UserStateAggregator` doesn't exist.
+6. **No AI Decision Loop:** The rule engine to convert events into proactive coach actions is missing.
+7. **No Production Hardening:** Missing global error handling, offline persistence configuration, and schema validation.
 
-For V1, the focus is strictly on stabilizing the foundational layers, implementing the core habit and task flows, and bringing the basic AI coach to life. Advanced features like Postgres migration, realtime push outside Firestore, and complex AI topic modes are deferred.
+## 3. Strategy to Reach 100/100
+We will execute a strict, phased approach. We cannot build the AI Engine before the Event System, and we cannot build the Event System before the app routes deterministically. 
+1. **Phases 1 & 2** stabilize the core app flow and error handling.
+2. **Phase 3** implements the business logic (CRUD for habits/tasks).
+3. **Phase 4** wires the nervous system (Event Orchestrator).
+4. **Phases 5 & 6** build the brain (State Aggregator + AI Rule Engine).
+5. **Phase 7** hardens for scale.
 
----
-
-## 2. Codebase Analysis: Existing vs Missing
-
-**What exists (Already implemented):**
-- **Project Structure**: Flutter project configured with Firebase (`flutterfire`), `lib/core`, `lib/models`, `lib/services`, `lib/views`, `lib/widgets`.
-- **Core Models**: `UserModel`, `HabitModel`, `TaskModel`, `GoalModel`, `EventModel`, `StreakModel`, `HabitLogModel`, `DaySummaryModel`.
-- **Infrastructure Phase 0 & 1**: `AppErrors`, `UuidGenerator`, `EventNames` constants.
-- **EventService**: Foundational Pub/Sub event bus reading/writing to `/users/{uid}/events_recent`.
-- **Auth & Firebase**: `AuthService`, `AuthRepository`, `FirestoreService`.
-- **Habit Logging UI**: `Habit` model, `habitsProvider`, `LogHabitSheet` bottom sheet UI.
-- **Routine UI**: Setup screens (Skin care, classes, eating) and persistence in `RoutineNotifier`.
-- **Gemini AI**: `GeminiService` migrated to a secure Cloud Function backend (`aiGenerate`).
-- **UI Components**: `WavyLoadingIndicator`, `LiquidGlass` components, tab bar.
-
-**What is missing:**
-- **Service Layer Contracts**: `TaskService`, `HabitService` (backend logic), `StreakService`, `NotificationService`, `CoachService`.
-- **Task Lifecycle Engine**: Logic to move tasks from Scheduled -> Started -> Completed -> Abandoned, and sync this with the UI.
-- **Event Orchestration**: Subscribing peer services to the `EventService` streams to handle cross-service updates (e.g., updating streaks when a task completes).
-- **Tracker Tab Dashboard**: A unified UI to display good/bad habits, progress rings, and streaks.
-- **AI Coach Integration**: Wiring up the `CoachTab` UI to pass the user's context (events, routines) to the `GeminiService` and storing chat history in Firestore.
-- **Day Close Logic**: Background or startup logic to finalize the day, roll up streaks, and generate daily summaries.
-- **Notifications**: Local notifications for alarms and nudges.
+## 4. Full TODO Roadmap
 
 ---
 
-## 3. Phase-wise TODO List
+### Phase 1 — Critical Fixes
 
-### Phase 1 — Fix & stabilize existing codebase
+### Task 1.1 — App Bootstrap Layer
 
-⸻
+**Why:**
+The app currently races between Firebase Auth and GoRouter. We need a single source of truth for app initialization that guarantees Firestore data is loaded before routing decisions are made.
 
-Task 1.1 — Integrate Habit Logging with EventService
+**What to tell Antigravity:**
+CREATE an `AppBootstrapNotifier` (StateNotifier) that manages app initialization. It must listen to `FirebaseAuth.instance.authStateChanges()`. If user is null, emit `unauthenticated`. If user exists, await a fetch of `users/{uid}`. If `hasCompletedOnboarding` is false or the doc doesn't exist, emit `needsOnboarding`. If true, emit `ready`. DO NOT route directly from here. Expose this state via a Riverpod provider. Enable Firestore offline persistence in `main.dart`.
 
-Why:
-We previously built the `LogHabitSheet` UI, but it currently lacks the Event-Driven architectural requirement. Logging a habit must emit an event so derived systems (like Streaks) can react later.
+**Files to modify:**
+- `lib/core/providers/bootstrap_provider.dart`
+- `lib/main.dart`
 
-What to tell Antigravity:
-```text
-Refactor `lib/views/habits/log_habit_sheet.dart` and any relevant providers to use `EventService`. 
-When the user logs a habit, you must call `EventService.emit()` with the event name `EventNames.goodHabitLogged` (or `badHabitSlipLogged`). 
-MODIFY `lib/views/habits/log_habit_sheet.dart` to inject `EventService` via Riverpod.
-Do not write directly to Firestore for the log; the `EventService` will handle the event creation. 
-Ensure the payload includes `habitId`, `amount`, and `timestamp`.
-```
+**How to verify:**
+- Run the app. Logs should show state transitioning: `initializing` -> `unauthenticated` / `needsOnboarding` / `ready`.
 
-How to verify:
-* Open the app, tap the FAB, and log a habit.
-* Check Firebase Console: `/users/{uid}/events_recent/{eventId}` should have a new document with the correct payload.
-* Check VS Code debug logs for successful event emission.
+**Estimate:** 2 hours
 
-Estimate: 1h
+- [x] Done
 
-* [x] Done
+---
 
-⸻
+### Task 1.2 — Deterministic Router Rewrite
 
-Task 1.2 — Integrate Routine Setup with EventService
+**Why:**
+GoRouter currently relies on async Firestore calls or incomplete auth state, causing the critical onboarding skip bug.
 
-Why:
-The routine setup screens (Skin care, Eating, Classes) save data but do not emit `task_scheduled` events as required by the System Contracts.
+**What to tell Antigravity:**
+MODIFY `app_router.dart` to depend strictly on the `AppBootstrapNotifier` state. Remove all direct Firestore or Auth calls from the router's `redirect` logic. The `redirect` should be a pure switch statement: `initializing` -> `/loading`, `unauthenticated` -> `/login`, `needsOnboarding` -> `/onboarding`, `ready` -> `/home`. Ensure the router refreshes when the bootstrap state changes.
 
-What to tell Antigravity:
-```text
-Refactor `lib/providers/routine_provider.dart` to inject `EventService`.
-When saving a routine (e.g., `setSkinCarePlan`, `setClasses`), iterate over the created/updated blocks and emit a `EventNames.taskScheduled` event for each block.
-MODIFY `lib/providers/routine_provider.dart`. 
-Ensure the payload contains the `taskId`, `type`, `plannedStart`, and `plannedEnd`.
-```
+**Files to modify:**
+- `lib/core/router/app_router.dart`
 
-How to verify:
-* Go to Profile -> Routine Setup -> Skin Care. Save a new skin care routine.
-* Check Firebase Console: `/users/{uid}/events_recent/` should contain new `task_scheduled` events.
+**How to verify:**
+- Create a new account. The app MUST land on the first onboarding screen. Restart the app; it must stay on onboarding until completed.
 
-Estimate: 1h
+**Estimate:** 2 hours
 
-* [ ] Done
+- [ ] Done
 
-⸻
+---
 
-### Phase 2 — Core features (habits, tasks)
+### Task 1.3 — Auth & Firestore Sync Fix
 
-⸻
+**Why:**
+During signup, the user document must be explicitly created with `hasCompletedOnboarding: false` to ensure schema consistency.
 
-Task 2.1 — Build TaskService
+**What to tell Antigravity:**
+MODIFY the `AuthService` signup method. After `createUserWithEmailAndPassword`, immediately perform a `set()` operation to `users/{uid}` with a default `UserModel` where `hasCompletedOnboarding` is explicitly `false` and `schemaVersion` is 1. Ensure `UserModel.fromFirestore` correctly parses this or defaults to `false`.
 
-Why:
-Tasks are the core operational units. We need a service to handle the state transitions (Scheduled -> Started -> Paused -> Completed) and write to the correct Firestore paths while emitting events.
+**Files to modify:**
+- `lib/services/auth_service.dart`
+- `lib/models/user_model.dart`
 
-What to tell Antigravity:
-```text
-Create `lib/services/task_service.dart`.
-CREATE a `TaskService` class that implements `createTask`, `startTask`, `completeTask`, and `abandonTask`.
-Use the `TaskModel` from `lib/models/task_model.dart`.
-Write task documents to Firestore path: `/users/{uid}/tasks/{taskId}`.
-In each state transition method, you MUST emit the corresponding event (e.g., `EventNames.taskStarted`, `EventNames.taskCompleted`) using `EventService`.
-Integrate this service into `lib/core/providers.dart` as a Riverpod provider.
-```
+**How to verify:**
+- Sign up with a new email. Check Firebase Console: the `users/{uid}` document must exist immediately with `hasCompletedOnboarding: false`.
 
-How to verify:
-* Write a temporary test button on the Home screen to trigger `startTask`.
-* Verify in Firebase Console that `/users/{uid}/tasks/{taskId}` updates its state field to `started`.
-* Verify `/users/{uid}/events_recent/` contains a `task_started` event.
+**Estimate:** 1 hour
 
-Estimate: 2h
+- [ ] Done
 
-* [x] Done
+---
 
-⸻
+### Phase 2 — Core Stability
 
-Task 2.2 — Implement Routine Timeline UI & Task Execution
+### Task 2.1 — Global Error Handler
 
-Why:
-Users need to see their day's tasks on a timeline and interact with them (start, complete).
+**Why:**
+Failures currently crash the app silently. Production apps need a safety net to catch UI and async errors.
 
-What to tell Antigravity:
-```text
-MODIFY `lib/views/routine/routine_tab.dart` and `lib/views/routine/timeline_section.dart`.
-Fetch today's tasks using `TaskService.tasksFor(DateTime.now())` (which should return a Stream).
-Render the tasks on a vertical timeline based on their `plannedStart` and `plannedEnd`.
-Add "Start" and "Complete" buttons to the UI blocks. When tapped, these buttons should call `startTask` and `completeTask` on the `TaskService`.
-Handle the UI state change (e.g., show an active timer chip when state is `started`).
-```
+**What to tell Antigravity:**
+CREATE a `GlobalErrorHandler` service. Hook into `FlutterError.onError` for Flutter framework errors and `PlatformDispatcher.instance.onError` for asynchronous Dart errors. For now, log them using `debugPrint` with a clear formatting (e.g., `🔴 [Error]`), and prepare the structure to pipe them to Firebase Crashlytics. Initialize this at the top of `main()` before `runApp`.
 
-How to verify:
-* Open Routine Tab. You should see tasks fetched from Firestore.
-* Tap "Start" on a task block. The UI should instantly change to an active state.
-* Tap "Complete". The task should mark as completed.
+**Files to modify:**
+- `lib/core/services/error_handler_service.dart`
+- `lib/main.dart`
 
-Estimate: 3h
+**How to verify:**
+- Throw an intentional exception inside a button click. The app should not crash to desktop; the error should be printed via the custom logger.
 
-* [x] Done
+**Estimate:** 1 hour
 
-⸻
+- [ ] Done
 
-Task 2.3 — Build HabitService
+---
 
-Why:
-We need a dedicated backend service to manage the CRUD operations of Habits and their historical logs, separating this logic from the UI.
+### Phase 3 — Core Features (V1)
 
-What to tell Antigravity:
-```text
-Create `lib/services/habit_service.dart`.
-CREATE `HabitService` with methods `createHabit`, `logGood`, and `logSlip`.
-Write habit documents to `/users/{uid}/habits/{habitId}`.
-Write logs to `/users/{uid}/habits/{habitId}/logs/{YYYY-MM-DD}/items/{logId}`.
-Ensure `logGood` and `logSlip` emit `EventNames.goodHabitLogged` and `EventNames.badHabitSlipLogged` respectively.
-Provide this service via Riverpod in `lib/core/providers.dart`.
-```
+### Task 3.1 — Habit Service CRUD
 
-How to verify:
-* Use the app to create a new habit. Verify it appears in `/users/{uid}/habits/`.
-* Log a slip. Verify the log is created in the subcollection.
+**Why:**
+Habit tracking is foundational, but the service layer is incomplete. 
 
-Estimate: 2h
+**What to tell Antigravity:**
+MODIFY `HabitService` to implement full CRUD for habits. Use `WriteBatch` for logging. Create `createHabit` (writes to `users/{uid}/habits/{habitId}`). Create `logGood` and `logSlip` methods. These must write to the time-bucketed `users/{uid}/habits/{habitId}/logs/{YYYY-MM-DD}/items/{logId}` path. Do NOT emit events yet (that happens in Phase 4). Add a `schemaVersion: 1` to all writes.
 
-* [x] Done
+**Files to modify:**
+- `lib/services/habit_service.dart`
+- `lib/models/habit_model.dart`
 
-⸻
+**How to verify:**
+- Tap a habit in the UI. Verify the log document appears in the correct time-bucketed subcollection in the Firebase Console.
 
-Task 2.4 — Implement Tracker Tab UI Dashboard
+**Estimate:** 3 hours
 
-Why:
-The Tracker tab is where the user sees their habit progress, mission rings, and bad habit reductions.
+- [ ] Done
 
-What to tell Antigravity:
-```text
-MODIFY `lib/views/tabs/tracker_tab.dart`.
-Build a dashboard UI that fetches habits via `HabitService.habits()`.
-Display Good Habits as cards with progress bars (fetching daily totals from the logs subcollection).
-Display Bad Habits in a separate carousel highlighting slip counts.
-Use the LiquidGlass design system (vibrant colors, glassmorphism).
-Add a "Log Slip" button for bad habits that calls `HabitService.logSlip`.
-```
+---
 
-How to verify:
-* Navigate to Tracker Tab.
-* Ensure both Good and Bad habits are rendered correctly.
-* Tap "Log Slip" and verify the UI updates and Firebase receives the write.
+### Task 3.2 — Task Service Transitions
 
-Estimate: 3h
+**Why:**
+Tasks have a specific state machine (scheduled -> started -> completed/abandoned) that must be enforced.
 
-* [x] Done
+**What to tell Antigravity:**
+MODIFY `TaskService` to handle state transitions. Implement `createTask`, `startTask`, `pauseTask`, `resumeTask`, `completeTask`, and `abandonTask`. Ensure `startTask` sets `actualStart`, and `completeTask` calculates `actualDurationMin`. Write to `users/{uid}/tasks/{taskId}`. Throw custom exceptions (e.g., `InvalidStateTransitionError`) if the state machine is violated.
 
-⸻
+**Files to modify:**
+- `lib/services/task_service.dart`
+- `lib/models/task_model.dart`
 
-### Phase 3 — Event system
+**How to verify:**
+- Create a task, start it, then complete it. Check Firestore to ensure timestamps and duration are populated correctly.
 
-⸻
+**Estimate:** 3 hours
 
-Task 3.1 — Create EventOrchestrator for Background Listening
+- [ ] Done
 
-Why:
-We need a central place to listen to `EventService.onAny()` and trigger side-effects in other services without creating circular dependencies.
+---
 
-What to tell Antigravity:
-```text
-CREATE `lib/core/event_orchestrator.dart`.
-Create an `EventOrchestrator` class that takes instances of `EventService`, `StreakService`, and `NotificationService`.
-In its `init()` method, subscribe to `EventService.onAny()`.
-Write a switch statement based on the `eventName`. 
-For example, when `task_completed` is received, we will eventually call `StreakService`. (Leave comments for these calls for now).
-Provide and initialize this class globally in `lib/main.dart` or via a Riverpod `Provider` initialized on startup.
-```
+### Phase 4 — Event System (FOUNDATION)
 
-How to verify:
-* Add a print statement in the listener.
-* Perform any action (log habit, complete task).
-* Check the debug console to see the `EventOrchestrator` catching the event.
+### Task 4.1 — Event Model & Event Service
 
-Estimate: 1h
+**Why:**
+Cross-service communication must happen via idempotent events, not direct calls. This is the core architectural invariant.
 
-* [ ] Done
+**What to tell Antigravity:**
+CREATE `EventModel` with fields: `eventId` (String), `eventName` (String), `ts` (DateTime), `deviceLocalTs` (DateTime), `source` (String), and `payload` (Map). CREATE `EventService`. Implement the `emit` method. It must generate a deterministic `eventId` (UUIDv7 or SHA256 of payload+time). It must write the event to BOTH `users/{uid}/events/{eventId}` and `users/{uid}/events_recent/{eventId}` using a `WriteBatch`. It must then broadcast the event to a local `StreamController.broadcast()`.
 
-⸻
+**Files to modify:**
+- `lib/models/event_model.dart`
+- `lib/services/event_service.dart`
 
-### Phase 4 — Derived systems (streaks, summaries)
+**How to verify:**
+- Call `EventService.emit` manually. Check Firestore that both `events` and `events_recent` collections receive the exact same document.
 
-⸻
+**Estimate:** 3 hours
 
-Task 4.1 — Build StreakService
+- [ ] Done
 
-Why:
-Streaks are a core gamification loop. They need to calculate continuously based on completed tasks and habit logs.
+---
 
-What to tell Antigravity:
-```text
-CREATE `lib/services/streak_service.dart`.
-Implement `runDayCloseRollup(String date)` which iterates over active habits, calculates if the goal was met based on logs, and updates `/users/{uid}/streaks/{habitId}`.
-Fields should include `currentCount`, `longestCount`, and `state`.
-MODIFY `lib/core/event_orchestrator.dart` to call `StreakService` methods if needed, or primarily rely on the Day Close trigger.
-Provide via Riverpod.
-```
+### Task 4.2 — Hook Events into Services
 
-How to verify:
-* Manually trigger `runDayCloseRollup` via a temporary button.
-* Check Firebase Console: `/users/{uid}/streaks/` should be created or updated with accurate counts.
+**Why:**
+Services must broadcast their actions so the rest of the system (streaks, AI) can react.
 
-Estimate: 3h
+**What to tell Antigravity:**
+MODIFY `HabitService`, `TaskService`, and `OnboardingScreen`. Inject `EventService`. At the end of `logGood`, emit `good_habit_logged`. In `logSlip`, emit `bad_habit_slip_logged`. In `completeTask`, emit `task_completed`. In `abandonTask`, emit `task_abandoned`. In onboarding completion, emit `onboarding_completed`. ALL emissions must happen in the same `WriteBatch` as the primary data mutation if possible, or immediately after.
 
-* [x] Done
+**Files to modify:**
+- `lib/services/habit_service.dart`
+- `lib/services/task_service.dart`
+- `lib/views/onboarding/onboarding_screen.dart`
 
-⸻
+**How to verify:**
+- Complete a task in the UI. Check `events_recent` in Firestore to confirm `task_completed` appears with the correct payload.
 
-Task 4.2 — Implement Day Close Rollup in RoutineService
+**Estimate:** 2 hours
 
-Why:
-The system needs to close the day out at midnight (or next app boot) to finalize streaks and generate a summary.
+- [ ] Done
 
-What to tell Antigravity:
-```text
-MODIFY `lib/services/routine_service.dart` (create it if it doesn't exist, moving logic from RoutineProvider).
-Add `runDayCloseIfNeeded()`. 
-Fetch the user's `lastDayClosed` from their profile. If it's less than yesterday, generate a `DaySummaryModel` and write to `/users/{uid}/dailySummaries/{date}`.
-Inside this method, await `StreakService.runDayCloseRollup(date)`.
-Emit `EventNames.dayClosed`.
-Update `lastDayClosed` on the `UserModel`.
-Call `runDayCloseIfNeeded()` during app startup in `lib/main.dart`.
-```
+---
 
-How to verify:
-* Set `lastDayClosed` to two days ago in Firebase.
-* Restart the app.
-* Verify the daily summary doc is created and streaks are calculated for the missing days.
+### Phase 5 — State Engine
 
-Estimate: 2h
+### Task 5.1 — User State Aggregator
 
-* [x] Done
+**Why:**
+The AI Coach needs to know the user's current status (how many tasks done today, active streaks, slips) to provide context-aware advice.
 
-⸻
+**What to tell Antigravity:**
+CREATE `ContextSnapshot` model containing `tasksCompletedToday`, `goodHabitsLoggedToday`, `badHabitSlipsToday`, `longestActiveStreak`, and `userState`. CREATE `StateAggregatorService`. Implement `buildSnapshot(String uid)`. It should query `events_recent` for today's date to count completions/slips, and query `streaks` to find the longest active streak. Return a compiled `ContextSnapshot`.
 
-### Phase 5 — Notifications
+**Files to modify:**
+- `lib/models/context_snapshot.dart`
+- `lib/services/state_aggregator_service.dart`
 
-⸻
+**How to verify:**
+- Trigger `buildSnapshot` and print the output. Perform an action in the app, trigger it again, and verify the counts increase.
 
-Task 5.1 — Build NotificationService
+**Estimate:** 3 hours
 
-Why:
-Users need reminders to execute their planned tasks.
+- [ ] Done
 
-What to tell Antigravity:
-```text
-CREATE `lib/services/notification_service.dart`.
-Use the `flutter_local_notifications` package.
-Implement `scheduleTaskAlarm(TaskModel task)`. It should schedule a notification 5 minutes before `plannedStart`.
-MODIFY `lib/core/event_orchestrator.dart` to listen for `EventNames.taskScheduled` and call `NotificationService.scheduleTaskAlarm()`.
-Request notification permissions on app startup.
-```
+---
 
-How to verify:
-* Create a task starting 10 minutes from now.
-* Close the app.
-* Wait 5 minutes. You should receive a push notification reminding you to start the task.
+### Phase 6 — AI Engine (BASIC)
 
-Estimate: 2h
+### Task 6.1 — AI Rule Engine Service
 
-* [ ] Done
+**Why:**
+The system needs to decide *when* to proactively coach the user based on events and their current state.
 
-⸻
+**What to tell Antigravity:**
+CREATE `RuleEngineService`. Define a hardcoded list of `Rule` objects based on the AI Master Engine doc (e.g., `rule_smoking_pattern_4_cigs`, `rule_missed_gym_one_off`). Implement `evaluate(ContextSnapshot snapshot, EventModel recentEvent)`. It should filter rules where `rule.event == recentEvent.eventName`, check all `conditions` against the snapshot, and return the eligible rule with the highest priority. Ignore cooldown logic for this V1 iteration.
 
-### Phase 6 — AI Coach
+**Files to modify:**
+- `lib/models/coach_rule.dart`
+- `lib/services/rule_engine_service.dart`
 
-⸻
+**How to verify:**
+- Pass a mock `bad_habit_slip_logged` event (count = 4) and a mock snapshot to `evaluate`. Verify it returns the `rule_smoking_pattern_4_cigs` rule.
 
-Task 6.1 — Wire Coach Tab Chat UI
+**Estimate:** 4 hours
 
-Why:
-The core differentiator of Optivus is the AI Coach. We need the chat interface connected to the backend.
+- [ ] Done
 
-What to tell Antigravity:
-```text
-MODIFY `lib/views/tabs/coach_tab.dart`.
-Implement a chat interface with iOS-style speech bubbles.
-Use `GeminiService` (which uses Cloud Functions) to send user messages and retrieve responses.
-Save chat history to Firestore: `/users/{uid}/coach_chats/{thread_id}/turns`.
-Add a typing indicator and a text input field at the bottom.
-```
+---
 
-How to verify:
-* Open Coach Tab.
-* Type "Hello".
-* Wait for the AI bubble to stream in/appear.
-* Check Firebase to ensure the chat history is saved.
+### Task 6.2 — Proactive Coach Wiring
 
-Estimate: 3h
+**Why:**
+The Coach needs to automatically send a message when a rule fires, rather than just waiting for the user to chat.
 
-* [x] Done
+**What to tell Antigravity:**
+MODIFY `EventOrchestrator`. It should listen to `EventService.onAny()`. When an event arrives, call `StateAggregatorService.buildSnapshot`. Pass the snapshot and event to `RuleEngineService.evaluate`. If a rule is returned, pass the rule's `prompt_template` to `GeminiService.generateOnce()`. Save the resulting message to `users/{uid}/coach_messages/{messageId}` with `role: "coach"` so the UI automatically displays it.
 
-⸻
+**Files to modify:**
+- `lib/core/event_orchestrator.dart`
+- `lib/services/coach_service.dart`
 
-Task 6.2 — Implement Coach Context Builder
+**How to verify:**
+- Log 4 bad habit slips. Switch to the Coach Tab. A new proactive message from the coach should appear automatically.
 
-Why:
-The AI is useless if it doesn't know the user's data. We must pass the context (habits, tasks) in the system prompt.
+**Estimate:** 3 hours
 
-What to tell Antigravity:
-```text
-CREATE `lib/services/coach_service.dart`.
-Implement a method `generateSystemPrompt()` that fetches today's tasks from `TaskService`, active streaks from `StreakService`, and the user's identity goals from `UserModel`.
-Inject this system prompt as context when calling `GeminiService`.
-MODIFY `lib/views/tabs/coach_tab.dart` to use `CoachService` instead of directly calling `GeminiService`.
-```
+- [ ] Done
 
-How to verify:
-* Open Coach Tab.
-* Ask the coach: "What tasks do I have scheduled for today?".
-* The coach should accurately list your tasks because they were provided in the system prompt.
+---
 
-Estimate: 2h
+### Phase 7 — Production Readiness
 
-* [x] Done
+### Task 7.1 — Model Null-Safety & Schema Versioning
 
-⸻
+**Why:**
+Firestore documents might be missing fields, especially during early development. The app must not crash on malformed data.
 
-### Phase 7 — Advanced features (Deferred for V2)
+**What to tell Antigravity:**
+MODIFY all models in `lib/models/`. Audit every `fromFirestore` or `fromJson` factory. Ensure strict null-safety with fallbacks (e.g., `json['name'] as String? ?? ''`). Ensure every `toMap` includes `schemaVersion: 1`.
 
-⸻
+**Files to modify:**
+- `lib/models/user_model.dart`
+- `lib/models/habit_model.dart`
+- `lib/models/task_model.dart`
+- `lib/models/event_model.dart`
 
-Task 7.1 — Topic Modes & Advanced AI Rules (Deferred)
-Task 7.2 — Phone Screen Time Integration (Deferred)
-Task 7.3 — Postgres Migration Contingency (Deferred)
+**How to verify:**
+- Manually edit a Firestore document and delete a non-critical field. Reload the app. It must not crash.
 
+**Estimate:** 2 hours
+
+- [ ] Done
+
+---
+
+### Task 7.2 — Event Replay on Startup
+
+**Why:**
+If the app crashes before the UI can react to a Firestore write, the state becomes inconsistent.
+
+**What to tell Antigravity:**
+MODIFY `EventService`. Add a `replayRecentEvents()` method. On app startup (when Bootstrap transitions to `ready`), fetch the last 50 events from `events_recent`. Check against a local cache (e.g., `SharedPreferences`) of processed `eventId`s. If an event hasn't been processed, fire it on the local stream so the `EventOrchestrator` can catch up.
+
+**Files to modify:**
+- `lib/services/event_service.dart`
+- `lib/core/providers/bootstrap_provider.dart`
+
+**How to verify:**
+- Log an event, but immediately kill the app before the `EventOrchestrator` can process it (mock this). Restart the app. The orchestrator should process the missed event.
+
+**Estimate:** 3 hours
+
+- [ ] Done

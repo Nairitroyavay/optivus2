@@ -13,6 +13,8 @@ import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/services/routine_service.dart';
 import 'package:optivus2/services/coach_service.dart';
 
+export 'providers/bootstrap_provider.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DI — Single source of truth for service & repository providers
 // ─────────────────────────────────────────────────────────────────────────────
