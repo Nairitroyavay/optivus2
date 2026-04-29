@@ -1,15 +1,30 @@
+// lib/services/habit_service.dart
+//
+// Full CRUD for habits. Per ServiceContracts §3.
+//
+// Firestore paths:
+//   Habit document  : users/{uid}/habits/{habitId}
+//   Log entry       : users/{uid}/habits/{habitId}/logs/{YYYY-MM-DD}/items/{logId}
+//
+// Rules:
+//   • All writes use WriteBatch and carry schemaVersion: 1.
+//   • logGood / logSlip validate habit existence, kind, and active state before writing.
+//   • deleteHabit is a soft-delete (state → archived) to preserve log sub-collections.
+//   • Event emission is deferred to Phase 4 — EventService is wired but NOT called yet.
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/errors/app_errors.dart';
-import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/habit_log_model.dart';
-import 'package:optivus2/services/event_service.dart';
+import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/core/utils/uuid_generator.dart';
+// ignore: unused_import — EventService wired for Phase 4 event emission.
+import 'package:optivus2/services/event_service.dart';
 
 class HabitService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
+  // ignore: unused_field — retained for Phase 4 event emission.
   final EventService _eventService;
 
   HabitService({
@@ -20,6 +35,8 @@ class HabitService {
         _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance;
 
+  // ── Private helpers ────────────────────────────────────────────────────────
+
   String get _uid {
     final user = _auth.currentUser;
     if (user == null) throw const NotAuthenticatedError();
@@ -29,6 +46,25 @@ class HabitService {
   CollectionReference<Map<String, dynamic>> get _habitsRef =>
       _firestore.collection('users').doc(_uid).collection('habits');
 
+  /// Returns a zero-padded `YYYY-MM-DD` string for [date].
+  String _dateString(DateTime date) =>
+      '${date.year}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  /// Returns the `items` sub-collection ref for a given [habitId] and [date].
+  CollectionReference<Map<String, dynamic>> _itemsRef(
+    String habitId,
+    DateTime date,
+  ) =>
+      _habitsRef
+          .doc(habitId)
+          .collection('logs')
+          .doc(_dateString(date))
+          .collection('items');
+
+  // ── Read ──────────────────────────────────────────────────────────────────
+
   /// Real-time stream of all active habits for the current user.
   Stream<List<HabitModel>> habits() {
     return _habitsRef
@@ -37,30 +73,22 @@ class HabitService {
         .map((snap) => snap.docs.map(HabitModel.fromFirestore).toList());
   }
 
+  /// Fetches a single habit. Returns `null` if it does not exist.
+  Future<HabitModel?> getHabit(String habitId) async {
+    final snap = await _habitsRef.doc(habitId).get();
+    if (!snap.exists || snap.data() == null) return null;
+    return HabitModel.fromFirestore(snap);
+  }
+
   /// Returns the count of log items for [habitId] on [date].
   Future<int> dailyLogCount(String habitId, DateTime date) async {
-    final dateString =
-        "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-    final snap = await _habitsRef
-        .doc(habitId)
-        .collection('logs')
-        .doc(dateString)
-        .collection('items')
-        .count()
-        .get();
+    final snap = await _itemsRef(habitId, date).count().get();
     return snap.count ?? 0;
   }
 
   /// Returns the sum of quantities for a good habit on [date].
   Future<num> dailyTotal(String habitId, DateTime date) async {
-    final dateString =
-        "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
-    final snap = await _habitsRef
-        .doc(habitId)
-        .collection('logs')
-        .doc(dateString)
-        .collection('items')
-        .get();
+    final snap = await _itemsRef(habitId, date).get();
     num total = 0;
     for (final doc in snap.docs) {
       total += (doc.data()['quantity'] as num?) ?? 1;
@@ -68,29 +96,106 @@ class HabitService {
     return total;
   }
 
+  // ── Create ────────────────────────────────────────────────────────────────
+
+  /// Creates a new habit document at `users/{uid}/habits/{habitId}`.
+  ///
+  /// Throws [InvalidHabitInputError] if [habit.name] is blank.
+  /// Uses [WriteBatch] for the write; stamps `schemaVersion: 1`.
   Future<void> createHabit(HabitModel habit) async {
+    if (habit.name.trim().isEmpty) {
+      throw InvalidHabitInputError('Habit name must not be blank.');
+    }
+
     final docRef = _habitsRef.doc(habit.id);
     final batch = _firestore.batch();
-    
-    batch.set(docRef, habit.toFirestore());
 
-    await _eventService.emit(
-      eventName: EventNames.habitCreated,
-      payload: {
-        'habitId': habit.id,
-        'kind': habit.kind.name,
-      },
-      batch: batch,
-    );
+    batch.set(docRef, {
+      ...habit.toFirestore(),
+      'schemaVersion': 1,
+    });
 
     await batch.commit();
+    // Phase 4: emit EventNames.habitCreated
   }
 
-  Future<void> logGood(String habitId, {num? amount, String? note, DateTime? occurredAt}) async {
+  // ── Update ────────────────────────────────────────────────────────────────
+
+  /// Updates an existing habit document.
+  ///
+  /// Throws [HabitNotFoundError] if the habit does not exist.
+  /// Uses [WriteBatch]; stamps `schemaVersion: 1` and refreshes `updatedAt`.
+  Future<void> updateHabit(HabitModel habit) async {
+    final existing = await getHabit(habit.id);
+    if (existing == null) throw HabitNotFoundError(habit.id);
+
+    final docRef = _habitsRef.doc(habit.id);
+    final batch = _firestore.batch();
+
+    batch.update(docRef, {
+      ...habit.toFirestore(),
+      'schemaVersion': 1,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await batch.commit();
+    // Phase 4: emit EventNames.habitUpdated
+  }
+
+  // ── Delete (soft) ─────────────────────────────────────────────────────────
+
+  /// Soft-deletes a habit by transitioning its state to [HabitState.archived].
+  ///
+  /// Hard deletion is intentionally avoided — deleting the parent document
+  /// would orphan the log sub-collections and erase streak history.
+  ///
+  /// Throws [HabitNotFoundError] if the habit does not exist.
+  Future<void> deleteHabit(String habitId) async {
+    final existing = await getHabit(habitId);
+    if (existing == null) throw HabitNotFoundError(habitId);
+
+    final docRef = _habitsRef.doc(habitId);
+    final batch = _firestore.batch();
+
+    batch.update(docRef, {
+      'state': HabitState.archived.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'schemaVersion': 1,
+    });
+
+    await batch.commit();
+    // Phase 4: emit habit_archived event (not yet in EventNames — add in Phase 4)
+  }
+
+  // ── Logging ───────────────────────────────────────────────────────────────
+
+  /// Logs a good-habit occurrence.
+  ///
+  /// Path: `users/{uid}/habits/{habitId}/logs/{YYYY-MM-DD}/items/{logId}`
+  ///
+  /// Throws:
+  ///   - [HabitNotFoundError]  — habit does not exist.
+  ///   - [WrongHabitKindError] — habit is not [HabitKind.good].
+  ///   - [HabitNotActiveError] — habit is paused or archived.
+  ///   - [InvalidAmountError]  — [amount] is provided but ≤ 0.
+  ///
+  /// Uses [WriteBatch]; stamps `schemaVersion: 1` and `logType: 'good'`.
+  Future<void> logGood(
+    String habitId, {
+    num? amount,
+    String? note,
+    String? source,
+    DateTime? occurredAt,
+  }) async {
+    final habit = await _requireHabit(habitId);
+    _requireKind(habit, HabitKind.good);
+    _requireActive(habit);
+    if (amount != null && amount <= 0) throw const InvalidAmountError();
+
     final now = DateTime.now();
     final occurred = occurredAt ?? now;
     final logId = generateId();
-    
+
     final log = HabitLog(
       logId: logId,
       habitId: habitId,
@@ -98,32 +203,48 @@ class HabitService {
       loggedAt: now,
       quantity: amount,
       note: note,
+      source: source ?? 'manual',
+      schemaVersion: 1,
     );
 
-    final dateString = "${occurred.year}-${occurred.month.toString().padLeft(2, '0')}-${occurred.day.toString().padLeft(2, '0')}";
-    final docRef = _habitsRef.doc(habitId).collection('logs').doc(dateString).collection('items').doc(logId);
-    
+    final docRef = _itemsRef(habitId, occurred).doc(logId);
     final batch = _firestore.batch();
-    batch.set(docRef, log.toFirestore());
 
-    await _eventService.emit(
-      eventName: EventNames.goodHabitLogged,
-      payload: {
-        'habitId': habitId,
-        'amount': amount,
-        'timestamp': occurred.toIso8601String(),
-      },
-      batch: batch,
-    );
+    batch.set(docRef, {
+      ...log.toFirestore(),
+      'logType': 'good',
+      'schemaVersion': 1,
+    });
 
     await batch.commit();
+    // Phase 4: emit EventNames.goodHabitLogged
   }
 
-  Future<void> logSlip(String habitId, {String? trigger, String? note, DateTime? occurredAt}) async {
+  /// Logs a bad-habit slip.
+  ///
+  /// Path: `users/{uid}/habits/{habitId}/logs/{YYYY-MM-DD}/items/{logId}`
+  ///
+  /// Throws:
+  ///   - [HabitNotFoundError]  — habit does not exist.
+  ///   - [WrongHabitKindError] — habit is not [HabitKind.bad].
+  ///   - [HabitNotActiveError] — habit is paused or archived.
+  ///
+  /// Uses [WriteBatch]; stamps `schemaVersion: 1` and `logType: 'slip'`.
+  Future<void> logSlip(
+    String habitId, {
+    String? trigger,
+    String? note,
+    String? source,
+    DateTime? occurredAt,
+  }) async {
+    final habit = await _requireHabit(habitId);
+    _requireKind(habit, HabitKind.bad);
+    _requireActive(habit);
+
     final now = DateTime.now();
     final occurred = occurredAt ?? now;
     final logId = generateId();
-    
+
     final log = HabitLog(
       logId: logId,
       habitId: habitId,
@@ -131,24 +252,46 @@ class HabitService {
       loggedAt: now,
       trigger: trigger,
       note: note,
+      source: source ?? 'manual',
+      schemaVersion: 1,
     );
 
-    final dateString = "${occurred.year}-${occurred.month.toString().padLeft(2, '0')}-${occurred.day.toString().padLeft(2, '0')}";
-    final docRef = _habitsRef.doc(habitId).collection('logs').doc(dateString).collection('items').doc(logId);
-    
+    final docRef = _itemsRef(habitId, occurred).doc(logId);
     final batch = _firestore.batch();
-    batch.set(docRef, log.toFirestore());
 
-    await _eventService.emit(
-      eventName: EventNames.badHabitSlipLogged,
-      payload: {
-        'habitId': habitId,
-        'trigger': trigger,
-        'timestamp': occurred.toIso8601String(),
-      },
-      batch: batch,
-    );
+    batch.set(docRef, {
+      ...log.toFirestore(),
+      'logType': 'slip',
+      'schemaVersion': 1,
+    });
 
     await batch.commit();
+    // Phase 4: emit EventNames.badHabitSlipLogged
+  }
+
+  // ── Guard helpers (private) ───────────────────────────────────────────────
+
+  /// Fetches a habit and throws [HabitNotFoundError] if missing.
+  Future<HabitModel> _requireHabit(String habitId) async {
+    final habit = await getHabit(habitId);
+    if (habit == null) throw HabitNotFoundError(habitId);
+    return habit;
+  }
+
+  /// Throws [WrongHabitKindError] if [habit.kind] ≠ [expected].
+  void _requireKind(HabitModel habit, HabitKind expected) {
+    if (habit.kind != expected) {
+      throw WrongHabitKindError(
+        expected: expected.name,
+        actual: habit.kind.name,
+      );
+    }
+  }
+
+  /// Throws [HabitNotActiveError] if [habit.state] ≠ [HabitState.active].
+  void _requireActive(HabitModel habit) {
+    if (habit.state != HabitState.active) {
+      throw HabitNotActiveError(habit.id);
+    }
   }
 }

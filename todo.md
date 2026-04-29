@@ -130,7 +130,7 @@ MODIFY `HabitService` to implement full CRUD for habits. Use `WriteBatch` for lo
 
 **Estimate:** 3 hours
 
-- [ ] Done
+- [x] Done
 
 ---
 
