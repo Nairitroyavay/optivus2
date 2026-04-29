@@ -54,7 +54,7 @@ class OptivusApp extends ConsumerWidget {
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFFB830)),
       ),
-      routerConfig: AppRouter.router,
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }

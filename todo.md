@@ -63,7 +63,7 @@ MODIFY `app_router.dart` to depend strictly on the `AppBootstrapNotifier` state.
 
 **Estimate:** 2 hours
 
-- [ ] Done
+- [x] Done
 
 ---
 

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:optivus2/core/router/app_router.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_0.dart';
@@ -46,7 +45,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   void initState() {
     super.initState();
-    final initialPage = AppRouter.currentUserModel?.onboardingStep ?? 0;
+    final initialPage = 0;
     _currentPage = initialPage;
     _pageController = PageController(initialPage: initialPage);
     _pageOffset = _PageOffsetNotifier(_pageController);
