@@ -123,7 +123,7 @@ Firebase console: `/users/{uid}` appears immediately after signup with the requi
 Logs: bootstrap state transitions should go `initializing -> needsOnboarding` for a new user.
 
 **Estimate:** 2h
-- Done
+- Done x
 
 ### Task 1.2 — Align Onboarding Persistence with the Docs Without Breaking Existing UI
 **Why:** Onboarding UI exists, but stored data is too shallow for the target system.

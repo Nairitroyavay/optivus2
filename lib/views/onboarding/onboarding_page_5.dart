@@ -15,6 +15,19 @@ class OnboardingPage5 extends ConsumerStatefulWidget {
 class _OnboardingPage5State extends ConsumerState<OnboardingPage5> {
   String _selectedCoach = 'Supportive';
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final coachStyle = ref.read(onboardingProvider).coachStyle;
+      if (coachStyle.isNotEmpty) {
+        setState(() => _selectedCoach = coachStyle);
+      } else {
+        ref.read(onboardingProvider.notifier).updateCoachStyle(_selectedCoach);
+      }
+    });
+  }
+
   void _selectCoach(String title) {
     setState(() {
       _selectedCoach = title;
@@ -281,4 +294,3 @@ class _OnboardingPage5State extends ConsumerState<OnboardingPage5> {
     );
   }
 }
-

@@ -26,7 +26,8 @@ class CoachService {
 
   Future<String> generateSystemPrompt(String coachName, String tone) async {
     // 1. Fetch onboarding data for goals and bad habits
-    final onboarding = await _userRepo.getOnboardingData();
+    final onboardingSnapshot = await _userRepo.getOnboardingData();
+    final onboarding = onboardingSnapshot?.onboarding;
     final goals = (onboarding?['goals'] as List?)?.join(', ') ?? 'No specific goals set';
     final badHabits = (onboarding?['badHabits'] as List?)?.join(', ') ?? 'None specified';
 

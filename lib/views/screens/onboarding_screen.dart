@@ -34,6 +34,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   late final PageController _pageController;
   late final _PageOffsetNotifier _pageOffset;
   int _currentPage = 0;
+  bool _hasHydratedPageController = false;
 
   double _dragStartPage = 0.0;
   double _dragStartX = 0.0;
@@ -52,6 +53,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _currentPage = initialPage;
     _pageController = PageController(initialPage: initialPage);
     _pageOffset = _PageOffsetNotifier(_pageController);
+    Future.microtask(_hydrateOnboarding);
   }
 
   @override
@@ -67,6 +69,24 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final btnState = _saveButtonKey.currentState;
     if (btnState == null) return true; // no button visible → nothing to save
     return btnState.triggerSave();
+  }
+
+  Future<void> _hydrateOnboarding() async {
+    final savedStep = await ref.read(onboardingProvider.notifier).loadFromFirestore();
+    if (!mounted || _hasHydratedPageController) return;
+
+    final targetPage = savedStep.clamp(0, 9).toInt();
+    _hasHydratedPageController = true;
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(targetPage);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _pageController.hasClients) {
+          _pageController.jumpToPage(targetPage);
+        }
+      });
+    }
+    setState(() => _currentPage = targetPage);
   }
 
   void _onNext() async {
@@ -97,7 +117,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
-      final onboardingState = ref.read(onboardingProvider);
       final ok =
           await ref.read(onboardingProvider.notifier).completeOnboarding();
       if (!ok) {
@@ -111,18 +130,65 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         return;
       }
       try {
+        final completedState = ref.read(onboardingProvider);
+        final onboardingStateDoc = {
+          'selectedCategories': completedState.selectedCategories,
+          'badHabits': completedState.badHabits,
+          'goodHabits': completedState.goodHabits,
+          'goals': completedState.goals,
+          'coachStyle': completedState.coachStyle,
+          'coachName': completedState.coachName,
+          'accountabilityType': completedState.accountabilityType,
+          'scheduleItems': completedState.scheduleItems,
+          'onboardingStep': 9,
+          'hasCompletedOnboarding': true,
+          'status': 'completed',
+          'completedAt': completedState.completedAt,
+        };
+        final profileMainDoc = {
+          'selectedCategories': completedState.selectedCategories,
+          'badHabits': completedState.badHabits,
+          'goodHabits': completedState.goodHabits,
+          'goals': completedState.goals,
+          'coachStyle': completedState.coachStyle,
+          'coachName': completedState.coachName,
+          'accountabilityType': completedState.accountabilityType,
+          'scheduleItems': completedState.scheduleItems,
+          'onboardingStep': 9,
+          'hasCompletedOnboarding': true,
+          'source': 'onboarding',
+          'completedAt': completedState.completedAt,
+        };
+        final identityProfileStub = {
+          'status': 'stub',
+          'source': 'onboarding',
+          'selectedCategories': completedState.selectedCategories,
+          'goals': completedState.goals,
+          'coachStyle': completedState.coachStyle,
+          'coachName': completedState.coachName,
+          'accountabilityType': completedState.accountabilityType,
+          'onboardingStep': 9,
+          'hasCompletedOnboarding': true,
+          'completedAt': completedState.completedAt,
+        };
         await ref.read(eventServiceProvider).emit(
           eventName: EventNames.onboardingCompleted,
           payload: {
             'onboardingStep': 9,
-            'selectedCategories': onboardingState.selectedCategories,
-            'badHabits': onboardingState.badHabits,
-            'goodHabits': onboardingState.goodHabits,
-            'goals': onboardingState.goals,
-            'coachStyle': onboardingState.coachStyle,
-            'coachName': onboardingState.coachName,
-            'accountabilityType': onboardingState.accountabilityType,
-            'scheduleItems': onboardingState.scheduleItems,
+            'hasCompletedOnboarding': true,
+            'completedAt': completedState.completedAt,
+            'selectedCategories': completedState.selectedCategories,
+            'badHabits': completedState.badHabits,
+            'goodHabits': completedState.goodHabits,
+            'goals': completedState.goals,
+            'coachStyle': completedState.coachStyle,
+            'coachName': completedState.coachName,
+            'accountabilityType': completedState.accountabilityType,
+            'scheduleItems': completedState.scheduleItems,
+            'onboarding': onboardingStateDoc,
+            'onboardingState': onboardingStateDoc,
+            'profileMain': profileMainDoc,
+            'identityProfileMain': identityProfileStub,
           },
         );
       } catch (_) {
@@ -147,6 +213,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onboardingState = ref.watch(onboardingProvider);
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark
           .copyWith(statusBarColor: Colors.transparent),
@@ -164,31 +232,44 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
           child: Stack(
             children: [
+              if (onboardingState.isLoading && !onboardingState.isHydrated)
+                const Positioned.fill(
+                  child: ColoredBox(
+                    color: Color(0xFFFCF8EE),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF0F111A),
+                      ),
+                    ),
+                  ),
+                )
+              else
               // ── Full-screen PageView (under everything) ──────────────
-              Positioned.fill(
-                child: PageView(
-                  controller: _pageController,
-                  physics: const BouncingScrollPhysics(),
-                  onPageChanged: (i) {
-                    setState(() => _currentPage = i);
-                    ref
-                        .read(onboardingProvider.notifier)
-                        .saveToFirestoreDebounced(i);
-                  },
-                  children: const [
-                    OnboardingPage0(),
-                    OnboardingPage1(),
-                    OnboardingPage2(),
-                    OnboardingPage3(),
-                    OnboardingPage4(),
-                    OnboardingPage5(),
-                    OnboardingPage6(),
-                    OnboardingPage7(),
-                    OnboardingPage8(),
-                    OnboardingPage9(),
-                  ],
+                Positioned.fill(
+                  child: PageView(
+                    controller: _pageController,
+                    physics: const BouncingScrollPhysics(),
+                    onPageChanged: (i) {
+                      setState(() => _currentPage = i);
+                      ref.read(onboardingProvider.notifier).updateCurrentStep(i);
+                      ref
+                          .read(onboardingProvider.notifier)
+                          .saveToFirestoreDebounced(i);
+                    },
+                    children: const [
+                      OnboardingPage0(),
+                      OnboardingPage1(),
+                      OnboardingPage2(),
+                      OnboardingPage3(),
+                      OnboardingPage4(),
+                      OnboardingPage5(),
+                      OnboardingPage6(),
+                      OnboardingPage7(),
+                      OnboardingPage8(),
+                      OnboardingPage9(),
+                    ],
+                  ),
                 ),
-              ),
 
               // ── Top: Indicator + Save button row ──────────────────────
               Positioned(

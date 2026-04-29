@@ -18,6 +18,25 @@ class _OnboardingPage1State extends ConsumerState<OnboardingPage1> {
     'Health', 'Career', 'Skill', 'Recovery', 'Growth', 'Focus'
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final categories = ref.read(onboardingProvider).selectedCategories;
+      if (categories.isNotEmpty) {
+        setState(() {
+          _selectedCategories
+            ..clear()
+            ..addAll(categories);
+        });
+      } else {
+        ref
+            .read(onboardingProvider.notifier)
+            .updateCategories(_selectedCategories.toList());
+      }
+    });
+  }
+
   bool get _isAllSelected => _selectedCategories.containsAll(_allCategories);
 
   void _toggleCategory(String title) {

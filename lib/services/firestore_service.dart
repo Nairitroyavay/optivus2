@@ -30,6 +30,25 @@ class FirestoreService {
     return doc.exists ? doc.data() : null;
   }
 
+  Future<void> saveUserSubdocument(
+    String collectionPath,
+    String docId,
+    Map<String, dynamic> data, {
+    bool merge = true,
+  }) =>
+      userDoc
+          .collection(collectionPath)
+          .doc(docId)
+          .set(data, merge ? SetOptions(merge: true) : null);
+
+  Future<Map<String, dynamic>?> getUserSubdocument(
+    String collectionPath,
+    String docId,
+  ) async {
+    final doc = await userDoc.collection(collectionPath).doc(docId).get();
+    return doc.exists ? doc.data() : null;
+  }
+
   // ── Tasks (subcollection: /users/{uid}/tasks/{taskId}) ────────────────────
 
   Future<void> saveTask(TaskModel task) =>
