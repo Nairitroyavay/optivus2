@@ -41,6 +41,12 @@ class TaskService {
         .map((snap) => snap.docs.map(TaskModel.fromFirestore).toList());
   }
 
+  Future<TaskModel> _getTask(String taskId) async {
+    final doc = await _tasksRef.doc(taskId).get();
+    if (!doc.exists) throw TaskNotFoundError(taskId);
+    return TaskModel.fromFirestore(doc);
+  }
+
   Future<void> createTask(TaskModel task) async {
     final docRef = _tasksRef.doc(task.id);
     final batch = _firestore.batch();
@@ -62,6 +68,15 @@ class TaskService {
   }
 
   Future<void> startTask(String taskId) async {
+    final task = await _getTask(taskId);
+    if (task.state != TaskState.scheduled) {
+      throw InvalidStateTransitionError(
+        taskId: taskId,
+        currentState: task.state.name,
+        attemptedAction: 'start',
+      );
+    }
+
     final docRef = _tasksRef.doc(taskId);
     final now = DateTime.now();
 
@@ -84,16 +99,109 @@ class TaskService {
     await batch.commit();
   }
 
-  Future<void> completeTask(String taskId) async {
+  Future<void> pauseTask(String taskId) async {
+    final task = await _getTask(taskId);
+    if (task.state != TaskState.started) {
+      throw InvalidStateTransitionError(
+        taskId: taskId,
+        currentState: task.state.name,
+        attemptedAction: 'pause',
+      );
+    }
+
     final docRef = _tasksRef.doc(taskId);
     final now = DateTime.now();
 
     final batch = _firestore.batch();
     batch.update(docRef, {
-      'state': TaskState.completed.name,
-      'actualEnd': Timestamp.fromDate(now),
+      'state': TaskState.paused.name,
+      'pausedAt': Timestamp.fromDate(now),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    await _eventService.emit(
+      eventName: EventNames.taskPaused,
+      payload: {
+        'taskId': taskId,
+        'timestamp': now.toIso8601String(),
+      },
+      batch: batch,
+    );
+
+    await batch.commit();
+  }
+
+  Future<void> resumeTask(String taskId) async {
+    final task = await _getTask(taskId);
+    if (task.state != TaskState.paused) {
+      throw InvalidStateTransitionError(
+        taskId: taskId,
+        currentState: task.state.name,
+        attemptedAction: 'resume',
+      );
+    }
+
+    final docRef = _tasksRef.doc(taskId);
+    final now = DateTime.now();
+
+    final pauseDiff = now.difference(task.pausedAt ?? now);
+    final newTotalPause = (task.totalPauseDurationMin ?? 0) + pauseDiff.inMinutes;
+
+    final batch = _firestore.batch();
+    batch.update(docRef, {
+      'state': TaskState.started.name,
+      'totalPauseDurationMin': newTotalPause,
+      'pausedAt': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await _eventService.emit(
+      eventName: EventNames.taskResumed,
+      payload: {
+        'taskId': taskId,
+        'timestamp': now.toIso8601String(),
+      },
+      batch: batch,
+    );
+
+    await batch.commit();
+  }
+
+  Future<void> completeTask(String taskId) async {
+    final task = await _getTask(taskId);
+    if (task.state != TaskState.started && task.state != TaskState.paused) {
+      throw InvalidStateTransitionError(
+        taskId: taskId,
+        currentState: task.state.name,
+        attemptedAction: 'complete',
+      );
+    }
+
+    final docRef = _tasksRef.doc(taskId);
+    final now = DateTime.now();
+
+    int additionalPauseMin = 0;
+    if (task.state == TaskState.paused && task.pausedAt != null) {
+      additionalPauseMin = now.difference(task.pausedAt!).inMinutes;
+    }
+
+    final totalPauseMin = (task.totalPauseDurationMin ?? 0) + additionalPauseMin;
+    final totalDurationMin = task.actualStart != null ? now.difference(task.actualStart!).inMinutes : 0;
+    int actualDurationMin = totalDurationMin - totalPauseMin;
+    if (actualDurationMin < 0) actualDurationMin = 0;
+
+    final batch = _firestore.batch();
+    final updates = <String, dynamic>{
+      'state': TaskState.completed.name,
+      'actualEnd': Timestamp.fromDate(now),
+      'actualDurationMin': actualDurationMin,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (task.state == TaskState.paused) {
+      updates['totalPauseDurationMin'] = totalPauseMin;
+    }
+    
+    batch.update(docRef, updates);
 
     await _eventService.emit(
       eventName: EventNames.taskCompleted,
@@ -112,6 +220,15 @@ class TaskService {
     AbandonReason? reason,
     String? reasonTag,
   }) async {
+    final task = await _getTask(taskId);
+    if (task.state == TaskState.completed || task.state == TaskState.abandoned) {
+      throw InvalidStateTransitionError(
+        taskId: taskId,
+        currentState: task.state.name,
+        attemptedAction: 'abandon',
+      );
+    }
+
     final docRef = _tasksRef.doc(taskId);
     final now = DateTime.now();
 

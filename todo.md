@@ -151,7 +151,7 @@ MODIFY `TaskService` to handle state transitions. Implement `createTask`, `start
 
 **Estimate:** 3 hours
 
-- [ ] Done
+- [x] Done
 
 ---
 
