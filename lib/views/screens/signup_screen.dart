@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/widgets/liquid_glass_panel.dart';
 import 'package:optivus2/services/auth_service.dart';
@@ -9,13 +10,13 @@ import 'package:optivus2/widgets/wavy_loading_indicator.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // COLOUR TOKENS
 // ─────────────────────────────────────────────────────────────────────────────
-const _kInk    = Color(0xFF0F111A);
-const _kSub    = Color(0xFF6B7280);
-const _kAmber  = Color(0xFFFFB830);
-const _kGreen  = Color(0xFF22C55E);
-const _kRed    = Color(0xFFEF4444);
-const _kCream  = Color(0xFFF6E6B4);
-const _kBg     = Color(0xFFFCF8EE);
+const _kInk = Color(0xFF0F111A);
+const _kSub = Color(0xFF6B7280);
+const _kAmber = Color(0xFFFFB830);
+const _kGreen = Color(0xFF22C55E);
+const _kRed = Color(0xFFEF4444);
+const _kCream = Color(0xFFF6E6B4);
+const _kBg = Color(0xFFFCF8EE);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PASSWORD RULE MODEL
@@ -33,7 +34,10 @@ final _passwordRules = [
   ),
   _Rule(
     label: 'Starts with a capital letter',
-    check: (p) => p.isNotEmpty && p[0] == p[0].toUpperCase() && p[0].contains(RegExp(r'[A-Z]')),
+    check: (p) =>
+        p.isNotEmpty &&
+        p[0] == p[0].toUpperCase() &&
+        p[0].contains(RegExp(r'[A-Z]')),
   ),
   _Rule(
     label: 'Contains a number (0–9)',
@@ -61,34 +65,34 @@ class SignupScreen extends StatefulWidget {
 class _SignupScreenState extends State<SignupScreen>
     with SingleTickerProviderStateMixin {
   // Controllers
-  final _nameCtrl     = TextEditingController();
-  final _emailCtrl    = TextEditingController();
-  final _passCtrl     = TextEditingController();
-  final _confirmCtrl  = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
 
   // Focus nodes
-  final _nameFocus    = FocusNode();
-  final _emailFocus   = FocusNode();
-  final _passFocus    = FocusNode();
+  final _nameFocus = FocusNode();
+  final _emailFocus = FocusNode();
+  final _passFocus = FocusNode();
   final _confirmFocus = FocusNode();
 
-  bool _obscurePass    = true;
+  bool _obscurePass = true;
   bool _obscureConfirm = true;
-  bool _loading        = false;
+  bool _loading = false;
   Future<void>? _authOperation;
-  bool _showRules      = false; // shows rules panel once user starts typing password
+  bool _showRules = false; // shows rules panel once user starts typing password
   String? _errorMsg;
   final AuthService _authService = AuthService();
 
   // Animation for rule panel sliding in
   late AnimationController _ruleCtrl;
-  late Animation<double>   _ruleSlide;
+  late Animation<double> _ruleSlide;
 
   @override
   void initState() {
     super.initState();
-    _ruleCtrl  = AnimationController(vsync: this,
-        duration: const Duration(milliseconds: 300));
+    _ruleCtrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
     _ruleSlide = CurvedAnimation(parent: _ruleCtrl, curve: Curves.easeOutCubic);
 
     _passCtrl.addListener(() {
@@ -119,19 +123,19 @@ class _SignupScreenState extends State<SignupScreen>
   // ── Validation ──────────────────────────────────────────────────────────
 
   String? _validate() {
-    final name    = _nameCtrl.text.trim();
-    final email   = _emailCtrl.text.trim();
-    final pass    = _passCtrl.text;
+    final name = _nameCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final pass = _passCtrl.text;
     final confirm = _confirmCtrl.text;
 
-    if (name.isEmpty)  return 'Please enter your full name.';
+    if (name.isEmpty) return 'Please enter your full name.';
     if (name.length < 2) return 'Name must be at least 2 characters.';
     if (email.isEmpty) return 'Please enter your email address.';
     if (!RegExp(r'^[\w\.\+\-]+@[\w\-]+\.[a-z]{2,}$', caseSensitive: false)
         .hasMatch(email)) {
       return 'Please enter a valid email address.';
     }
-    if (pass.isEmpty)  return 'Please enter a password.';
+    if (pass.isEmpty) return 'Please enter a password.';
     if (!_isPasswordValid(pass)) {
       return 'Password does not meet all requirements below.';
     }
@@ -156,8 +160,8 @@ class _SignupScreenState extends State<SignupScreen>
       name: _nameCtrl.text.trim(),
     );
 
-    setState(() { 
-      _loading = true; 
+    setState(() {
+      _loading = true;
       _errorMsg = null;
       _authOperation = authCall.then((_) {});
     });
@@ -225,25 +229,29 @@ class _SignupScreenState extends State<SignupScreen>
 
                       // Icon
                       Container(
-                        width: 64, height: 64,
+                        width: 64,
+                        height: 64,
                         decoration: const BoxDecoration(
-                          color: _kInk, shape: BoxShape.circle),
+                            color: _kInk, shape: BoxShape.circle),
                         child: const Center(
-                          child: Icon(Icons.diamond_outlined,
-                              color: Colors.white, size: 28)),
+                            child: Icon(Icons.diamond_outlined,
+                                color: Colors.white, size: 28)),
                       ),
                       const SizedBox(height: 28),
 
                       // Title
                       const Text('Join the top 1%.',
                           style: TextStyle(
-                            fontSize: 34, fontWeight: FontWeight.w900,
-                            color: _kInk, letterSpacing: -1,
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                            color: _kInk,
+                            letterSpacing: -1,
                           )),
                       const SizedBox(height: 8),
                       Text('Create your Optivus account.',
                           style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w500,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
                             color: Colors.blueGrey.shade600,
                           )),
                       const SizedBox(height: 36),
@@ -259,10 +267,10 @@ class _SignupScreenState extends State<SignupScreen>
                             const SizedBox(height: 6),
                             _GlassInput(
                               controller: _nameCtrl,
-                              focusNode:  _nameFocus,
-                              hint:       'Nairit Roy',
-                              icon:       Icons.person_outline,
-                              next:       _emailFocus,
+                              focusNode: _nameFocus,
+                              hint: 'Nairit Roy',
+                              icon: Icons.person_outline,
+                              next: _emailFocus,
                             ),
                             const SizedBox(height: 18),
 
@@ -270,12 +278,12 @@ class _SignupScreenState extends State<SignupScreen>
                             _FieldLabel('Email'),
                             const SizedBox(height: 6),
                             _GlassInput(
-                              controller:   _emailCtrl,
-                              focusNode:    _emailFocus,
-                              hint:         'you@example.com',
-                              icon:         Icons.email_outlined,
+                              controller: _emailCtrl,
+                              focusNode: _emailFocus,
+                              hint: 'you@example.com',
+                              icon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
-                              next:         _passFocus,
+                              next: _passFocus,
                             ),
                             const SizedBox(height: 18),
 
@@ -284,13 +292,13 @@ class _SignupScreenState extends State<SignupScreen>
                             const SizedBox(height: 6),
                             _GlassInput(
                               controller: _passCtrl,
-                              focusNode:  _passFocus,
-                              hint:       'Min 8 chars, capital, number, sign',
-                              icon:       Icons.lock_outline,
-                              obscure:    _obscurePass,
-                              next:       _confirmFocus,
+                              focusNode: _passFocus,
+                              hint: 'Min 8 chars, capital, number, sign',
+                              icon: Icons.lock_outline,
+                              obscure: _obscurePass,
+                              next: _confirmFocus,
                               suffix: _EyeButton(
-                                obscure:  _obscurePass,
+                                obscure: _obscurePass,
                                 onToggle: () => setState(
                                     () => _obscurePass = !_obscurePass),
                               ),
@@ -312,13 +320,13 @@ class _SignupScreenState extends State<SignupScreen>
                             const SizedBox(height: 6),
                             _GlassInput(
                               controller: _confirmCtrl,
-                              focusNode:  _confirmFocus,
-                              hint:       'Repeat your password',
-                              icon:       Icons.lock_outline,
-                              obscure:    _obscureConfirm,
-                              onSubmit:   (_) => _createAccount(),
+                              focusNode: _confirmFocus,
+                              hint: 'Repeat your password',
+                              icon: Icons.lock_outline,
+                              obscure: _obscureConfirm,
+                              onSubmit: (_) => _createAccount(),
                               suffix: _EyeButton(
-                                obscure:  _obscureConfirm,
+                                obscure: _obscureConfirm,
                                 onToggle: () => setState(
                                     () => _obscureConfirm = !_obscureConfirm),
                               ),
@@ -329,7 +337,7 @@ class _SignupScreenState extends State<SignupScreen>
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: _MatchIndicator(
-                                  pass:    _passCtrl.text,
+                                  pass: _passCtrl.text,
                                   confirm: _confirmCtrl.text,
                                 ),
                               ),
@@ -340,7 +348,7 @@ class _SignupScreenState extends State<SignupScreen>
                             Text(
                               'By joining, you agree to our Terms of Service.',
                               style: TextStyle(
-                                color: Colors.grey.shade600, fontSize: 12),
+                                  color: Colors.grey.shade600, fontSize: 12),
                               textAlign: TextAlign.center,
                             ),
                           ],
@@ -390,7 +398,7 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                       child: const Text('Log in',
                           style: TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 14)),
+                              fontWeight: FontWeight.w800, fontSize: 14)),
                     ),
                   ],
                 ),
@@ -429,8 +437,10 @@ class _PasswordRulesPanel extends StatelessWidget {
             children: [
               const Text('Password requirements',
                   style: TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w700,
-                    color: _kSub, letterSpacing: 0.5,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: _kSub,
+                    letterSpacing: 0.5,
                   )),
               const SizedBox(height: 10),
               ..._passwordRules.map((rule) {
@@ -441,7 +451,8 @@ class _PasswordRulesPanel extends StatelessWidget {
                     children: [
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
-                        width: 18, height: 18,
+                        width: 18,
+                        height: 18,
                         decoration: BoxDecoration(
                           color: passed ? _kGreen : Colors.transparent,
                           shape: BoxShape.circle,
@@ -463,9 +474,8 @@ class _PasswordRulesPanel extends StatelessWidget {
                           duration: const Duration(milliseconds: 200),
                           style: TextStyle(
                             fontSize: 12.5,
-                            fontWeight: passed
-                                ? FontWeight.w600
-                                : FontWeight.w400,
+                            fontWeight:
+                                passed ? FontWeight.w600 : FontWeight.w400,
                             color: passed ? _kGreen : _kSub,
                           ),
                           child: Text(rule.label),
@@ -505,7 +515,8 @@ class _MatchIndicator extends StatelessWidget {
         Text(
           match ? 'Passwords match' : 'Passwords do not match',
           style: TextStyle(
-            fontSize: 12, fontWeight: FontWeight.w600,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
             color: match ? _kGreen : _kRed,
           ),
         ),
@@ -532,18 +543,17 @@ class _ErrorBanner extends StatelessWidget {
           decoration: BoxDecoration(
             color: _kRed.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-                color: _kRed.withValues(alpha: 0.35), width: 1),
+            border: Border.all(color: _kRed.withValues(alpha: 0.35), width: 1),
           ),
           child: Row(
             children: [
-              Icon(Icons.error_outline_rounded,
-                  color: _kRed, size: 18),
+              Icon(Icons.error_outline_rounded, color: _kRed, size: 18),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(message,
                     style: const TextStyle(
-                      fontSize: 13, color: _kRed,
+                      fontSize: 13,
+                      color: _kRed,
                       fontWeight: FontWeight.w600,
                     )),
               ),
@@ -554,7 +564,6 @@ class _ErrorBanner extends StatelessWidget {
     );
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOADING BUTTON — glass pill with wavy spinner, mirrors AppButton dimensions
@@ -618,8 +627,10 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: const TextStyle(
-          fontSize: 12, fontWeight: FontWeight.w700,
-          color: _kSub, letterSpacing: 0.4,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: _kSub,
+          letterSpacing: 0.4,
         ));
   }
 }
@@ -639,7 +650,8 @@ class _EyeButton extends StatelessWidget {
       child: IconButton(
         icon: Icon(
           obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-          color: Colors.grey.shade600, size: 20,
+          color: Colors.grey.shade600,
+          size: 20,
         ),
         onPressed: onToggle,
       ),
@@ -666,7 +678,7 @@ class _GlassInput extends StatefulWidget {
     required this.focusNode,
     required this.hint,
     required this.icon,
-    this.obscure     = false,
+    this.obscure = false,
     this.keyboardType = TextInputType.text,
     this.next,
     this.suffix,
@@ -711,7 +723,8 @@ class _GlassInputState extends State<_GlassInput> {
           ),
           BoxShadow(
             color: Colors.white.withValues(alpha: 0.50),
-            blurRadius: 16, spreadRadius: -2,
+            blurRadius: 16,
+            spreadRadius: -2,
             offset: const Offset(-2, -2),
           ),
         ],
@@ -741,8 +754,8 @@ class _GlassInputState extends State<_GlassInput> {
               ),
             ),
             TextField(
-              controller:  widget.controller,
-              focusNode:   widget.focusNode,
+              controller: widget.controller,
+              focusNode: widget.focusNode,
               obscureText: widget.obscure,
               keyboardType: widget.keyboardType,
               textInputAction: widget.next != null
@@ -757,20 +770,21 @@ class _GlassInputState extends State<_GlassInput> {
               style: const TextStyle(
                 color: Color(0xFF1E202A),
                 fontWeight: FontWeight.w600,
-                fontSize: 16, letterSpacing: 0.3,
+                fontSize: 16,
+                letterSpacing: 0.3,
               ),
               cursorColor: _kAmber,
               decoration: InputDecoration(
                 prefixIcon: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Container(
-                    width: 44, height: 44,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
                       color: Colors.white.withValues(alpha: 0.25),
                       border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          width: 1),
+                          color: Colors.white.withValues(alpha: 0.5), width: 1),
                       boxShadow: [
                         BoxShadow(
                             color: Colors.black.withValues(alpha: 0.06),
@@ -792,7 +806,8 @@ class _GlassInputState extends State<_GlassInput> {
                 hintStyle: TextStyle(
                   color: const Color(0xFF1E202A).withValues(alpha: 0.40),
                   fontWeight: FontWeight.w500,
-                  fontSize: 14, letterSpacing: 0.2,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
                 ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 18),

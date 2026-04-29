@@ -21,7 +21,8 @@ class AuthService {
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
   Future<UserCredential> signIn(String email, String password) async {
-    return await _auth.signInWithEmailAndPassword(email: email, password: password);
+    return await _auth.signInWithEmailAndPassword(
+        email: email, password: password);
   }
 
   Future<UserCredential> signUp(
@@ -30,7 +31,8 @@ class AuthService {
     String? name,
     String? timezone,
   }) async {
-    final credential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
+    final credential = await _auth.createUserWithEmailAndPassword(
+        email: email, password: password);
     final user = credential.user;
     if (user != null) {
       final now = DateTime.now();

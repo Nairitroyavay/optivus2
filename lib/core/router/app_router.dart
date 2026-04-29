@@ -30,18 +30,29 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: listenable,
     redirect: (context, state) {
       final bootstrapState = ref.read(bootstrapProvider);
-      final targetLocation = switch (bootstrapState) {
-        BootstrapState.initializing => '/loading',
-        BootstrapState.unauthenticated => '/login',
-        BootstrapState.needsOnboarding => '/onboarding',
-        BootstrapState.ready => '/home',
-      };
+      final loc = state.matchedLocation;
+      
+      final isAuthRoute = loc == '/' || loc == '/login' || loc == '/signup';
 
-      if (state.matchedLocation == targetLocation) {
-        return null;
+      switch (bootstrapState) {
+        case BootstrapState.initializing:
+          if (loc != '/loading') return '/loading';
+          return null;
+
+        case BootstrapState.unauthenticated:
+          if (!isAuthRoute) return '/';
+          return null;
+
+        case BootstrapState.needsOnboarding:
+          if (loc != '/onboarding') return '/onboarding';
+          return null;
+
+        case BootstrapState.ready:
+          if (isAuthRoute || loc == '/loading' || loc == '/onboarding') {
+            return '/home';
+          }
+          return null;
       }
-
-      return targetLocation;
     },
     routes: [
       GoRoute(

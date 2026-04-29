@@ -14,6 +14,8 @@ class AppBootstrapNotifier extends StateNotifier<BootstrapState> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userSubscription;
   final EventService _eventService;
   final Future<void> Function() _ensureOrchestratorInitialized;
+  String? _activeUid;
+  bool _hasInitializedSession = false;
 
   AppBootstrapNotifier({
     required EventService eventService,
@@ -26,14 +28,16 @@ class AppBootstrapNotifier extends StateNotifier<BootstrapState> {
 
   void _init() {
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
-      _handleAuthChanged,
-      onError: (_) => _setState(BootstrapState.unauthenticated),
-    );
+          _handleAuthChanged,
+          onError: (_) => _setState(BootstrapState.unauthenticated),
+        );
   }
 
   Future<void> _handleAuthChanged(User? user) async {
     await _userSubscription?.cancel();
     _userSubscription = null;
+    _activeUid = user?.uid;
+    _hasInitializedSession = false;
 
     if (user == null) {
       _setState(BootstrapState.unauthenticated);
@@ -54,12 +58,17 @@ class AppBootstrapNotifier extends StateNotifier<BootstrapState> {
 
           final userModel = UserModel.fromFirestore(doc);
           if (!userModel.hasCompletedOnboarding) {
+            _hasInitializedSession = false;
             _setState(BootstrapState.needsOnboarding);
             return;
           }
 
-          await _ensureOrchestratorInitialized();
-          await _eventService.replayRecentEvents();
+          if (!_hasInitializedSession && _activeUid == user.uid) {
+            await _ensureOrchestratorInitialized();
+            await _eventService.replayRecentEvents();
+            _hasInitializedSession = true;
+          }
+
           _setState(BootstrapState.ready);
         } catch (e) {
           debugPrint('[Bootstrap] Failed to resolve user state: $e');
@@ -87,7 +96,8 @@ class AppBootstrapNotifier extends StateNotifier<BootstrapState> {
   }
 }
 
-final bootstrapProvider = StateNotifierProvider<AppBootstrapNotifier, BootstrapState>((ref) {
+final bootstrapProvider =
+    StateNotifierProvider<AppBootstrapNotifier, BootstrapState>((ref) {
   return AppBootstrapNotifier(
     eventService: ref.read(eventServiceProvider),
     ensureOrchestratorInitialized: () async {

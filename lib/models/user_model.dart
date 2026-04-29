@@ -96,7 +96,8 @@ class UserModel {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion,
-      hasCompletedOnboarding: hasCompletedOnboarding ?? this.hasCompletedOnboarding,
+      hasCompletedOnboarding:
+          hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       onboardingStep: onboardingStep ?? this.onboardingStep,
       lastDayClosed: lastDayClosed ?? this.lastDayClosed,
     );
