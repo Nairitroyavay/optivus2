@@ -10,21 +10,19 @@
 //   • All writes use WriteBatch and carry schemaVersion: 1.
 //   • logGood / logSlip validate habit existence, kind, and active state before writing.
 //   • deleteHabit is a soft-delete (state → archived) to preserve log sub-collections.
-//   • Event emission is deferred to Phase 4 — EventService is wired but NOT called yet.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/errors/app_errors.dart';
+import 'package:optivus2/core/utils/uuid_generator.dart';
 import 'package:optivus2/models/habit_log_model.dart';
 import 'package:optivus2/models/habit_model.dart';
-import 'package:optivus2/core/utils/uuid_generator.dart';
-// ignore: unused_import — EventService wired for Phase 4 event emission.
 import 'package:optivus2/services/event_service.dart';
 
 class HabitService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
-  // ignore: unused_field — retained for Phase 4 event emission.
   final EventService _eventService;
 
   HabitService({
@@ -216,8 +214,21 @@ class HabitService {
       'schemaVersion': 1,
     });
 
+    await _eventService.emit(
+      eventName: EventNames.goodHabitLogged,
+      payload: {
+        'habitId': habitId,
+        'logId': logId,
+        'occurredAt': occurred.toIso8601String(),
+        'loggedAt': now.toIso8601String(),
+        if (amount != null) 'amount': amount,
+        if (note != null) 'note': note,
+        'source': source ?? 'manual',
+      },
+      batch: batch,
+    );
+
     await batch.commit();
-    // Phase 4: emit EventNames.goodHabitLogged
   }
 
   /// Logs a bad-habit slip.
@@ -265,8 +276,21 @@ class HabitService {
       'schemaVersion': 1,
     });
 
+    await _eventService.emit(
+      eventName: EventNames.badHabitSlipLogged,
+      payload: {
+        'habitId': habitId,
+        'logId': logId,
+        'occurredAt': occurred.toIso8601String(),
+        'loggedAt': now.toIso8601String(),
+        if (trigger != null) 'trigger': trigger,
+        if (note != null) 'note': note,
+        'source': source ?? 'manual',
+      },
+      batch: batch,
+    );
+
     await batch.commit();
-    // Phase 4: emit EventNames.badHabitSlipLogged
   }
 
   // ── Guard helpers (private) ───────────────────────────────────────────────

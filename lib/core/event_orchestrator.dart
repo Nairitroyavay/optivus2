@@ -8,19 +8,28 @@
 
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/event_names.dart';
 import '../models/event_model.dart';
 import '../models/task_model.dart';
+import '../services/coach_service.dart';
 import '../services/event_service.dart';
-import '../services/streak_service.dart';
+import '../services/gemini_service.dart';
 import '../services/notification_service.dart';
+import '../services/rule_engine_service.dart';
+import '../services/state_aggregator_service.dart';
+import '../services/streak_service.dart';
 
 class EventOrchestrator {
   final EventService _eventService;
   final StreakService _streakService;
   final NotificationService _notificationService;
+  final StateAggregatorService _stateAggregatorService;
+  final RuleEngineService _ruleEngineService;
+  final GeminiService _geminiService;
+  final FirebaseAuth _auth;
 
   StreamSubscription<Event>? _subscription;
 
@@ -28,9 +37,18 @@ class EventOrchestrator {
     required EventService eventService,
     required StreakService streakService,
     required NotificationService notificationService,
+    StateAggregatorService? stateAggregatorService,
+    RuleEngineService? ruleEngineService,
+    GeminiService? geminiService,
+    FirebaseAuth? auth,
   })  : _eventService = eventService,
         _streakService = streakService,
-        _notificationService = notificationService;
+        _notificationService = notificationService,
+        _stateAggregatorService =
+            stateAggregatorService ?? StateAggregatorService(),
+        _ruleEngineService = ruleEngineService ?? RuleEngineService(),
+        _geminiService = geminiService ?? GeminiService(),
+        _auth = auth ?? FirebaseAuth.instance;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -49,7 +67,9 @@ class EventOrchestrator {
 
     _subscription?.cancel();
     _subscription = _eventService.onAny().listen(
-      _handleEvent,
+      (event) {
+        unawaited(_handleEvent(event));
+      },
       onError: (Object error) {
         debugPrint('[EventOrchestrator] Stream error: $error');
       },
@@ -66,8 +86,28 @@ class EventOrchestrator {
 
   // ── Dispatch ─────────────────────────────────────────────────────────────
 
-  void _handleEvent(Event event) {
+  Future<void> _handleEvent(Event event) async {
     debugPrint('[EventOrchestrator] Received: ${event.eventName}');
+
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      try {
+        final snapshot = await _stateAggregatorService.buildSnapshot(uid);
+        final rule = _ruleEngineService.evaluate(snapshot, event);
+        if (rule != null) {
+          final coachMessage =
+              await _geminiService.generateOnce(rule.promptTemplate);
+          await CoachService.saveProactiveCoachMessage(
+            uid: uid,
+            rule: rule,
+            triggerEvent: event,
+            message: coachMessage,
+          );
+        }
+      } catch (e) {
+        debugPrint('[EventOrchestrator] Rule engine pipeline failed: $e');
+      }
+    }
 
     switch (event.eventName) {
       // ── Task engine ───────────────────────────────────────────────────

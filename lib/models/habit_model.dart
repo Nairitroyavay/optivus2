@@ -119,7 +119,7 @@ class HabitModel {
   /// Backwards-compatible factory that handles both old and new Firestore shapes.
   factory HabitModel.fromFirestore(
       DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
+    final data = doc.data() ?? <String, dynamic>{};
     return HabitModel(
       id: doc.id,
       name: data['name'] as String? ?? '',
@@ -139,12 +139,8 @@ class HabitModel {
       emoji: data['emoji'] as String? ?? data['icon'] as String?,
       color: data['color'] as String?,
       state: HabitState.fromString(data['state'] as String?),
-      createdAt: data['createdAt'] != null
-          ? (data['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
-      updatedAt: data['updatedAt'] != null
-          ? (data['updatedAt'] as Timestamp).toDate()
-          : DateTime.now(),
+      createdAt: _asDateTime(data['createdAt']) ?? DateTime.now(),
+      updatedAt: _asDateTime(data['updatedAt']) ?? DateTime.now(),
       schemaVersion: data['schemaVersion'] as int? ?? 1,
     );
   }
@@ -172,8 +168,8 @@ class HabitModel {
       emoji: map['emoji'] as String? ?? map['icon'] as String?,
       color: map['color'] as String?,
       state: HabitState.fromString(map['state'] as String?),
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
+      createdAt: _asDateTime(map['createdAt']) ?? DateTime.now(),
+      updatedAt: _asDateTime(map['updatedAt']) ?? DateTime.now(),
       schemaVersion: map['schemaVersion'] as int? ?? 1,
     );
   }
@@ -240,5 +236,12 @@ class HabitModel {
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion,
     );
+  }
+
+  static DateTime? _asDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 }

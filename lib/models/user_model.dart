@@ -32,22 +32,14 @@ class UserModel {
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
+    final data = doc.data() ?? <String, dynamic>{};
     return UserModel(
       id: data['id'] as String? ?? data['uid'] as String? ?? doc.id,
       email: data['email'] as String? ?? '',
       name: data['name'] as String? ?? data['displayName'] as String?,
       timezone: data['timezone'] as String?,
-      createdAt: data['createdAt'] != null
-          ? (data['createdAt'] is Timestamp
-              ? (data['createdAt'] as Timestamp).toDate()
-              : DateTime.parse(data['createdAt'] as String))
-          : DateTime.now(),
-      updatedAt: data['updatedAt'] != null
-          ? (data['updatedAt'] is Timestamp
-              ? (data['updatedAt'] as Timestamp).toDate()
-              : DateTime.parse(data['updatedAt'] as String))
-          : DateTime.now(),
+      createdAt: _asDateTime(data['createdAt']) ?? DateTime.now(),
+      updatedAt: _asDateTime(data['updatedAt']) ?? DateTime.now(),
       schemaVersion: data['schemaVersion'] as int? ?? 1,
       hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
       onboardingStep: data['onboardingStep'] as int? ?? 0,
@@ -61,16 +53,8 @@ class UserModel {
       email: map['email'] as String? ?? '',
       name: map['name'] as String? ?? map['displayName'] as String?,
       timezone: map['timezone'] as String?,
-      createdAt: map['createdAt'] != null
-          ? (map['createdAt'] is Timestamp
-              ? (map['createdAt'] as Timestamp).toDate()
-              : DateTime.parse(map['createdAt'] as String))
-          : DateTime.now(),
-      updatedAt: map['updatedAt'] != null
-          ? (map['updatedAt'] is Timestamp
-              ? (map['updatedAt'] as Timestamp).toDate()
-              : DateTime.parse(map['updatedAt'] as String))
-          : DateTime.now(),
+      createdAt: _asDateTime(map['createdAt']) ?? DateTime.now(),
+      updatedAt: _asDateTime(map['updatedAt']) ?? DateTime.now(),
       schemaVersion: map['schemaVersion'] as int? ?? 1,
       hasCompletedOnboarding: map['hasCompletedOnboarding'] as bool? ?? false,
       onboardingStep: map['onboardingStep'] as int? ?? 0,
@@ -82,14 +66,14 @@ class UserModel {
     return {
       'id': id,
       'email': email,
-      if (name != null) 'name': name,
-      if (timezone != null) 'timezone': timezone,
+      'name': name,
+      'timezone': timezone,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
       'hasCompletedOnboarding': hasCompletedOnboarding,
       'onboardingStep': onboardingStep,
-      if (lastDayClosed != null) 'lastDayClosed': lastDayClosed,
+      'lastDayClosed': lastDayClosed,
     };
   }
 
@@ -116,5 +100,12 @@ class UserModel {
       onboardingStep: onboardingStep ?? this.onboardingStep,
       lastDayClosed: lastDayClosed ?? this.lastDayClosed,
     );
+  }
+
+  static DateTime? _asDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 }

@@ -33,6 +33,14 @@ class GeminiService {
     }
   }
 
+  Future<String> generateOnce(String promptTemplate) {
+    return generate(
+      systemPrompt:
+          'You are the Optivus coach. Return only the final coach message text, with no JSON or markdown.',
+      userMessage: promptTemplate,
+    );
+  }
+
   /// Start a multi-turn chat
   GeminiChatSession startChat(String systemPrompt, {List<Map<String, dynamic>>? initialHistory}) {
     return GeminiChatSession(systemPrompt: systemPrompt, service: this, initialHistory: initialHistory);

@@ -1,6 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/streak_service.dart';
 import 'package:optivus2/services/habit_service.dart';
+import 'package:optivus2/core/utils/uuid_generator.dart';
+import 'package:optivus2/models/coach_rule.dart';
+import 'package:optivus2/models/event_model.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/services/gemini_service.dart';
 
@@ -62,5 +66,58 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
   Future<GeminiChatSession> startChat(String coachName, String tone, {List<Map<String, dynamic>>? initialHistory}) async {
     final systemPrompt = await generateSystemPrompt(coachName, tone);
     return GeminiService().startChat(systemPrompt, initialHistory: initialHistory);
+  }
+
+  static Future<void> saveProactiveCoachMessage({
+    required String uid,
+    required Rule rule,
+    required EventModel triggerEvent,
+    required String message,
+    FirebaseFirestore? firestore,
+  }) async {
+    final db = firestore ?? FirebaseFirestore.instance;
+    final now = DateTime.now();
+    final messageId = generateId();
+
+    final coachMessage = <String, dynamic>{
+      'messageId': messageId,
+      'userId': uid,
+      'role': 'coach',
+      'message': message,
+      'body': message,
+      'text': message,
+      'messageType': 'check_in',
+      'priority': rule.priority,
+      'ruleId': rule.id,
+      'triggerEventId': triggerEvent.eventId,
+      'timestamp': Timestamp.fromDate(now),
+      'createdAt': Timestamp.fromDate(now),
+      'aiGenerated': true,
+      'schemaVersion': 1,
+    };
+
+    final batch = db.batch();
+    final userRef = db.collection('users').doc(uid);
+
+    batch.set(
+      userRef.collection('coach_messages').doc(messageId),
+      coachMessage,
+    );
+
+    batch.set(
+      userRef.collection('coach_chats').doc('main_thread').collection('turns').doc(messageId),
+      {
+        'id': messageId,
+        'text': message,
+        'isUser': false,
+        'role': 'coach',
+        'source': 'rule_engine',
+        'ruleId': rule.id,
+        'triggerEventId': triggerEvent.eventId,
+        'timestamp': Timestamp.fromDate(now),
+      },
+    );
+
+    await batch.commit();
   }
 }

@@ -135,8 +135,8 @@ class Subtask {
 
   factory Subtask.fromMap(Map<String, dynamic> map) {
     return Subtask(
-      id: map['id'] as String,
-      title: map['title'] as String,
+      id: map['id'] as String? ?? '',
+      title: map['title'] as String? ?? '',
       checked: map['checked'] as bool? ?? false,
     );
   }
@@ -224,7 +224,7 @@ class TaskModel {
 
   factory TaskModel.fromFirestore(
       DocumentSnapshot<Map<String, dynamic>> doc) {
-    final d = doc.data()!;
+    final d = doc.data() ?? <String, dynamic>{};
     return TaskModel(
       id: d['taskId'] as String? ?? doc.id,
       type: TaskType.fromString(d['type'] as String?),
@@ -235,42 +235,26 @@ class TaskModel {
       identityTags:
           List<String>.from(d['identityTags'] as List? ?? []),
       alarmTier: AlarmTier.fromString(d['alarmTier'] as String?),
-      plannedStart: d['plannedStart'] != null
-          ? (d['plannedStart'] as Timestamp).toDate()
-          : DateTime.now(),
-      plannedEnd: d['plannedEnd'] != null
-          ? (d['plannedEnd'] as Timestamp).toDate()
-          : DateTime.now(),
+      plannedStart: _asDateTime(d['plannedStart']) ?? DateTime.now(),
+      plannedEnd: _asDateTime(d['plannedEnd']) ?? DateTime.now(),
       state: TaskState.fromString(d['state'] as String?),
-      actualStart: d['actualStart'] != null
-          ? (d['actualStart'] as Timestamp).toDate()
-          : null,
-      actualEnd: d['actualEnd'] != null
-          ? (d['actualEnd'] as Timestamp).toDate()
-          : null,
-      pausedAt: d['pausedAt'] != null
-          ? (d['pausedAt'] as Timestamp).toDate()
-          : null,
-      abandonedAt: d['abandonedAt'] != null
-          ? (d['abandonedAt'] as Timestamp).toDate()
-          : null,
+      actualStart: _asDateTime(d['actualStart']),
+      actualEnd: _asDateTime(d['actualEnd']),
+      pausedAt: _asDateTime(d['pausedAt']),
+      abandonedAt: _asDateTime(d['abandonedAt']),
       actualDurationMin: d['actualDurationMin'] as int?,
       totalPauseDurationMin: d['totalPauseDurationMin'] as int?,
       driftPct: (d['driftPct'] as num?)?.toDouble(),
       subtasks: (d['subtasks'] as List?)
-              ?.map((s) => Subtask.fromMap(s as Map<String, dynamic>))
+              ?.map((s) => Subtask.fromMap(Map<String, dynamic>.from(s as Map)))
               .toList() ??
           [],
       reasonTag: d['reasonTag'] as String?,
       reasonCategory: d['reasonCategory'] != null
           ? AbandonReason.fromString(d['reasonCategory'] as String?)
           : null,
-      createdAt: d['createdAt'] != null
-          ? (d['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
-      updatedAt: d['updatedAt'] != null
-          ? (d['updatedAt'] as Timestamp).toDate()
-          : DateTime.now(),
+      createdAt: _asDateTime(d['createdAt']) ?? DateTime.now(),
+      updatedAt: _asDateTime(d['updatedAt']) ?? DateTime.now(),
       schemaVersion: d['schemaVersion'] as int? ?? 1,
     );
   }
@@ -279,21 +263,37 @@ class TaskModel {
   factory TaskModel.fromMap(Map<String, dynamic> map) {
     return TaskModel(
       id: map['id'] as String? ?? map['taskId'] as String? ?? '',
+      type: TaskType.fromString(map['type'] as String?),
+      parentRoutine: map['parentRoutine'] as String?,
       title: map['title'] as String? ?? '',
+      emoji: map['emoji'] as String?,
+      color: map['color'] as String?,
+      identityTags: List<String>.from(map['identityTags'] as List? ?? []),
+      alarmTier: AlarmTier.fromString(map['alarmTier'] as String?),
       plannedStart: map['time'] != null
-          ? DateTime.parse(map['time'] as String)
-          : (map['plannedStart'] != null
-              ? (map['plannedStart'] is Timestamp
-                  ? (map['plannedStart'] as Timestamp).toDate()
-                  : DateTime.parse(map['plannedStart'] as String))
-              : DateTime.now()),
-      plannedEnd: map['plannedEnd'] != null
-          ? (map['plannedEnd'] is Timestamp
-              ? (map['plannedEnd'] as Timestamp).toDate()
-              : DateTime.parse(map['plannedEnd'] as String))
-          : DateTime.now().add(const Duration(hours: 1)),
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
+          ? (_asDateTime(map['time']) ?? DateTime.now())
+          : (_asDateTime(map['plannedStart']) ?? DateTime.now()),
+      plannedEnd: _asDateTime(map['plannedEnd']) ??
+          DateTime.now().add(const Duration(hours: 1)),
+      state: TaskState.fromString(map['state'] as String?),
+      actualStart: _asDateTime(map['actualStart']),
+      actualEnd: _asDateTime(map['actualEnd']),
+      pausedAt: _asDateTime(map['pausedAt']),
+      abandonedAt: _asDateTime(map['abandonedAt']),
+      actualDurationMin: map['actualDurationMin'] as int?,
+      totalPauseDurationMin: map['totalPauseDurationMin'] as int?,
+      driftPct: (map['driftPct'] as num?)?.toDouble(),
+      subtasks: (map['subtasks'] as List?)
+              ?.map((s) => Subtask.fromMap(Map<String, dynamic>.from(s as Map)))
+              .toList() ??
+          const [],
+      reasonTag: map['reasonTag'] as String?,
+      reasonCategory: map['reasonCategory'] != null
+          ? AbandonReason.fromString(map['reasonCategory'] as String?)
+          : null,
+      createdAt: _asDateTime(map['createdAt']) ?? DateTime.now(),
+      updatedAt: _asDateTime(map['updatedAt']) ?? DateTime.now(),
+      schemaVersion: map['schemaVersion'] as int? ?? 1,
     );
   }
 
@@ -376,5 +376,12 @@ class TaskModel {
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion,
     );
+  }
+
+  static DateTime? _asDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 }

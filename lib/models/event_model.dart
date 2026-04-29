@@ -1,119 +1,87 @@
-// lib/models/event_model.dart
-//
-// The Event envelope — every event in Optivus uses this shape.
-// Per ServiceContracts §1.3 and DB Schema §1A.5.
-//
-// The event log is append-only. Nothing is ever mutated or deleted.
-// Corrections are new events, not edits.
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Who originated the event.
-enum EventSource {
-  ui,
-  system,
-  ai;
-
-  /// Parse from Firestore string.
-  static EventSource fromString(String value) {
-    switch (value) {
-      case 'ui':
-        return EventSource.ui;
-      case 'system':
-        return EventSource.system;
-      case 'ai':
-        return EventSource.ai;
-      default:
-        return EventSource.ui;
-    }
-  }
-}
-
-/// Immutable event envelope.
-class Event {
+class EventModel {
   final String eventId;
   final String eventName;
   final DateTime ts;
-  final DateTime? deviceLocalTs;
-  final EventSource source;
-  final String deviceId;
-  final int payloadVersion;
+  final DateTime deviceLocalTs;
+  final String source;
   final Map<String, dynamic> payload;
-  final int schemaVersion;
 
-  const Event({
+  const EventModel({
     required this.eventId,
     required this.eventName,
     required this.ts,
-    this.deviceLocalTs,
+    required this.deviceLocalTs,
     required this.source,
-    required this.deviceId,
-    this.payloadVersion = 1,
     required this.payload,
-    this.schemaVersion = 1,
   });
 
-  /// Construct from Firestore document snapshot.
-  factory Event.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
-    return Event(
+  factory EventModel.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? <String, dynamic>{};
+    return EventModel(
       eventId: data['eventId'] as String? ?? doc.id,
-      eventName: data['eventName'] as String,
-      ts: (data['ts'] as Timestamp).toDate(),
-      deviceLocalTs: data['deviceLocalTs'] != null
-          ? (data['deviceLocalTs'] as Timestamp).toDate()
-          : null,
-      source: EventSource.fromString(data['source'] as String? ?? 'ui'),
-      deviceId: data['deviceId'] as String? ?? '',
-      payloadVersion: data['payloadVersion'] as int? ?? 1,
-      payload: Map<String, dynamic>.from(data['payload'] as Map? ?? {}),
-      schemaVersion: data['schemaVersion'] as int? ?? 1,
+      eventName: data['eventName'] as String? ?? '',
+      ts: _asDateTime(data['ts']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+      deviceLocalTs:
+          _asDateTime(data['deviceLocalTs']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+      source: data['source'] as String? ?? '',
+      payload: Map<String, dynamic>.from(data['payload'] as Map? ?? const {}),
     );
   }
 
-  /// Serialize for Firestore writes.
-  /// Uses `FieldValue.serverTimestamp()` for `ts` so the server sets the time.
+  factory EventModel.fromMap(Map<String, dynamic> map) {
+    return EventModel(
+      eventId: map['eventId'] as String? ?? '',
+      eventName: map['eventName'] as String? ?? '',
+      ts: _asDateTime(map['ts']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+      deviceLocalTs:
+          _asDateTime(map['deviceLocalTs']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+      source: map['source'] as String? ?? '',
+      payload: Map<String, dynamic>.from(map['payload'] as Map? ?? const {}),
+    );
+  }
+
   Map<String, dynamic> toFirestore() {
     return {
       'eventId': eventId,
       'eventName': eventName,
-      'ts': FieldValue.serverTimestamp(),
-      'deviceLocalTs': deviceLocalTs != null
-          ? Timestamp.fromDate(deviceLocalTs!)
-          : Timestamp.fromDate(DateTime.now()),
-      'source': source.name,
-      'deviceId': deviceId,
-      'payloadVersion': payloadVersion,
+      'ts': Timestamp.fromDate(ts),
+      'deviceLocalTs': Timestamp.fromDate(deviceLocalTs),
+      'source': source,
       'payload': payload,
-      'schemaVersion': schemaVersion,
+      'schemaVersion': 1,
     };
   }
 
-  /// Create a copy with overridden fields.
-  Event copyWith({
+  Map<String, dynamic> toMap() => toFirestore();
+
+  EventModel copyWith({
     String? eventId,
     String? eventName,
     DateTime? ts,
     DateTime? deviceLocalTs,
-    EventSource? source,
-    String? deviceId,
-    int? payloadVersion,
+    String? source,
     Map<String, dynamic>? payload,
-    int? schemaVersion,
   }) {
-    return Event(
+    return EventModel(
       eventId: eventId ?? this.eventId,
       eventName: eventName ?? this.eventName,
       ts: ts ?? this.ts,
       deviceLocalTs: deviceLocalTs ?? this.deviceLocalTs,
       source: source ?? this.source,
-      deviceId: deviceId ?? this.deviceId,
-      payloadVersion: payloadVersion ?? this.payloadVersion,
       payload: payload ?? this.payload,
-      schemaVersion: schemaVersion ?? this.schemaVersion,
     );
   }
 
-  @override
-  String toString() => 'Event($eventName, id=$eventId)';
+  static DateTime? _asDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
 }
+
+typedef Event = EventModel;

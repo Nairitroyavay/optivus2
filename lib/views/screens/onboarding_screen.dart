@@ -3,7 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_0.dart';
@@ -92,6 +93,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         curve: Curves.easeInOutCubic,
       );
     } else {
+      final onboardingState = ref.read(onboardingProvider);
       final ok = await ref.read(onboardingProvider.notifier).completeOnboarding();
       if (!ok) {
         if (mounted) {
@@ -101,8 +103,30 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         }
         return;
       }
+      try {
+        await ref.read(eventServiceProvider).emit(
+          eventName: EventNames.onboardingCompleted,
+          payload: {
+            'onboardingStep': 9,
+            'selectedCategories': onboardingState.selectedCategories,
+            'badHabits': onboardingState.badHabits,
+            'goodHabits': onboardingState.goodHabits,
+            'goals': onboardingState.goals,
+            'coachStyle': onboardingState.coachStyle,
+            'coachName': onboardingState.coachName,
+            'accountabilityType': onboardingState.accountabilityType,
+            'scheduleItems': onboardingState.scheduleItems,
+          },
+        );
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile saved, but final onboarding event failed. Please try again.')),
+          );
+        }
+        return;
+      }
       if (!mounted) return;
-      context.go('/home');
     }
   }
 

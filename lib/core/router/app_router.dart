@@ -29,22 +29,19 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/loading',
     refreshListenable: listenable,
     redirect: (context, state) {
-      // Pure state machine: the router reads the bootstrap state and
-      // unconditionally returns the canonical route for that state.
-      // All async resolution (auth, Firestore checks) is owned exclusively
-      // by AppBootstrapNotifier — never performed here.
       final bootstrapState = ref.read(bootstrapProvider);
+      final targetLocation = switch (bootstrapState) {
+        BootstrapState.initializing => '/loading',
+        BootstrapState.unauthenticated => '/login',
+        BootstrapState.needsOnboarding => '/onboarding',
+        BootstrapState.ready => '/home',
+      };
 
-      switch (bootstrapState) {
-        case BootstrapState.initializing:
-          return '/loading';
-        case BootstrapState.unauthenticated:
-          return '/login';
-        case BootstrapState.needsOnboarding:
-          return '/onboarding';
-        case BootstrapState.ready:
-          return '/home';
+      if (state.matchedLocation == targetLocation) {
+        return null;
       }
+
+      return targetLocation;
     },
     routes: [
       GoRoute(
@@ -74,4 +71,3 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-
