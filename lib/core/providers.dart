@@ -10,8 +10,12 @@ import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/habit_service.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
+import 'package:optivus2/models/streak_model.dart';
+import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/services/routine_service.dart';
 import 'package:optivus2/services/coach_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 export 'providers/bootstrap_provider.dart';
 
@@ -120,3 +124,46 @@ final habitsProvider = StreamProvider<List<HabitModel>>((ref) {
   return habitService.habits();
 });
 
+/// Real-time stream of all streaks.
+final allStreaksProvider = StreamProvider<List<Streak>>((ref) {
+  final streakService = ref.watch(streakServiceProvider);
+  return streakService.watchAllStreaks();
+});
+
+/// Real-time stream of today's habit logs.
+final todayHabitLogsProvider = StreamProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((ref) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value([]);
+  
+  final now = DateTime.now();
+  final startOfDay = DateTime(now.year, now.month, now.day);
+  final endOfDay = startOfDay.add(const Duration(days: 1));
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('habit_logs')
+      .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+      .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
+      .snapshots()
+      .map((snap) => snap.docs);
+});
+
+/// Real-time stream of today's DaySummary.
+final todaySummaryProvider = StreamProvider<DaySummary?>((ref) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(null);
+
+  final now = DateTime.now();
+  final todayStr = '${now.year.toString().padLeft(4, '0')}-'
+                   '${now.month.toString().padLeft(2, '0')}-'
+                   '${now.day.toString().padLeft(2, '0')}';
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('dailySummaries')
+      .doc(todayStr)
+      .snapshots()
+      .map((snap) => snap.exists ? DaySummary.fromFirestore(snap) : null);
+});

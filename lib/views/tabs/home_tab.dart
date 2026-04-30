@@ -3,26 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/views/habits/log_habit_sheet.dart';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DATA MODELS
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Habit {
-  final String emoji;
-  final String label;
-  final Color color;
-  const _Habit(this.emoji, this.label, this.color);
-}
-
-class _Routine {
-  final String emoji;
-  final String title;
-  final String subtitle;
-  final Color orbColor;
-  const _Routine(this.emoji, this.title, this.subtitle, this.orbColor);
-}
-
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/task_model.dart';
+import 'package:optivus2/models/habit_model.dart';
+import 'package:optivus2/models/streak_model.dart';
+import 'package:optivus2/models/day_summary_model.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,20 +17,6 @@ const _kInk     = Color(0xFF0F111A);
 const _kAmber   = Color(0xFFFFB830);
 const _kSubtext = Color(0xFF6B7280);
 const _kRingDark = Color(0xFF1A1F3C);   // deep navy for ring arc
-
-const _habits = [
-  _Habit('💧', 'Hydrate',  Color(0xFF60B8FF)),
-  _Habit('🧘', 'Meditate', Color(0xFF9B8FFF)),
-  _Habit('🌿', 'Skincare', Color(0xFF60D4A0)),
-  _Habit('📖', 'Read',     Color(0xFFFF9560)),
-  _Habit('🏃', 'Run',      Color(0xFFFFB830)),
-];
-
-const _routines = [
-  _Routine('🌿', 'Skin Care',     'Vitamin C, Face Wash, etc.', Color(0xFF60D4A0)),
-  _Routine('🎓', 'Class Routine', '3 Classes Scheduled',        Color(0xFF60B8FF)),
-  _Routine('🍽️', 'Eating Routine','4 Meals Planned',            Color(0xFFFFB830)),
-];
 
 const _months = [
   'January','February','March','April','May','June',
@@ -57,7 +29,7 @@ const _weekDays = ['S','M','T','W','T','F','S'];
 // HOME TAB
 // ─────────────────────────────────────────────────────────────────────────────
 
-class HomeTab extends StatefulWidget {
+class HomeTab extends ConsumerStatefulWidget {
   final VoidCallback? onSkinCareTapped;
   final VoidCallback? onClassesTapped;
   final VoidCallback? onEatingTapped;
@@ -69,10 +41,10 @@ class HomeTab extends StatefulWidget {
   });
 
   @override
-  State<HomeTab> createState() => _HomeTabState();
+  ConsumerState<HomeTab> createState() => _HomeTabState();
 }
 
-class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
+class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStateMixin {
   late final AnimationController _ringCtrl;
   late final Animation<double>   _ringAnim;
 
@@ -248,6 +220,12 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
 
   // ── Today's Mission ────────────────────────────────────────────────────────
   Widget _missionCard() {
+    final tasksAsync = ref.watch(todayTasksProvider);
+    final tasks = tasksAsync.valueOrNull ?? [];
+    final totalTasks = tasks.length;
+    final completedTasks = tasks.where((t) => t.status == TaskStatus.completed).length;
+    final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
       child: LiquidCard(
@@ -273,16 +251,16 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
             AnimatedBuilder(
               animation: _ringAnim,
               builder: (context, child) =>
-                  _MissionRing(progress: 0.75 * _ringAnim.value),
+                  _MissionRing(progress: progress * _ringAnim.value),
             ),
             const SizedBox(height: 20),
             // Stat pills
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _statPill('Tasks', '7/10'),
-                _statPill('Focus', '4.5h'),
-                _statPill('Cal',   '320'),
+                _statPill('Tasks', '$completedTasks/$totalTasks'),
+                _statPill('Focus', '0h'),
+                _statPill('Cal',   '0'),
               ],
             ),
           ],
@@ -312,6 +290,18 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
 
   // ── Habit Check-in — pill chips with glass orb icons ──────────────────────
   Widget _habitSection() {
+    final habitsAsync = ref.watch(habitsProvider);
+    final logsAsync = ref.watch(todayHabitLogsProvider);
+    
+    final habits = habitsAsync.valueOrNull ?? [];
+    final logs = logsAsync.valueOrNull ?? [];
+    
+    // Quick lookup for habits that have a 'good' log today
+    final completedHabitIds = logs
+        .where((doc) => doc.data()['logType'] == 'good')
+        .map((doc) => doc.data()['habitId'] as String)
+        .toSet();
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 0, 0),
       child: Column(
@@ -348,14 +338,25 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
           const SizedBox(height: 12),
           SizedBox(
             height: 58,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.only(right: 20),
-              itemCount: _habits.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 10),
-              itemBuilder: (context, i) => _HabitPill(_habits[i]),
-            ),
+            child: habits.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.only(left: 4),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('No habits yet.', style: TextStyle(color: _kSubtext)),
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.only(right: 20),
+                    itemCount: habits.length,
+                    separatorBuilder: (context, index) => const SizedBox(width: 10),
+                    itemBuilder: (context, i) {
+                      final h = habits[i];
+                      return _HabitPill(h, completedToday: completedHabitIds.contains(h.id));
+                    },
+                  ),
           ),
         ],
       ),
@@ -364,6 +365,16 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
 
   // ── Streak Summary + Plan by Date (2-column) ───────────────────────────────
   Widget _streakSection() {
+    final streaksAsync = ref.watch(allStreaksProvider);
+    final streaks = streaksAsync.valueOrNull ?? [];
+    
+    int longestActive = 0;
+    for (final s in streaks) {
+      if (s.state == StreakState.active && s.currentCount > longestActive) {
+        longestActive = s.currentCount;
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
       child: Row(
@@ -381,16 +392,16 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
                 children: [
                   _streakCard(
                     emoji: '🔥',
-                    value: '12',
-                    badge: '+2',
-                    label: 'Day Streak',
+                    value: longestActive.toString(),
+                    badge: 'Active',
+                    label: 'Longest Streak',
                     gradColors: [const Color(0xFFFF9B3E), const Color(0xFFFFB830)],
                     badgeColor: const Color(0xFF60D4A0),
                   ),
                   const SizedBox(height: 12),
                   _streakCard(
                     emoji: '⏱️',
-                    value: '45h',
+                    value: '0h',
                     badge: 'Total',
                     label: 'Focus Time',
                     gradColors: [const Color(0xFF8B7FFF), const Color(0xFF6B5FEF)],
@@ -509,6 +520,9 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
 
   // ── Your Recurring Routines ────────────────────────────────────────────────
   Widget _routinesSection() {
+    final tasksAsync = ref.watch(todayTasksProvider);
+    final tasks = tasksAsync.valueOrNull ?? [];
+    
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
       child: Column(
@@ -518,24 +532,34 @@ class _HomeTabState extends State<HomeTab> with SingleTickerProviderStateMixin {
               style: TextStyle(
                   fontSize: 17, fontWeight: FontWeight.w800, color: _kInk)),
           const SizedBox(height: 12),
-          ...List.generate(_routines.length, (i) {
-            final r = _routines[i];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: GestureDetector(
-                onTap: () {
-                  if (r.title == 'Skin Care') {
-                    widget.onSkinCareTapped?.call();
-                  } else if (r.title == 'Class Routine') {
-                    widget.onClassesTapped?.call();
-                  } else if (r.title == 'Eating Routine') {
-                    widget.onEatingTapped?.call();
-                  }
-                },
-                child: _RoutineRow(r),
+          if (tasks.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Text('No routines scheduled for today',
+                    style: TextStyle(color: _kSubtext)),
               ),
-            );
-          }),
+            )
+          else
+            ...List.generate(tasks.length, (i) {
+              final t = tasks[i];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: GestureDetector(
+                  onTap: () {
+                    // We map context to appropriate tap callbacks for now
+                    if (t.context == 'skin_care') {
+                      widget.onSkinCareTapped?.call();
+                    } else if (t.context == 'class') {
+                      widget.onClassesTapped?.call();
+                    } else if (t.context == 'eating') {
+                      widget.onEatingTapped?.call();
+                    }
+                  },
+                  child: _TaskRow(t),
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -587,15 +611,23 @@ class _GlassOrb extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HabitPill extends StatelessWidget {
-  final _Habit h;
-  const _HabitPill(this.h);
+  final HabitModel h;
+  final bool completedToday;
+  const _HabitPill(this.h, {this.completedToday = false});
 
   @override
   Widget build(BuildContext context) {
+    Color color = const Color(0xFF60B8FF);
+    if (h.color != null) {
+      final hex = h.color!.replaceFirst('#', '');
+      color = Color(int.parse('FF$hex', radix: 16));
+    }
+    final emoji = completedToday ? '✅' : (h.emoji ?? '📌');
+
     return LiquidCard.solid(
       radius: 30,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      tint: Colors.white.withValues(alpha: 0.15),
+      tint: completedToday ? const Color(0xFF60D4A0).withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.15),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -603,15 +635,15 @@ class _HabitPill extends StatelessWidget {
           _GlassOrb(
             size: 36,
             colors: [
-              h.color.withValues(alpha: 0.55),
-              h.color,
+              color.withValues(alpha: 0.55),
+              color,
             ],
             child: Center(
-              child: Text(h.emoji, style: const TextStyle(fontSize: 18)),
+              child: Text(emoji, style: const TextStyle(fontSize: 18)),
             ),
           ),
           const SizedBox(width: 10),
-          Text(h.label,
+          Text(h.name,
               style: const TextStyle(
                   fontSize: 14, fontWeight: FontWeight.w700,
                   color: _kInk)),
@@ -625,12 +657,20 @@ class _HabitPill extends StatelessWidget {
 // ROUTINE ROW  (glass card + glass orb icon)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _RoutineRow extends StatelessWidget {
-  final _Routine r;
-  const _RoutineRow(this.r);
+class _TaskRow extends StatelessWidget {
+  final TaskModel t;
+  const _TaskRow(this.t);
 
   @override
   Widget build(BuildContext context) {
+    Color orbColor = const Color(0xFF60D4A0);
+    String emoji = '📌';
+    if (t.context == 'skin_care') { emoji = '🌿'; orbColor = const Color(0xFF60D4A0); }
+    else if (t.context == 'class') { emoji = '🎓'; orbColor = const Color(0xFF60B8FF); }
+    else if (t.context == 'eating') { emoji = '🍽️'; orbColor = const Color(0xFFFFB830); }
+
+    final isCompleted = t.status == TaskStatus.completed;
+
     return LiquidCard.solid(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       radius: 22,
@@ -639,11 +679,11 @@ class _RoutineRow extends StatelessWidget {
           _GlassOrb(
             size: 44,
             colors: [
-              r.orbColor.withValues(alpha: 0.50),
-              r.orbColor,
+              orbColor.withValues(alpha: 0.50),
+              orbColor,
             ],
             child: Center(
-              child: Text(r.emoji,
+              child: Text(isCompleted ? '✅' : emoji,
                   style: const TextStyle(fontSize: 20)),
             ),
           ),
@@ -652,12 +692,13 @@ class _RoutineRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(r.title,
-                    style: const TextStyle(
+                Text(t.title,
+                    style: TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w800,
+                        decoration: isCompleted ? TextDecoration.lineThrough : null,
                         color: _kInk)),
                 const SizedBox(height: 2),
-                Text(r.subtitle,
+                Text(t.durationMinutes != null ? '${t.durationMinutes} min' : 'Scheduled',
                     style: const TextStyle(
                         fontSize: 12, color: _kSubtext)),
               ],

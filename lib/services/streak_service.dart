@@ -330,6 +330,12 @@ class StreakService {
 
   // ── Read helpers for UI ───────────────────────────────────────────────────
 
+  /// Real-time stream of all streak docs for the user.
+  Stream<List<Streak>> watchAllStreaks() {
+    return _streaksRef.snapshots().map((snap) =>
+        snap.docs.map((doc) => Streak.fromFirestore(doc)).toList());
+  }
+
   /// Real-time stream of the streak doc for [habitId].
   Stream<Streak?> watchStreak(String habitId) {
     return _streaksRef.doc(habitId).snapshots().map((snap) {
