@@ -123,7 +123,7 @@ Firebase console: `/users/{uid}` appears immediately after signup with the requi
 Logs: bootstrap state transitions should go `initializing -> needsOnboarding` for a new user.
 
 **Estimate:** 2h
-- 
+- Done
 
 ### Task 1.2 — Align Onboarding Persistence with the Docs Without Breaking Existing UI
 **Why:** Onboarding UI exists, but stored data is too shallow for the target system.
@@ -145,7 +145,7 @@ Firebase console: see `/users/{uid}/onboarding/state`, `/users/{uid}/profile/mai
 Logs: final onboarding event should include structured onboarding fields.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 1.3 — Stop V1 Screens from Bypassing Services
 **Why:** Some UI writes events directly instead of using the intended service layer, which breaks data consistency.
@@ -191,7 +191,7 @@ Logs: replay skips already processed events.
 Manual test: double tap a habit log action should not create duplicate identical events with the same ID.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 2.2 — Bring TaskService Payloads and Rules Up to Contract
 **Why:** Tasks already exist, but their payloads are too small for streaks, day close, and coach logic.
@@ -211,7 +211,7 @@ Firebase console: task docs update state correctly and event payloads are rich.
 Logs: invalid transitions throw controlled errors instead of silently failing.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 2.3 — Normalize Habit Storage for V1 Reads
 **Why:** Current habit logs are nested under each habit, but the docs require a primary per-user log stream for trackers and analytics.
@@ -232,7 +232,7 @@ Firebase console: every log action creates a `/habit_logs/{logId}` doc.
 Indexes: no missing-index errors on Tracker queries.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 2.4 — Make Routine Blocks Generate Real Task Documents
 **Why:** Routine UI is advanced, but much of it is visual unless it creates real tasks.
@@ -252,7 +252,7 @@ Firebase console: saving a routine produces task docs, not only routine config c
 Logs: related `task_scheduled` events fire for generated tasks.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 2.5 — Fix Day Close and Basic Streak Computation
 **Why:** Streaks must come after logs/tasks exist. This is the core dependency chain.
@@ -277,7 +277,7 @@ Firebase console: streak docs and daily summary docs update for the closed day.
 Logs: day-close emits streak events once, not multiple times.
 
 **Estimate:** 4h
-- 
+- Done
 
 ---
 
