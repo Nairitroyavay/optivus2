@@ -137,7 +137,7 @@ exports.aiGenerate = onCall(
   }
 );
 
-// ── Scheduled Jobs ──────────────────────────────────────────────────────────
+// ── Scheduled server safety-net jobs ────────────────────────────────────────
 const { scheduledDayClose } = require("./jobs/dayClose");
 const { scheduledInactivityCheck } = require("./jobs/inactivityCheck");
 const { scheduledMorningBrief } = require("./jobs/morningBrief");
