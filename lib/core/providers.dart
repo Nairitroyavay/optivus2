@@ -104,6 +104,16 @@ final todayTasksProvider = StreamProvider<List<TaskModel>>((ref) {
   return taskService.tasksFor(DateTime.now());
 });
 
+/// Real-time stream of tasks for the next 14-day routine window.
+///
+/// Consumed by [RoutineTab] so every day in the scrollable timeline has
+/// live Firestore-backed task data, preventing config-only fallback blocks
+/// from appearing alongside real task documents.
+final routineWindowTasksProvider = StreamProvider<List<TaskModel>>((ref) {
+  final taskService = ref.watch(taskServiceProvider);
+  return taskService.tasksForWindow(DateTime.now(), days: 14);
+});
+
 /// Real-time stream of all active habits.
 final habitsProvider = StreamProvider<List<HabitModel>>((ref) {
   final habitService = ref.watch(habitServiceProvider);

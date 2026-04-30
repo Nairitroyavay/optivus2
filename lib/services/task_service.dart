@@ -136,6 +136,22 @@ class TaskService {
         .map((snap) => snap.docs.map(TaskModel.fromFirestore).toList());
   }
 
+  /// Stream of tasks whose plannedStart falls within the [days]-day window
+  /// starting at [from]'s calendar day. Used by the 14-day routine timeline
+  /// so every day in the scroll view has live Firestore-backed task data.
+  Stream<List<TaskModel>> tasksForWindow(DateTime from, {int days = 14}) {
+    final dayStart = DateTime(from.year, from.month, from.day);
+    final windowEnd = dayStart.add(Duration(days: days));
+
+    return _tasksRef
+        .where('plannedStart',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(dayStart))
+        .where('plannedStart', isLessThan: Timestamp.fromDate(windowEnd))
+        .orderBy('plannedStart')
+        .snapshots()
+        .map((snap) => snap.docs.map(TaskModel.fromFirestore).toList());
+  }
+
   // ── Operations ───────────────────────────────────────────────────────────────
 
   /// Creates a new task doc and emits `task_scheduled`.
@@ -158,6 +174,94 @@ class TaskService {
 
     await batch.commit();
     debugPrint('[TaskService] createTask ${task.id}');
+  }
+
+  /// Idempotently synchronizes generated routine tasks with Firestore.
+  ///
+  /// Uses merge:true so execution state (started, paused, completed) is never
+  /// clobbered. Only config fields are written: id, type, title, emoji, color,
+  /// plannedStart, plannedEnd, subtasks.
+  ///
+  /// Processes tasks in chunks of [_kBatchChunk] to stay under Firestore's
+  /// 500-writes-per-batch limit. Emits `task_scheduled` for tasks falling
+  /// within the next two calendar days (today + tomorrow) — a 2-day lookahead
+  /// for the scheduler without excessive log volume.
+  static const int _kBatchChunk = 450;
+
+  Future<void> syncRoutineTasks(List<TaskModel> tasks) async {
+    if (tasks.isEmpty) return;
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    // Emit scheduled events for today AND tomorrow (2-day lookahead).
+    final emitWindowEnd = todayStart.add(const Duration(days: 2));
+
+    // ── Chunk the list so no single WriteBatch exceeds Firestore's 500-op limit.
+    // Each task = 1 set + possibly 1 event write = max 2 ops; chunk at 450 to
+    // leave headroom for the event writes.
+    for (int start = 0; start < tasks.length; start += _kBatchChunk) {
+      final chunk = tasks.sublist(
+        start,
+        (start + _kBatchChunk).clamp(0, tasks.length),
+      );
+
+      final batch = _firestore.batch();
+
+      for (final task in chunk) {
+        final docRef = _tasksRef.doc(task.id);
+
+        // Only overwrite configuration fields — preserving state, actuals, etc.
+        // New docs are created with these fields + state defaults from the model.
+        // On existing docs, merge:true leaves untouched: state, actualStart,
+        // actualEnd, pausedAt, abandonedAt, actualDurationMin, driftPct,
+        // totalPauseDurationMin, reasonCategory, reasonTag, createdAt.
+        final updates = <String, dynamic>{
+          'taskId': task.id,
+          'type': task.type.toJson(),
+          if (task.parentRoutine != null) 'parentRoutine': task.parentRoutine,
+          'title': task.title,
+          if (task.emoji != null) 'emoji': task.emoji,
+          if (task.color != null) 'color': task.color,
+          'identityTags': task.identityTags,
+          'alarmTier': task.alarmTier.name,
+          'plannedStart': Timestamp.fromDate(task.plannedStart),
+          'plannedEnd': Timestamp.fromDate(task.plannedEnd),
+          'subtasks': task.subtasks.map((s) => s.toMap()).toList(),
+          'schemaVersion': task.schemaVersion,
+          'updatedAt': FieldValue.serverTimestamp(),
+          // state defaults to 'scheduled' only when creating a new doc.
+          // On existing docs merge:true skips fields not in this map, so
+          // a running task's state is preserved.
+        };
+
+        // merge:true ensures only the listed config fields are written.
+        // State, actuals (actualStart, actualEnd, etc.) and createdAt are
+        // intentionally omitted so in-progress tasks are never clobbered.
+        // On new docs where state is absent, TaskModel.fromFirestore defaults
+        // the missing field to TaskState.scheduled — identical to an explicit
+        // 'state: scheduled' write, so the state machine behaves correctly.
+        batch.set(docRef, updates, SetOptions(merge: true));
+
+        // Emit task_scheduled for the 2-day lookahead window.
+        if (!task.plannedStart.isBefore(todayStart) &&
+            task.plannedStart.isBefore(emitWindowEnd)) {
+          await _eventService.emit(
+            eventName: EventNames.taskScheduled,
+            source: 'routine_sync',
+            payload: _buildPayload(task),
+            batch: batch,
+          );
+        }
+      }
+
+      await batch.commit();
+      debugPrint(
+        '[TaskService] syncRoutineTasks chunk '
+        '${start ~/ _kBatchChunk + 1}: committed ${chunk.length} tasks',
+      );
+    }
+
+    debugPrint('[TaskService] syncRoutineTasks total ${tasks.length} tasks synced');
   }
 
   /// Transitions scheduled → started.

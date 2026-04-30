@@ -6,7 +6,8 @@ import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/utils/uuid_generator.dart';
-
+import 'package:optivus2/models/task_model.dart';
+import 'package:optivus2/services/task_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // MODELS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -362,9 +363,10 @@ class RoutineState {
 class RoutineNotifier extends StateNotifier<RoutineState> {
   final RoutineRepository _repo;
   final EventService _eventService;
+  final TaskService _taskService;
   Timer? _debounce;
 
-  RoutineNotifier(this._repo, this._eventService) : super(const RoutineState()) {
+  RoutineNotifier(this._repo, this._eventService, this._taskService) : super(const RoutineState()) {
     _loadRoutine();
   }
 
@@ -377,20 +379,30 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   // ── Persistence ─────────────────────────────────────────────────────────
 
   /// Load from Firestore; seed defaults if first-time user.
+  ///
+  /// Always ends with a `_syncTasksToFirestore()` call so that task docs at
+  /// `/users/{uid}/tasks` are up-to-date after every app start — not just
+  /// after the user explicitly saves a routine change.
   Future<void> _loadRoutine() async {
     try {
       final saved = await _repo.loadRoutine();
       if (saved != null) {
         state = saved;
+        // Re-sync tasks on every app start so Firestore tasks always reflect
+        // the current config (idempotent: uses merge so in-progress tasks are
+        // never overwritten).
+        _syncTasksToFirestore();
       } else {
-        // First-time user — seed demo defaults
+        // First-time user — seed demo defaults and persist them.
         _seedDefaults();
-        _saveDebounced(); // persist the defaults
+        _saveDebounced(); // _saveDebounced already calls _syncTasksToFirestore
       }
     } catch (e) {
       debugPrint('RoutineNotifier: failed to load routine: $e');
-      // Fallback to defaults so the UI isn't empty
+      // Fallback to defaults so the UI isn't empty.
       _seedDefaults();
+      // Attempt a best-effort sync even on error so today's tasks exist.
+      _syncTasksToFirestore();
     }
   }
 
@@ -425,10 +437,193 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   void _saveDebounced() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(seconds: 2), () {
-      _repo.saveRoutine(state).catchError((e) {
+      _repo.saveRoutine(state).then((_) {
+        _syncTasksToFirestore();
+      }).catchError((e) {
         debugPrint('RoutineNotifier: failed to save routine: $e');
       });
     });
+  }
+
+  void _syncTasksToFirestore() {
+    final tasks = <TaskModel>[];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    for (int i = 0; i < 14; i++) {
+      final date = today.add(Duration(days: i));
+      final dateStr = '${date.year}_${date.month.toString().padLeft(2, '0')}_${date.day.toString().padLeft(2, '0')}';
+      final dayIdx = (date.weekday - 1).clamp(0, 6);
+
+      // 1. Fixed Blocks
+      if (state.fixedScheduleSetUp) {
+        for (final fb in state.fixedBlocks) {
+          final plannedStart = date.add(Duration(minutes: fb.startMinute));
+          final plannedEnd = date.add(Duration(minutes: fb.endMinute));
+          
+          tasks.add(TaskModel(
+            id: 'routine_${dateStr}_fixed_${fb.id}',
+            type: TaskType.fixed,
+            title: fb.title,
+            emoji: fb.emoji,
+            color: fb.colorHex,
+            plannedStart: plannedStart,
+            plannedEnd: plannedEnd,
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+      }
+
+      // 2. Skin Care
+      if (state.skinCareSetUp) {
+        final p = state.skinPlanForDay(dayIdx);
+        if (p.morning.isNotEmpty) {
+          tasks.add(TaskModel(
+            id: 'routine_${dateStr}_skin_morning',
+            type: TaskType.skinCare,
+            title: 'Morning Skin Care',
+            emoji: '🌿',
+            color: '#A1F094', // kMint equiv
+            plannedStart: date.add(const Duration(hours: 7, minutes: 30)),
+            plannedEnd: date.add(const Duration(hours: 7, minutes: 45)),
+            subtasks: p.morning.map((s) => Subtask(id: s.name, title: s.name)).toList(),
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+        if (p.afternoon.isNotEmpty) {
+          tasks.add(TaskModel(
+            id: 'routine_${dateStr}_skin_afternoon',
+            type: TaskType.skinCare,
+            title: 'Afternoon Skin Care',
+            emoji: '💧',
+            color: '#A1F094',
+            plannedStart: date.add(const Duration(hours: 13, minutes: 0)),
+            plannedEnd: date.add(const Duration(hours: 13, minutes: 15)),
+            subtasks: p.afternoon.map((s) => Subtask(id: s.name, title: s.name)).toList(),
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+        if (p.night.isNotEmpty) {
+          tasks.add(TaskModel(
+            id: 'routine_${dateStr}_skin_night',
+            type: TaskType.skinCare,
+            title: 'Night Skin Care',
+            emoji: '🌙',
+            color: '#C084FC', // kPurple equiv
+            plannedStart: date.add(const Duration(hours: 22, minutes: 0)),
+            plannedEnd: date.add(const Duration(hours: 22, minutes: 15)),
+            subtasks: p.night.map((s) => Subtask(id: s.name, title: s.name)).toList(),
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+      }
+
+      // 3. Eating
+      if (state.eatingSetUp) {
+        final mp = state.mealPlanForDay(dayIdx);
+        for (final meal in mp.meals) {
+          // parse HH:MM AM/PM
+          int hour = 0;
+          int min = 0;
+          try {
+            final parts = meal.time.split(' ');
+            if (parts.length == 2) {
+              final timeParts = parts[0].split(':');
+              hour = int.parse(timeParts[0]);
+              min = int.parse(timeParts[1]);
+              if (parts[1].toUpperCase() == 'PM' && hour != 12) hour += 12;
+              if (parts[1].toUpperCase() == 'AM' && hour == 12) hour = 0;
+            } else {
+               // Fallback to 24hr format
+               final timeParts = meal.time.split(':');
+               hour = int.parse(timeParts[0]);
+               min = int.parse(timeParts[1]);
+            }
+          } catch (_) {
+            hour = 12; // fallback
+          }
+          final mealStart = date.add(Duration(hours: hour, minutes: min));
+          tasks.add(TaskModel(
+            id: 'routine_${dateStr}_meal_${meal.name.replaceAll(' ', '_')}',
+            type: TaskType.eating,
+            title: meal.name,
+            emoji: meal.emoji,
+            color: '#FF9560', // kRose equiv
+            plannedStart: mealStart,
+            plannedEnd: mealStart.add(const Duration(minutes: 30)),
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+      }
+
+      // 4. Classes
+      if (state.classesSetUp) {
+        final classes = state.classesForDay(date.weekday);
+        for (final c in classes) {
+          int startH = 0, startM = 0;
+          try {
+            final sp = c.startTime.split(':');
+            startH = int.parse(sp[0]);
+            startM = int.parse(sp[1]);
+          } catch (_) {}
+          int endH = 0, endM = 0;
+          try {
+            final ep = c.endTime.split(':');
+            endH = int.parse(ep[0]);
+            endM = int.parse(ep[1]);
+          } catch (_) {}
+          
+          tasks.add(TaskModel(
+            id: 'routine_${dateStr}_class_${c.subject.replaceAll(' ', '_')}',
+            type: TaskType.classBlock,
+            title: c.subject,
+            emoji: '🎓',
+            color: c.colorHex,
+            plannedStart: date.add(Duration(hours: startH, minutes: startM)),
+            plannedEnd: date.add(Duration(hours: endH, minutes: endM)),
+            subtasks: [Subtask(id: 'room', title: c.room), Subtask(id: 'prof', title: c.professor)],
+            createdAt: now,
+            updatedAt: now,
+          ));
+        }
+      }
+
+      // 5. Long Term Goals
+      final targetDate = DateTime(date.year, date.month, date.day);
+      for (final g in state.longTermGoals) {
+        final gStart = DateTime(g.startDate.year, g.startDate.month, g.startDate.day);
+        final gEnd = DateTime(g.endDate.year, g.endDate.month, g.endDate.day);
+        if (!targetDate.isBefore(gStart) && !targetDate.isAfter(gEnd)) {
+           int h = 0, m = 0;
+           try {
+             if (g.dailyTaskTime != null) {
+               final sp = g.dailyTaskTime!.split(':');
+               h = int.parse(sp[0]);
+               m = int.parse(sp[1]);
+             }
+           } catch (_) {}
+           final plannedStart = date.add(Duration(hours: h, minutes: m));
+           tasks.add(TaskModel(
+             id: 'routine_${dateStr}_goal_${g.id}',
+             type: TaskType.custom,
+             title: g.title,
+             emoji: g.emoji,
+             color: g.colorHex,
+             plannedStart: plannedStart,
+             plannedEnd: plannedStart.add(const Duration(minutes: 30)),
+             createdAt: now,
+             updatedAt: now,
+           ));
+        }
+      }
+    }
+
+    _taskService.syncRoutineTasks(tasks);
   }
 
   /// Force an immediate save (e.g. before app goes to background).
@@ -442,18 +637,6 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       fixedScheduleSetUp: true,
     );
     _saveDebounced();
-
-    for (final block in blocks) {
-      _eventService.emit(
-        eventName: EventNames.taskScheduled,
-        payload: {
-          'taskId': block.id,
-          'type': 'fixed_block',
-          'plannedStart': block.startLabel,
-          'plannedEnd': block.endLabel,
-        },
-      );
-    }
   }
 
   void updateFixedBlock(FixedBlock updated) {
@@ -461,16 +644,6 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
         b.id == updated.id ? updated : b).toList();
     state = state.copyWith(fixedBlocks: list);
     _saveDebounced();
-
-    _eventService.emit(
-      eventName: EventNames.taskScheduled,
-      payload: {
-        'taskId': updated.id,
-        'type': 'fixed_block',
-        'plannedStart': updated.startLabel,
-        'plannedEnd': updated.endLabel,
-      },
-    );
   }
 
   // ── Skin care ────────────────────────────────────────────────────────────
@@ -480,22 +653,6 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     plans[dayIndex] = plan;
     state = state.copyWith(skinCarePlans: plans, skinCareSetUp: true);
     _saveDebounced();
-
-    void emitSkinStep(SkinStep step, String period) {
-      _eventService.emit(
-        eventName: EventNames.taskScheduled,
-        payload: {
-          'taskId': generateId(),
-          'type': 'skin_care',
-          'plannedStart': period,
-          'plannedEnd': period,
-        },
-      );
-    }
-
-    for (final step in plan.morning) { emitSkinStep(step, 'morning'); }
-    for (final step in plan.afternoon) { emitSkinStep(step, 'afternoon'); }
-    for (final step in plan.night) { emitSkinStep(step, 'night'); }
   }
 
   void markSkinCareSetUp() {
@@ -510,18 +667,6 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     plans[dayIndex] = plan;
     state = state.copyWith(mealPlans: plans, eatingSetUp: true);
     _saveDebounced();
-
-    for (final meal in plan.meals) {
-      _eventService.emit(
-        eventName: EventNames.taskScheduled,
-        payload: {
-          'taskId': generateId(),
-          'type': 'meal',
-          'plannedStart': meal.time,
-          'plannedEnd': meal.time,
-        },
-      );
-    }
   }
 
   void markEatingSetUp() {
@@ -534,18 +679,6 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   void setClasses(List<ClassItem> classes) {
     state = state.copyWith(classes: classes, classesSetUp: true);
     _saveDebounced();
-
-    for (final c in classes) {
-      _eventService.emit(
-        eventName: EventNames.taskScheduled,
-        payload: {
-          'taskId': generateId(),
-          'type': 'class',
-          'plannedStart': c.startTime,
-          'plannedEnd': c.endTime,
-        },
-      );
-    }
   }
 
   void addClass(ClassItem c) {
@@ -554,16 +687,6 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       classesSetUp: true,
     );
     _saveDebounced();
-
-    _eventService.emit(
-      eventName: EventNames.taskScheduled,
-      payload: {
-        'taskId': generateId(),
-        'type': 'class',
-        'plannedStart': c.startTime,
-        'plannedEnd': c.endTime,
-      },
-    );
   }
 
   void removeClass(ClassItem c) {
@@ -579,33 +702,11 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   void setLongTermGoals(List<LongTermGoal> goals) {
     state = state.copyWith(longTermGoals: goals);
     _saveDebounced();
-
-    for (final goal in goals) {
-      _eventService.emit(
-        eventName: EventNames.taskScheduled,
-        payload: {
-          'taskId': goal.id,
-          'type': 'long_term_goal',
-          'plannedStart': goal.startDate.toIso8601String(),
-          'plannedEnd': goal.endDate.toIso8601String(),
-        },
-      );
-    }
   }
 
   void addLongTermGoal(LongTermGoal goal) {
     state = state.copyWith(longTermGoals: [...state.longTermGoals, goal]);
     _saveDebounced();
-
-    _eventService.emit(
-      eventName: EventNames.taskScheduled,
-      payload: {
-        'taskId': goal.id,
-        'type': 'long_term_goal',
-        'plannedStart': goal.startDate.toIso8601String(),
-        'plannedEnd': goal.endDate.toIso8601String(),
-      },
-    );
   }
 
   void removeLongTermGoal(String id) {
@@ -625,6 +726,7 @@ final routineProvider =
   (ref) => RoutineNotifier(
     ref.read(routineRepositoryProvider),
     ref.read(eventServiceProvider),
+    ref.read(taskServiceProvider),
   ),
 );
 

@@ -86,17 +86,17 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
   Map<DateTime, List<DisplayBlock>> _buildAllBlocks(
     RoutineState s, {
-    List<TaskModel> firestoreTasks = const [],
+    Map<DateTime, List<TaskModel>> tasksByDay = const {},
   }) {
     Map<DateTime, List<DisplayBlock>> days = {};
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
     
-    // Build blocks for the next 14 days
+    // Build blocks for the next 14 days.
     for (int i = 0; i < 14; i++) {
        DateTime d = today.add(Duration(days: i));
-       // Only inject Firestore tasks for today
-       final tasksForDay = (i == 0) ? firestoreTasks : const <TaskModel>[];
+       // Pass the Firestore tasks for this specific calendar day.
+       final tasksForDay = tasksByDay[d] ?? const <TaskModel>[];
        List<DisplayBlock> b = _buildBlocksForDay(s, d, firestoreTasks: tasksForDay);
        if (b.isNotEmpty || i == 0) { // always include today even if empty
            days[d] = b;
@@ -171,7 +171,10 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     // Fixed blocks repeat every day — include them for all days in the list
     if (_filter == RoutineFilter.all) {
       for (final fb in s.fixedBlocks) {
-        scheduled.add(DisplayBlock(time: tlFmtMin(fb.startMinute), title: fb.title,
+        final timeStr = tlFmtMin(fb.startMinute);
+        if (firestoreTaskTimes.contains('${timeStr}_${fb.title}')) continue;
+        
+        scheduled.add(DisplayBlock(time: timeStr, title: fb.title,
             subtitle: '${fb.startLabel} – ${fb.endLabel}',
             accentColor: tlHexColor(fb.colorHex), emoji: fb.emoji, type: RoutineFilter.all));
       }
@@ -179,17 +182,17 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.skinCare) {
       final p = s.skinPlanForDay(dayIdx);
-      if (p.morning.isNotEmpty) {
+      if (p.morning.isNotEmpty && !firestoreTaskTimes.contains('07:30_Morning Skin Care')) {
         scheduled.add(DisplayBlock(time:'07:30', title:'Morning Skin Care',
             subtitle: p.morning.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'🌿', type:RoutineFilter.skinCare,
             subtasks: p.morning.map((x) => x.name).toList()));
       }
-      if (p.afternoon.isNotEmpty) {
+      if (p.afternoon.isNotEmpty && !firestoreTaskTimes.contains('13:00_Afternoon Skin Care')) {
         scheduled.add(DisplayBlock(time:'13:00', title:'Afternoon Skin Care',
             subtitle: p.afternoon.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'💧', type:RoutineFilter.skinCare,
             subtasks: p.afternoon.map((x) => x.name).toList()));
       }
-      if (p.night.isNotEmpty) {
+      if (p.night.isNotEmpty && !firestoreTaskTimes.contains('22:00_Night Skin Care')) {
         scheduled.add(DisplayBlock(time:'22:00', title:'Night Skin Care',
             subtitle: p.night.map((x)=>x.name).join(' · '), accentColor:kPurple, emoji:'🌙', type:RoutineFilter.skinCare,
             subtasks: p.night.map((x) => x.name).toList()));
@@ -198,6 +201,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.classes) {
       for (final c in s.classesForDay(date.weekday)) {
+        if (firestoreTaskTimes.contains('${c.startTime}_${c.subject}')) continue;
+        
         scheduled.add(DisplayBlock(time:c.startTime, title:c.subject,
             subtitle:'${c.room} · ${c.professor}',
             accentColor:tlHexColor(c.colorHex), emoji:'🎓', type:RoutineFilter.classes));
@@ -208,6 +213,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       for (final m in s.mealPlanForDay(dayIdx).all) {
         // Normalize time to HH:MM 24h for consistent display and sorting
         final normalizedTime = tlNormalizeTime(m.time);
+        if (firestoreTaskTimes.contains('${normalizedTime}_${m.name}')) continue;
+        
         scheduled.add(DisplayBlock(time: normalizedTime, title:tlMealLabel(normalizedTime),
             subtitle:m.name, accentColor:kRose, emoji:m.emoji, type:RoutineFilter.eating));
       }
@@ -223,6 +230,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         // If the date is within the goal's duration
         if (!targetDate.isBefore(start) && !targetDate.isAfter(end)) {
            final timeStr = g.dailyTaskTime ?? '00:00';
+           if (firestoreTaskTimes.contains('${timeStr}_${g.title}')) continue;
+           
            scheduled.add(DisplayBlock(
              time: timeStr,
              title: g.title,
@@ -408,9 +417,25 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(routineProvider);
-    final todayTasksAsync = ref.watch(todayTasksProvider);
-    final firestoreTasks = todayTasksAsync.valueOrNull ?? [];
-    final days = _buildAllBlocks(s, firestoreTasks: firestoreTasks);
+
+    // Watch the 14-day window stream so every day in the timeline has live
+    // Firestore-backed task data, not just today.
+    final windowAsync = ref.watch(routineWindowTasksProvider);
+    final windowTasks = windowAsync.valueOrNull ?? const <TaskModel>[];
+
+    // Group the flat task list into a map keyed by calendar day (midnight).
+    // This lets _buildBlocksForDay look up tasks per day in O(1).
+    final tasksByDay = <DateTime, List<TaskModel>>{};
+    for (final task in windowTasks) {
+      final day = DateTime(
+        task.plannedStart.year,
+        task.plannedStart.month,
+        task.plannedStart.day,
+      );
+      tasksByDay.putIfAbsent(day, () => []).add(task);
+    }
+
+    final days = _buildAllBlocks(s, tasksByDay: tasksByDay);
     
     final displayDate = (_activeDate != null && days.containsKey(_activeDate)) 
         ? _activeDate! 
