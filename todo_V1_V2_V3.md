@@ -164,7 +164,7 @@ Firebase console: habit log docs are created, not only events.
 Logs: event creation happens from service layer after Firestore write batching.
 
 **Estimate:** 2h
-- 
+- Done
 
 
 ---
