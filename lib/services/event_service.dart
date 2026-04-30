@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/errors/app_errors.dart';
+import '../core/utils/device_id.dart';
 import '../models/event_model.dart';
 
 const _kProcessedPrefix = 'optivus_processed_events';
@@ -42,41 +43,61 @@ class EventService {
   Future<void> emit({
     required String eventName,
     required Map<String, dynamic> payload,
+    String? eventId,
     String source = 'ui',
+    String priority = 'normal',
+    int payloadVersion = 1,
     WriteBatch? batch,
   }) async {
     final now = DateTime.now();
-    final eventId = _generateDeterministicEventId(
-      eventName: eventName,
-      ts: now,
-      payload: payload,
-    );
+    final deviceId = await getDeviceId();
+
+    final generatedId = eventId ??
+        _generateDeterministicEventId(
+          eventName: eventName,
+          ts: now,
+          payload: payload,
+        );
+
+    final eventRef = _eventsRef.doc(generatedId);
+
+    // Check if the event doc ID already exists before creating it
+    final existingSnap = await eventRef.get();
+    if (existingSnap.exists) {
+      debugPrint(
+          '[EventService] Event $generatedId already exists. Skipping duplicate.');
+      return;
+    }
 
     final event = EventModel(
-      eventId: eventId,
+      eventId: generatedId,
       eventName: eventName,
       ts: now,
       deviceLocalTs: now,
+      deviceId: deviceId,
       source: source,
+      priority: priority,
+      payloadVersion: payloadVersion,
       payload: Map<String, dynamic>.from(payload),
+      schemaVersion: 1,
     );
 
     final eventDoc = event.toFirestore();
 
     if (batch != null) {
-      batch.set(_eventsRef.doc(eventId), eventDoc);
-      batch.set(_eventsRecentRef.doc(eventId), eventDoc);
+      batch.set(eventRef, eventDoc);
+      batch.set(_eventsRecentRef.doc(generatedId), eventDoc);
       _publishLocally(event);
     } else {
       final writeBatch = _firestore.batch();
-      writeBatch.set(_eventsRef.doc(eventId), eventDoc);
-      writeBatch.set(_eventsRecentRef.doc(eventId), eventDoc);
+      writeBatch.set(eventRef, eventDoc);
+      writeBatch.set(_eventsRecentRef.doc(generatedId), eventDoc);
       await writeBatch.commit();
       _publishLocally(event);
     }
 
-    _processedIds.add(eventId);
-    unawaited(_persistProcessedId(eventId));
+    _processedIds.add(generatedId);
+    unawaited(_persistProcessedId(generatedId));
   }
 
   Stream<EventModel> on(String eventName) {
@@ -140,7 +161,8 @@ class EventService {
 
   Object? _canonicalize(Object? value) {
     if (value is Map) {
-      final sortedKeys = value.keys.map((key) => key.toString()).toList()..sort();
+      final sortedKeys = value.keys.map((key) => key.toString()).toList()
+        ..sort();
       return {
         for (final key in sortedKeys) key: _canonicalize(value[key]),
       };

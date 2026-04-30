@@ -34,6 +34,7 @@ abstract final class EventNames {
   static const goodHabitLogged = 'good_habit_logged';
   static const badHabitSlipLogged = 'bad_habit_slip_logged';
   static const habitLogDeleted = 'habit_log_deleted';
+  static const habitArchived = 'habit_archived';
   static const slipStreakDetected = 'slip_streak_detected';
 
   // ── Streaks ─────────────────────────────────────────────────────────────

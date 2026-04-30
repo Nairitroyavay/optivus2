@@ -1,7 +1,7 @@
 // lib/core/utils/device_id.dart
 //
 // Generates and persists a stable device ID on first launch.
-// The ID appears in every event envelope (field: device_id)
+// The ID appears in every event envelope (field: deviceId)
 // so we can distinguish events from the same user on different devices.
 
 import 'package:shared_preferences/shared_preferences.dart';
