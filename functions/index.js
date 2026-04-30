@@ -136,3 +136,14 @@ exports.aiGenerate = onCall(
     }
   }
 );
+
+// ── Scheduled Jobs ──────────────────────────────────────────────────────────
+const { scheduledDayClose } = require("./jobs/dayClose");
+const { scheduledInactivityCheck } = require("./jobs/inactivityCheck");
+const { scheduledMorningBrief } = require("./jobs/morningBrief");
+const { scheduledMiddayPulse } = require("./jobs/middayPulse");
+
+exports.scheduledDayClose = scheduledDayClose;
+exports.scheduledInactivityCheck = scheduledInactivityCheck;
+exports.scheduledMorningBrief = scheduledMorningBrief;
+exports.scheduledMiddayPulse = scheduledMiddayPulse;
