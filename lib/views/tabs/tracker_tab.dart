@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/habit_model.dart';
+import 'package:optivus2/models/screen_time_log_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Accent colour pool for habit cards — cycles through vibrant LiquidGlass tones
@@ -97,6 +99,12 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                   const SliverToBoxAdapter(
                     child: _TrackerHeader(),
                   ),
+
+                  // ── Screen Time Card (Android only) ──
+                  if (Platform.isAndroid)
+                    SliverToBoxAdapter(
+                      child: _ScreenTimeSection(),
+                    ),
 
                   // ── Good Habits Section ──
                   if (goodHabits.isNotEmpty) ...[
@@ -207,12 +215,27 @@ class _TrackerHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final dayNames = [
-      'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-      'Friday', 'Saturday', 'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
     ];
     final monthNames = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
 
     return Padding(
@@ -438,7 +461,8 @@ class _BadHabitCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final emoji = habit.emoji;
-    final isOver = habit.goalType == BadHabitGoalType.eliminate && slipCount > 0;
+    final isOver =
+        habit.goalType == BadHabitGoalType.eliminate && slipCount > 0;
     final isOverTarget = habit.goalType == BadHabitGoalType.reduceToTarget &&
         habit.target != null &&
         slipCount >= (habit.target ?? 0);
@@ -763,6 +787,577 @@ class _EmptyState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SCREEN TIME SECTION
+// Renders as:
+//   • Permission-prompt card  — when usage access is not yet granted
+//   • Shimmer placeholder     — while Riverpod loads the Firestore stream
+//   • Full data card          — totalMinutes ring + unlocks + top-apps list
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _ScreenTimeSection extends ConsumerStatefulWidget {
+  const _ScreenTimeSection();
+
+  @override
+  ConsumerState<_ScreenTimeSection> createState() => _ScreenTimeSectionState();
+}
+
+class _ScreenTimeSectionState extends ConsumerState<_ScreenTimeSection>
+    with WidgetsBindingObserver {
+  bool _hasPerm = false;
+  bool _permChecked = false;
+  bool _syncing = false;
+  bool _openedUsageSettings = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkPermission();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _openedUsageSettings) {
+      _openedUsageSettings = false;
+      _checkPermission();
+    }
+  }
+
+  Future<void> _checkPermission() async {
+    final importer = ref.read(screenTimeImporterProvider);
+    final granted = await importer.hasPermission();
+    if (mounted) {
+      setState(() {
+        _hasPerm = granted;
+        _permChecked = true;
+      });
+      // Auto-sync on first foreground if already permitted
+      if (granted) _runSync();
+    }
+  }
+
+  Future<void> _runSync() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    try {
+      await ref.read(screenTimeImporterProvider).sync();
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
+  Future<void> _requestPermission() async {
+    _openedUsageSettings = true;
+    await ref.read(screenTimeImporterProvider).requestPermission();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_permChecked) return const _ScreenTimeShimmer();
+
+    if (!_hasPerm) {
+      return _ScreenTimePermissionCard(onGrant: _requestPermission);
+    }
+
+    final logAsync = ref.watch(screenTimeLogProvider);
+    return logAsync.when(
+      loading: () => const _ScreenTimeShimmer(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (log) => _ScreenTimeDataCard(
+        log: log,
+        syncing: _syncing,
+        onSync: _runSync,
+      ),
+    );
+  }
+}
+
+// ── Permission prompt card ────────────────────────────────────────────────────
+
+class _ScreenTimePermissionCard extends StatelessWidget {
+  final VoidCallback onGrant;
+  const _ScreenTimePermissionCard({required this.onGrant});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: LiquidCard(
+        frosted: true,
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: kAmber.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.phone_android_rounded,
+                color: kAmber,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Enable Screen Time',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: kInk,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Grant usage access to see your daily screen habits.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: kSub.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onGrant();
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: kAmber.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Grant',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: kAmber,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shimmer placeholder card ──────────────────────────────────────────────────
+
+class _ScreenTimeShimmer extends StatelessWidget {
+  const _ScreenTimeShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: LiquidCard(
+        frosted: true,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _shimmerBox(120, 16),
+            const SizedBox(height: 14),
+            _shimmerBox(80, 40),
+            const SizedBox(height: 16),
+            _shimmerBox(double.infinity, 10),
+            const SizedBox(height: 8),
+            _shimmerBox(double.infinity, 10),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _shimmerBox(double width, double height) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: kSub.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+    );
+  }
+}
+
+// ── Full data card ────────────────────────────────────────────────────────────
+
+class _ScreenTimeDataCard extends StatelessWidget {
+  final ScreenTimeLogModel? log;
+  final bool syncing;
+  final VoidCallback onSync;
+
+  const _ScreenTimeDataCard({
+    required this.log,
+    required this.syncing,
+    required this.onSync,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: LiquidCard(
+        frosted: true,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Section label + sync button ──
+            Row(
+              children: [
+                const Text(
+                  'Screen Time',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: kSub,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: syncing
+                      ? null
+                      : () {
+                          HapticFeedback.lightImpact();
+                          onSync();
+                        },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: kBlue.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (syncing)
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: kBlue,
+                            ),
+                          )
+                        else
+                          const Icon(Icons.sync_rounded,
+                              size: 13, color: kBlue),
+                        const SizedBox(width: 5),
+                        Text(
+                          syncing ? 'Syncing…' : 'Sync Now',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: kBlue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            if (log == null)
+              // No sync yet
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'Tap Sync Now to load today\'s data',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: kSub.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+              )
+            else ...[
+              // ── Total + Unlocks row ──
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Arc ring
+                  _ScreenTimeRing(minutes: log!.totalMinutes),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          log!.formattedTotal,
+                          style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w800,
+                            color: kInk,
+                            letterSpacing: -1,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'total screen time',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: kSub.withValues(alpha: 0.65),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.lock_open_rounded,
+                                size: 14, color: kPurple),
+                            const SizedBox(width: 5),
+                            Text(
+                              '${log!.unlockCount} unlocks',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: kPurple,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              // ── Top Apps ──
+              if (log!.topApps.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                const Divider(height: 1, color: Color(0x14000000)),
+                const SizedBox(height: 14),
+                const Text(
+                  'Top Apps',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: kSub,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ...log!.topApps
+                    .take(3)
+                    .toList()
+                    .asMap()
+                    .entries
+                    .map((entry) => _AppUsageRow(
+                          app: entry.value,
+                          maxMinutes: log!.topApps.first.minutes,
+                          index: entry.key,
+                        )),
+              ],
+
+              // ── Captured-at footnote ──
+              const SizedBox(height: 12),
+              Text(
+                'Last synced ${_formatCapturedAt(log!.capturedAt)}',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: kSub.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatCapturedAt(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+// ── Arc ring widget ───────────────────────────────────────────────────────────
+
+class _ScreenTimeRing extends StatelessWidget {
+  final int minutes;
+  const _ScreenTimeRing({required this.minutes});
+
+  @override
+  Widget build(BuildContext context) {
+    // Ring fills based on 480 min (8 h) as the "full" reference
+    final progress = (minutes / 480).clamp(0.0, 1.0);
+    return SizedBox(
+      width: 72,
+      height: 72,
+      child: CustomPaint(
+        painter: _RingPainter(progress: progress),
+        child: Center(
+          child: Icon(
+            Icons.phone_android_rounded,
+            size: 24,
+            color: kBlue.withValues(alpha: 0.8),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  final double progress;
+  const _RingPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 6;
+    const strokeWidth = 7.0;
+    const startAngle = -1.5708; // -π/2 (12 o'clock)
+
+    // Track
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      0,
+      6.2832,
+      false,
+      Paint()
+        ..color = kBlue.withValues(alpha: 0.12)
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Fill
+    if (progress > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        6.2832 * progress,
+        false,
+        Paint()
+          ..shader = const LinearGradient(
+            colors: [kBlue, kPurple],
+          ).createShader(Rect.fromCircle(center: center, radius: radius))
+          ..strokeWidth = strokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) => old.progress != progress;
+}
+
+// ── App usage row ─────────────────────────────────────────────────────────────
+
+class _AppUsageRow extends StatelessWidget {
+  final AppUsage app;
+  final int maxMinutes;
+  final int index;
+
+  const _AppUsageRow({
+    required this.app,
+    required this.maxMinutes,
+    required this.index,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = [kBlue, kPurple, kMint];
+    final color = colors[index % colors.length];
+    final barWidth =
+        maxMinutes > 0 ? (app.minutes / maxMinutes).clamp(0.0, 1.0) : 0.0;
+    final h = app.minutes ~/ 60;
+    final m = app.minutes % 60;
+    final label = h > 0 ? '${h}h ${m}m' : '${m}m';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  app.appName,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: kInk,
+                  ),
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: kSub.withValues(alpha: 0.75),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Stack(
+              children: [
+                Container(
+                  height: 6,
+                  color: color.withValues(alpha: 0.12),
+                ),
+                FractionallySizedBox(
+                  widthFactor: barWidth,
+                  child: Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      gradient: LinearGradient(
+                        colors: [color, color.withValues(alpha: 0.6)],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -12,8 +12,11 @@ import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/streak_model.dart';
 import 'package:optivus2/models/day_summary_model.dart';
+import 'package:optivus2/models/screen_time_log_model.dart';
 import 'package:optivus2/services/routine_service.dart';
 import 'package:optivus2/services/coach_service.dart';
+import 'package:optivus2/services/screen_time_bridge.dart';
+import 'package:optivus2/services/screen_time_importer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -167,4 +170,28 @@ final todaySummaryProvider = StreamProvider<DaySummary?>((ref) {
       .doc(todayStr)
       .snapshots()
       .map((snap) => snap.exists ? DaySummary.fromFirestore(snap) : null);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen-Time providers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Thin wrapper around the native MethodChannel.
+final screenTimeBridgeProvider = Provider<ScreenTimeBridge>(
+  (_) => ScreenTimeBridge(),
+);
+
+/// Orchestrates native query → Firestore upsert → event emission.
+final screenTimeImporterProvider = Provider<ScreenTimeImporter>(
+  (ref) => ScreenTimeImporter(
+    bridge: ref.read(screenTimeBridgeProvider),
+    eventService: ref.read(eventServiceProvider),
+  ),
+);
+
+/// Real-time stream of today's screen_time_logs document.
+/// Emits null until the first sync has been completed.
+final screenTimeLogProvider = StreamProvider<ScreenTimeLogModel?>((ref) {
+  final importer = ref.watch(screenTimeImporterProvider);
+  return importer.watchToday();
 });

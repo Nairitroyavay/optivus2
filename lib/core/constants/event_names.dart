@@ -18,6 +18,9 @@ abstract final class EventNames {
   // ── Biometrics ──────────────────────────────────────────────────────────
   static const biometricsUpdated = 'biometrics_updated';
 
+  // ── Device signals ──────────────────────────────────────────────────────
+  static const screenTimeSynced = 'screen_time_synced';
+
   // ── Task engine ─────────────────────────────────────────────────────────
   static const taskScheduled = 'task_scheduled';
   static const taskStarted = 'task_started';
@@ -25,6 +28,7 @@ abstract final class EventNames {
   static const taskResumed = 'task_resumed';
   static const taskCompleted = 'task_completed';
   static const taskAbandoned = 'task_abandoned';
+
   /// taskSkipped: user taps "Skip" before the task was ever started.
   /// Distinct from taskAbandoned (which requires at least a start attempt).
   static const taskSkipped = 'task_skipped';

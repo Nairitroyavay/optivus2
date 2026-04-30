@@ -19,9 +19,9 @@ import java.util.Calendar
  * com.example.optivus/screen_time.
  *
  * Methods:
- *   screenTime/hasPermission   → Boolean
- *   screenTime/requestPermission → (void – opens system settings)
- *   screenTime/query           → Map with totalMinutes, unlockCount, topApps, capturedAt
+ *   hasPermission      -> Boolean
+ *   requestPermission  -> (void, opens system settings)
+ *   query              -> Map with totalMinutes, topApps, unlockCount, capturedAt, schemaVersion
  */
 class ScreenTimePlugin(private val context: Context) : MethodChannel.MethodCallHandler {
 
@@ -132,7 +132,8 @@ class ScreenTimePlugin(private val context: Context) : MethodChannel.MethodCallH
             "totalMinutes" to totalMinutes,
             "unlockCount" to unlockCount,
             "topApps" to topApps,
-            "capturedAt" to now
+            "capturedAt" to now,
+            "schemaVersion" to 1
         )
     }
 
