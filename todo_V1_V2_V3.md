@@ -568,7 +568,7 @@ Firebase console: user subtree is removed only after confirmation.
 Logs: account deletion is recorded with `account_deleted`.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 7.2 — Add Test Coverage for the Real Core
 **Why:** Production readiness is impossible without tests around the state machine and event rules.

@@ -1,9 +1,25 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/task_model.dart';
 import '../models/goal_model.dart';
 
 class FirestoreService {
+  static const List<String> userOwnedCollectionIds = [
+    'tasks',
+    'habits',
+    'habit_logs',
+    'goals',
+    'streaks',
+    'events',
+    'events_recent',
+    'coach_messages',
+    'coach_speak_log',
+    'dailySummaries',
+  ];
+
+  static const int _deleteBatchSize = 400;
+
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
 
@@ -22,7 +38,8 @@ class FirestoreService {
 
   // ── User Profile ─────────────────────────────────────────────────────────
 
-  Future<void> saveUserProfile(Map<String, dynamic> data, {bool merge = false}) =>
+  Future<void> saveUserProfile(Map<String, dynamic> data,
+          {bool merge = false}) =>
       userDoc.set(data, merge ? SetOptions(merge: true) : null);
 
   Future<Map<String, dynamic>?> getUserProfile() async {
@@ -87,25 +104,125 @@ class FirestoreService {
 
   // ── Coach Chats (subcollection: /users/{uid}/coach_chats/{threadId}/turns) ────────────────────
 
-  Future<void> saveCoachChatTurn(String threadId, String turnId, Map<String, dynamic> turnData) =>
-      userDoc.collection('coach_chats').doc(threadId).collection('turns').doc(turnId).set(turnData);
+  Future<void> saveCoachChatTurn(
+          String threadId, String turnId, Map<String, dynamic> turnData) =>
+      userDoc
+          .collection('coach_chats')
+          .doc(threadId)
+          .collection('turns')
+          .doc(turnId)
+          .set(turnData);
 
   Future<List<Map<String, dynamic>>> getCoachChatTurns(String threadId) async {
-    final snap = await userDoc.collection('coach_chats').doc(threadId).collection('turns').orderBy('timestamp').get();
+    final snap = await userDoc
+        .collection('coach_chats')
+        .doc(threadId)
+        .collection('turns')
+        .orderBy('timestamp')
+        .get();
     return snap.docs.map((d) => d.data()).toList();
   }
 
-  // ── Account Deletion (cascade all subcollections) ─────────────────────────
+  // ── Account Export & Deletion ─────────────────────────────────────────────
 
-  Future<void> deleteAllUserData() async {
-    // Delete every document in each subcollection
-    for (final sub in ['tasks', 'goals', 'routine']) {
-      final snap = await userDoc.collection(sub).get();
-      for (final doc in snap.docs) {
-        await doc.reference.delete();
-      }
+  Future<String> exportUserData() async {
+    final currentUid = uid;
+    final exportData = <String, dynamic>{
+      'uid': currentUid,
+      'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      'root': <String, dynamic>{},
+      'collections': <String, dynamic>{},
+    };
+
+    final profileDoc = await userDoc.get();
+    exportData['root'] = {
+      'path': profileDoc.reference.path,
+      'exists': profileDoc.exists,
+      if (profileDoc.exists) 'data': _toJsonValue(profileDoc.data()),
+    };
+
+    for (final collectionId in userOwnedCollectionIds) {
+      final snap = await userDoc
+          .collection(collectionId)
+          .orderBy(FieldPath.documentId)
+          .get();
+
+      exportData['collections'][collectionId] = snap.docs
+          .map(
+            (doc) => {
+              'id': doc.id,
+              'path': doc.reference.path,
+              'data': _toJsonValue(doc.data()),
+            },
+          )
+          .toList();
     }
-    // Delete the user profile document itself
+
+    return const JsonEncoder.withIndent('  ').convert(exportData);
+  }
+
+  Future<void> deleteUserOwnedData() async {
+    for (final collectionId in userOwnedCollectionIds) {
+      await _deleteCollectionDocuments(userDoc.collection(collectionId));
+    }
+
     await userDoc.delete();
+  }
+
+  Future<void> deleteAllUserData() => deleteUserOwnedData();
+
+  Future<void> _deleteCollectionDocuments(
+    CollectionReference<Map<String, dynamic>> collection,
+  ) async {
+    while (true) {
+      final snap = await collection.limit(_deleteBatchSize).get();
+      if (snap.docs.isEmpty) return;
+
+      final batch = _db.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      if (snap.docs.length < _deleteBatchSize) return;
+    }
+  }
+
+  Object? _toJsonValue(Object? value) {
+    if (value == null || value is String || value is num || value is bool) {
+      return value;
+    }
+
+    if (value is Timestamp) {
+      return value.toDate().toUtc().toIso8601String();
+    }
+
+    if (value is DateTime) {
+      return value.toUtc().toIso8601String();
+    }
+
+    if (value is GeoPoint) {
+      return {
+        'latitude': value.latitude,
+        'longitude': value.longitude,
+      };
+    }
+
+    if (value is DocumentReference) {
+      return value.path;
+    }
+
+    if (value is Iterable) {
+      return value.map(_toJsonValue).toList();
+    }
+
+    if (value is Map) {
+      return {
+        for (final entry in value.entries)
+          entry.key.toString(): _toJsonValue(entry.value),
+      };
+    }
+
+    return value.toString();
   }
 }
