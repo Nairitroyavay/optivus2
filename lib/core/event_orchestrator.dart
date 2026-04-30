@@ -117,25 +117,51 @@ class EventOrchestrator {
     switch (event.eventName) {
       // ── Task engine ───────────────────────────────────────────────────
       case EventNames.taskScheduled:
-        try {
-          final task = TaskModel.fromMap(event.payload);
-          _notificationService.scheduleTaskAlarm(task);
-        } catch (e) {
-          debugPrint('[EventOrchestrator] Failed to schedule task alarm: $e');
+        if (uid != null) {
+          try {
+            final task = TaskModel.fromMap(event.payload);
+            await _notificationService.scheduleTaskReminder(task, uid);
+          } catch (e) {
+            debugPrint('[EventOrchestrator] Failed to schedule task reminder: $e');
+          }
         }
         break;
 
       case EventNames.taskCompleted:
-        // TODO: Call _notificationService to send a "task done" confirmation.
+        // Cancel the end-reminder if completed early.
+        if (uid != null) {
+          try {
+            final task = TaskModel.fromMap(event.payload);
+            await _notificationService.cancelTaskEndReminder(task, uid);
+          } catch (e) {
+            debugPrint('[EventOrchestrator] Failed to cancel task-end reminder: $e');
+          }
+        }
         break;
 
       case EventNames.taskStarted:
-        // TODO: Optionally schedule a reminder notification if the task
-        //       exceeds its planned duration.
+        // Schedule a task-end reminder at plannedEnd so the user is prompted
+        // to mark the task complete if it was started but not yet finished.
+        if (uid != null) {
+          try {
+            final task = TaskModel.fromMap(event.payload);
+            await _notificationService.scheduleTaskEndReminder(task, uid);
+          } catch (e) {
+            debugPrint('[EventOrchestrator] Failed to schedule task-end reminder: $e');
+          }
+        }
         break;
 
       case EventNames.taskAbandoned:
-        // TODO: Notify the user or log analytics for abandoned tasks.
+        // Cancel the end-reminder if abandoned early.
+        if (uid != null) {
+          try {
+            final task = TaskModel.fromMap(event.payload);
+            await _notificationService.cancelTaskEndReminder(task, uid);
+          } catch (e) {
+            debugPrint('[EventOrchestrator] Failed to cancel task-end reminder: $e');
+          }
+        }
         break;
 
       // ── Habit tracking ────────────────────────────────────────────────
@@ -150,6 +176,21 @@ class EventOrchestrator {
       case EventNames.badHabitSlipLogged:
         debugPrint(
             '[EventOrchestrator] badHabitSlipLogged — streak updated at day-close.');
+        if (uid != null) {
+          try {
+            final habitId   = event.payload['habitId']   as String? ?? '';
+            final habitName = event.payload['habitName'] as String? ?? 'habit';
+            if (habitId.isNotEmpty) {
+              await _notificationService.scheduleSlipRecovery(
+                uid: uid,
+                habitId: habitId,
+                habitName: habitName,
+              );
+            }
+          } catch (e) {
+            debugPrint('[EventOrchestrator] Failed to schedule slip-recovery notification: $e');
+          }
+        }
         break;
 
       // ── Streaks ───────────────────────────────────────────────────────
@@ -166,7 +207,21 @@ class EventOrchestrator {
         debugPrint('[EventOrchestrator] streakMilestoneReached — '
             'habitId=${event.payload['habitId']}, '
             'milestone=${event.payload['milestone']}');
-        // TODO: Call _notificationService to celebrate the milestone.
+        if (uid != null) {
+          try {
+            final habitId  = event.payload['habitId']  as String? ?? '';
+            final milestone = event.payload['milestone'] as int?   ?? 0;
+            if (habitId.isNotEmpty && milestone > 0) {
+              await _notificationService.scheduleStreakMilestone(
+                uid: uid,
+                habitId: habitId,
+                milestone: milestone,
+              );
+            }
+          } catch (e) {
+            debugPrint('[EventOrchestrator] Failed to schedule streak milestone notification: $e');
+          }
+        }
         break;
 
       case EventNames.streakBroken:

@@ -301,6 +301,7 @@ class HabitService {
       eventName: EventNames.badHabitSlipLogged,
       payload: {
         'habitId': habitId,
+        'habitName': habit.name,   // used by orchestrator for slip-recovery notification
         'logId': logId,
         'occurredAt': occurred.toIso8601String(),
         'loggedAt': now.toIso8601String(),
