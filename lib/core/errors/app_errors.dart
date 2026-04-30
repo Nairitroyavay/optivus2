@@ -83,6 +83,28 @@ class SubtaskNotFoundError extends AppError {
             'Subtask $subtaskId does not exist on this task.');
 }
 
+/// Thrown when skipTask() is called on a task that is past the scheduled phase.
+class TaskSkippedFromInvalidStateError extends AppError {
+  TaskSkippedFromInvalidStateError({
+    required String taskId,
+    required String currentState,
+  }) : super(
+            'task_skip_invalid_state',
+            'Task $taskId is in "$currentState" — '
+            'skip is only valid from scheduled state.');
+}
+
+/// Thrown when checkSubtask/toggleSubtask is called on a non-active task.
+class SubtaskToggleNotAllowedError extends AppError {
+  SubtaskToggleNotAllowedError({
+    required String taskId,
+    required String currentState,
+  }) : super(
+            'subtask_toggle_not_allowed',
+            'Task $taskId is in "$currentState" — '
+            'subtask toggling requires started or paused state.');
+}
+
 // ── HabitService (§3.4) ─────────────────────────────────────────────────────
 
 class HabitNotFoundError extends AppError {

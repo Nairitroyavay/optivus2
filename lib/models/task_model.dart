@@ -28,6 +28,9 @@ enum TaskState {
         return TaskState.scheduled;
     }
   }
+
+  /// Serialises to the snake_case string stored in Firestore and events.
+  String toJson() => name;
 }
 
 /// Task type — which routine category this block belongs to.
@@ -339,7 +342,11 @@ class TaskModel {
     TaskState? state,
     DateTime? actualStart,
     DateTime? actualEnd,
+    /// Pass [clearPausedAt] = true to set pausedAt to null.
+    bool clearPausedAt = false,
     DateTime? pausedAt,
+    /// Pass [clearAbandonedAt] = true to set abandonedAt to null.
+    bool clearAbandonedAt = false,
     DateTime? abandonedAt,
     int? actualDurationMin,
     int? totalPauseDurationMin,
@@ -363,8 +370,8 @@ class TaskModel {
       state: state ?? this.state,
       actualStart: actualStart ?? this.actualStart,
       actualEnd: actualEnd ?? this.actualEnd,
-      pausedAt: pausedAt ?? this.pausedAt,
-      abandonedAt: abandonedAt ?? this.abandonedAt,
+      pausedAt: clearPausedAt ? null : (pausedAt ?? this.pausedAt),
+      abandonedAt: clearAbandonedAt ? null : (abandonedAt ?? this.abandonedAt),
       actualDurationMin: actualDurationMin ?? this.actualDurationMin,
       totalPauseDurationMin:
           totalPauseDurationMin ?? this.totalPauseDurationMin,

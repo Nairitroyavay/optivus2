@@ -25,8 +25,12 @@ abstract final class EventNames {
   static const taskResumed = 'task_resumed';
   static const taskCompleted = 'task_completed';
   static const taskAbandoned = 'task_abandoned';
+  /// taskSkipped: user taps "Skip" before the task was ever started.
+  /// Distinct from taskAbandoned (which requires at least a start attempt).
+  static const taskSkipped = 'task_skipped';
   static const taskDeleted = 'task_deleted';
   static const subtaskChecked = 'subtask_checked';
+  static const subtaskUnchecked = 'subtask_unchecked';
 
   // ── Habit tracking ──────────────────────────────────────────────────────
   static const habitCreated = 'habit_created';
