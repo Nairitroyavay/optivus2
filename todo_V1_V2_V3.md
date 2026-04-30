@@ -123,7 +123,7 @@ Firebase console: `/users/{uid}` appears immediately after signup with the requi
 Logs: bootstrap state transitions should go `initializing -> needsOnboarding` for a new user.
 
 **Estimate:** 2h
-- Done x
+- 
 
 ### Task 1.2 — Align Onboarding Persistence with the Docs Without Breaking Existing UI
 **Why:** Onboarding UI exists, but stored data is too shallow for the target system.
@@ -145,7 +145,7 @@ Firebase console: see `/users/{uid}/onboarding/state`, `/users/{uid}/profile/mai
 Logs: final onboarding event should include structured onboarding fields.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 1.3 — Stop V1 Screens from Bypassing Services
 **Why:** Some UI writes events directly instead of using the intended service layer, which breaks data consistency.
@@ -164,7 +164,8 @@ Firebase console: habit log docs are created, not only events.
 Logs: event creation happens from service layer after Firestore write batching.
 
 **Estimate:** 2h
-- Done
+- 
+
 
 ---
 
@@ -190,7 +191,7 @@ Logs: replay skips already processed events.
 Manual test: double tap a habit log action should not create duplicate identical events with the same ID.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 2.2 — Bring TaskService Payloads and Rules Up to Contract
 **Why:** Tasks already exist, but their payloads are too small for streaks, day close, and coach logic.
@@ -210,7 +211,7 @@ Firebase console: task docs update state correctly and event payloads are rich.
 Logs: invalid transitions throw controlled errors instead of silently failing.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 2.3 — Normalize Habit Storage for V1 Reads
 **Why:** Current habit logs are nested under each habit, but the docs require a primary per-user log stream for trackers and analytics.
@@ -231,7 +232,7 @@ Firebase console: every log action creates a `/habit_logs/{logId}` doc.
 Indexes: no missing-index errors on Tracker queries.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 2.4 — Make Routine Blocks Generate Real Task Documents
 **Why:** Routine UI is advanced, but much of it is visual unless it creates real tasks.
@@ -251,7 +252,7 @@ Firebase console: saving a routine produces task docs, not only routine config c
 Logs: related `task_scheduled` events fire for generated tasks.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 2.5 — Fix Day Close and Basic Streak Computation
 **Why:** Streaks must come after logs/tasks exist. This is the core dependency chain.
@@ -276,7 +277,7 @@ Firebase console: streak docs and daily summary docs update for the closed day.
 Logs: day-close emits streak events once, not multiple times.
 
 **Estimate:** 4h
-- Done
+- 
 
 ---
 
@@ -301,7 +302,7 @@ Firebase console: values seen in Home match stored task/habit/streak data.
 Logs: no hardcoded demo counts should remain.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 3.2 — Finish Notification Scheduling for V1 Core
 **Why:** Tasks without reminders are not enough for the V1 promise.
@@ -324,7 +325,7 @@ Firebase console: scheduled notification docs appear under the user.
 Logs: notification scheduling happens from orchestrator listeners, not scattered UI code.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 3.3 — Add a V1 Basic Coach Fallback Instead of Full AI Chat
 **Why:** PRD says full AI coach is phase 2. V1 should use rule-based fallback, not a half-finished live coach.
@@ -344,7 +345,7 @@ Firebase console: coach messages are stored.
 Logs: no freeform Gemini call is required for basic V1 coach behavior.
 
 **Estimate:** 4h
-- Done
+- 
 
 ---
 
@@ -376,7 +377,7 @@ Firebase console: snapshot reads come from documented collections.
 Logs: rule evaluation can explain which rule fired and why.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 4.2 — Introduce Coach Decision Audit Logging
 **Why:** Once AI-like decisions start, you need observability.
@@ -394,7 +395,7 @@ Firebase console: every coach message has a corresponding speak-log row.
 Logs: you can tell whether a message was sent or suppressed.
 
 **Estimate:** 2h
-- Done
+- 
 
 ### Task 4.3 — Move Gemini Usage Behind Server-Side Coach Generation Path
 **Why:** If V2 enables LLM wording, it must follow the rule engine and audit flow.
@@ -439,7 +440,7 @@ Firebase console: `identity_profile/main` is updated after day close or major ev
 Logs: `identity_progress_changed` fires when score changes.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 5.2 — Add Notification Budget and Suppression Tracking
 **Why:** The docs explicitly require notification fatigue control.
@@ -462,7 +463,7 @@ Firebase console: budget fields update and suppression events appear.
 Logs: suppressed notifications include the reason.
 
 **Estimate:** 4h
-- Done
+- 
 
 ---
 
@@ -491,7 +492,7 @@ Firebase console: scheduled events and summaries appear even if the mobile app i
 Logs: scheduled jobs identify which users were processed.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 6.2 — Add Android Screen-Time Importer
 **Why:** Screen-time and unlock data are part of the product promise and should come after the event system is stable.
@@ -515,7 +516,7 @@ Firebase console: `screen_time_logs` rows are created.
 Logs: importer emits events when sync runs.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 6.3 — Add App Check, Remote Config, and Production Safety Settings
 **Why:** The app should not reach production without basic abuse and configuration controls.
@@ -536,7 +537,7 @@ Firebase console: App Check requests appear after setup.
 Logs: feature flags can be read and used at runtime.
 
 **Estimate:** 4h
-- Done
+- 
 
 ---
 
@@ -567,7 +568,7 @@ Firebase console: user subtree is removed only after confirmation.
 Logs: account deletion is recorded with `account_deleted`.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 7.2 — Add Test Coverage for the Real Core
 **Why:** Production readiness is impossible without tests around the state machine and event rules.
@@ -592,7 +593,7 @@ Run the test suite and confirm the new tests pass.
 Logs: edge cases like duplicate events and invalid task transitions are covered.
 
 **Estimate:** 4h
-- Done
+- 
 
 ### Task 7.3 — Launch Checklist Pass
 **Why:** Final readiness requires one pass focused on broken flows, not features.
@@ -617,5 +618,5 @@ Firebase console: all major user actions write to the expected collections.
 Logs: no obvious TODO-driven production behavior remains in core flows.
 
 **Estimate:** 4h
-- Done
+- 
 
