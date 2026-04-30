@@ -337,6 +337,20 @@ class EventOrchestrator {
         debugPrint('[EventOrchestrator] dayClosed for $date — '
             'rollup already completed by RoutineService.');
         // TODO: Call _notificationService to deliver the day summary.
+        if (uid != null) {
+          try {
+            final newScore = await _stateAggregatorService.updateIdentityProfile(uid);
+            if (newScore != null) {
+              _eventService.emit(
+                eventName: EventNames.identityProgressChanged,
+                payload: {'score': newScore},
+              );
+              debugPrint('[EventOrchestrator] identity_progress_changed fired. Score: $newScore');
+            }
+          } catch (e) {
+            debugPrint('[EventOrchestrator] Failed to update identity profile: $e');
+          }
+        }
         break;
 
       case EventNames.dayStarted:

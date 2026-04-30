@@ -199,4 +199,46 @@ class StateAggregatorService {
       '${dt.year}-'
       '${dt.month.toString().padLeft(2, '0')}-'
       '${dt.day.toString().padLeft(2, '0')}';
+
+  Future<int?> updateIdentityProfile(String uid) async {
+    debugPrint('[StateAggregator] Computing identity profile for $uid');
+    final snapshot = await buildSnapshot(uid);
+
+    final userRef = _firestore.collection('users').doc(uid);
+    final goalsSnap = await userRef.collection('goals').get();
+
+    int completedGoals = 0;
+    for (var doc in goalsSnap.docs) {
+      if (doc.data()['isCompleted'] == true) {
+        completedGoals++;
+      }
+    }
+
+    // Simple V2 Math
+    int score = (completedGoals * 20) +
+        (snapshot.longestActiveStreak * 5) +
+        (snapshot.missionScore ~/ 10);
+
+    if (score > 100) score = 100;
+
+    final profileRef = userRef.collection('identity_profile').doc('main');
+    final profileSnap = await profileRef.get();
+
+    int oldScore = 0;
+    if (profileSnap.exists) {
+      oldScore = profileSnap.data()?['progressPct'] as int? ?? 0;
+    }
+
+    if (score != oldScore || !profileSnap.exists) {
+      await profileRef.set({
+        'progressPct': score,
+        'lastComputedAt': FieldValue.serverTimestamp(),
+        'schemaVersion': 1,
+      }, SetOptions(merge: true));
+      debugPrint('[StateAggregator] Updated identity score: $oldScore -> $score');
+      return score;
+    }
+
+    return null;
+  }
 }
