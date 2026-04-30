@@ -12,11 +12,12 @@ import 'services/global_error_handler.dart';
 import 'services/remote_config_service.dart';
 
 void main() async {
-  // ① Hook error handlers first — before anything else — so no error slips
+  // Ensure WidgetsFlutterBinding.ensureInitialized() runs first.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // ① Hook error handlers early so no error slips
   // through during the Firebase / plugin bootstrap sequence.
   GlobalErrorHandler.initialize();
-
-  WidgetsFlutterBinding.ensureInitialized();
 
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -27,14 +28,18 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  final remoteConfigService = RemoteConfigService();
+  RemoteConfigService? remoteConfigService;
   var appRemoteConfig = AppRemoteConfig.defaults();
+  bool initFailed = false;
 
   try {
-    // ② Initialize Firebase.
+    // ② Initialize Firebase before any Firebase service is created.
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Now it's safe to create RemoteConfigService
+    remoteConfigService = RemoteConfigService();
 
     await FirebaseAppCheck.instance.activate(
       providerAndroid: kReleaseMode
@@ -52,12 +57,34 @@ void main() async {
     GlobalErrorHandler.setCrashlyticsEnabled();
   } catch (e) {
     debugPrint('🔴 [main] Firebase init failed: $e');
+    initFailed = true;
+  }
+
+  if (initFailed) {
+    runApp(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Text(
+                'Startup Error: Failed to initialize Firebase.\nPlease check your connection and restart the app.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 16),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return;
   }
 
   runApp(
     ProviderScope(
       overrides: [
-        remoteConfigServiceProvider.overrideWithValue(remoteConfigService),
+        remoteConfigServiceProvider.overrideWithValue(remoteConfigService!),
         appRemoteConfigProvider.overrideWithValue(appRemoteConfig),
       ],
       child: const OptivusApp(),

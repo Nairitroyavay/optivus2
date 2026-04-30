@@ -96,11 +96,12 @@ class AppRemoteConfig {
 }
 
 class RemoteConfigService {
-  final FirebaseRemoteConfig _remoteConfig;
+  final FirebaseRemoteConfig? _injectedRemoteConfig;
+  late final FirebaseRemoteConfig _remoteConfig = _injectedRemoteConfig ?? FirebaseRemoteConfig.instance;
   AppRemoteConfig _current = AppRemoteConfig.defaults();
 
   RemoteConfigService({FirebaseRemoteConfig? remoteConfig})
-      : _remoteConfig = remoteConfig ?? FirebaseRemoteConfig.instance;
+      : _injectedRemoteConfig = remoteConfig;
 
   AppRemoteConfig get current => _current;
 
