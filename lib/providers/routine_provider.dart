@@ -3,9 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/core/providers.dart';
-import 'package:optivus2/services/event_service.dart';
-import 'package:optivus2/core/constants/event_names.dart';
-import 'package:optivus2/core/utils/uuid_generator.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/services/task_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,8 +14,8 @@ class FixedBlock {
   final String id;
   final String title;
   final String emoji;
-  final int    startMinute; // minutes from midnight, 0–1439
-  final int    endMinute;
+  final int startMinute; // minutes from midnight, 0–1439
+  final int endMinute;
   final String colorHex;
 
   const FixedBlock({
@@ -31,33 +28,42 @@ class FixedBlock {
   });
 
   String get startLabel => _fmt(startMinute);
-  String get endLabel   => _fmt(endMinute);
+  String get endLabel => _fmt(endMinute);
 
   static String _fmt(int m) {
-    final h    = m ~/ 60;
-    final min  = m % 60;
+    final h = m ~/ 60;
+    final min = m % 60;
     final ampm = h < 12 ? 'AM' : 'PM';
-    final h12  = h == 0 ? 12 : (h > 12 ? h - 12 : h);
-    return '${h12.toString().padLeft(2,'0')}:${min.toString().padLeft(2,'0')} $ampm';
+    final h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    return '${h12.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')} $ampm';
   }
 
   FixedBlock copyWith({int? startMinute, int? endMinute}) => FixedBlock(
-    id: id, title: title, emoji: emoji,
-    startMinute: startMinute ?? this.startMinute,
-    endMinute:   endMinute   ?? this.endMinute,
-    colorHex: colorHex,
-  );
+        id: id,
+        title: title,
+        emoji: emoji,
+        startMinute: startMinute ?? this.startMinute,
+        endMinute: endMinute ?? this.endMinute,
+        colorHex: colorHex,
+      );
 
   Map<String, dynamic> toMap() => {
-    'id': id, 'title': title, 'emoji': emoji,
-    'startMinute': startMinute, 'endMinute': endMinute, 'colorHex': colorHex,
-  };
+        'id': id,
+        'title': title,
+        'emoji': emoji,
+        'startMinute': startMinute,
+        'endMinute': endMinute,
+        'colorHex': colorHex,
+      };
 
   factory FixedBlock.fromMap(Map<String, dynamic> m) => FixedBlock(
-    id: m['id'] ?? '', title: m['title'] ?? '', emoji: m['emoji'] ?? '',
-    startMinute: m['startMinute'] ?? 0, endMinute: m['endMinute'] ?? 0,
-    colorHex: m['colorHex'] ?? '#FFFFFF',
-  );
+        id: m['id'] ?? '',
+        title: m['title'] ?? '',
+        emoji: m['emoji'] ?? '',
+        startMinute: m['startMinute'] ?? 0,
+        endMinute: m['endMinute'] ?? 0,
+        colorHex: m['colorHex'] ?? '#FFFFFF',
+      );
 }
 
 /// One skin-care step
@@ -70,8 +76,10 @@ class SkinStep {
   Map<String, dynamic> toMap() => {'emoji': emoji, 'name': name, 'tag': tag};
 
   factory SkinStep.fromMap(Map<String, dynamic> m) => SkinStep(
-    emoji: m['emoji'] ?? '', name: m['name'] ?? '', tag: m['tag'] ?? '',
-  );
+        emoji: m['emoji'] ?? '',
+        name: m['name'] ?? '',
+        tag: m['tag'] ?? '',
+      );
 }
 
 /// Skin care plan for one day: three time slots
@@ -80,35 +88,41 @@ class DaySkinPlan {
   final List<SkinStep> afternoon;
   final List<SkinStep> night;
   const DaySkinPlan({
-    this.morning   = const [],
+    this.morning = const [],
     this.afternoon = const [],
-    this.night     = const [],
+    this.night = const [],
   });
 
-  bool get isEmpty =>
-      morning.isEmpty && afternoon.isEmpty && night.isEmpty;
+  bool get isEmpty => morning.isEmpty && afternoon.isEmpty && night.isEmpty;
 
   DaySkinPlan copyWith({
     List<SkinStep>? morning,
     List<SkinStep>? afternoon,
     List<SkinStep>? night,
-  }) => DaySkinPlan(
-    morning:   morning   ?? this.morning,
-    afternoon: afternoon ?? this.afternoon,
-    night:     night     ?? this.night,
-  );
+  }) =>
+      DaySkinPlan(
+        morning: morning ?? this.morning,
+        afternoon: afternoon ?? this.afternoon,
+        night: night ?? this.night,
+      );
 
   Map<String, dynamic> toMap() => {
-    'morning':   morning.map((e) => e.toMap()).toList(),
-    'afternoon': afternoon.map((e) => e.toMap()).toList(),
-    'night':     night.map((e) => e.toMap()).toList(),
-  };
+        'morning': morning.map((e) => e.toMap()).toList(),
+        'afternoon': afternoon.map((e) => e.toMap()).toList(),
+        'night': night.map((e) => e.toMap()).toList(),
+      };
 
   factory DaySkinPlan.fromMap(Map<String, dynamic> m) => DaySkinPlan(
-    morning:   (m['morning']   as List? ?? []).map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e))).toList(),
-    afternoon: (m['afternoon'] as List? ?? []).map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e))).toList(),
-    night:     (m['night']     as List? ?? []).map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e))).toList(),
-  );
+        morning: (m['morning'] as List? ?? [])
+            .map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+        afternoon: (m['afternoon'] as List? ?? [])
+            .map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+        night: (m['night'] as List? ?? [])
+            .map((e) => SkinStep.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
 }
 
 /// One meal slot
@@ -121,8 +135,10 @@ class MealItem {
   Map<String, dynamic> toMap() => {'emoji': emoji, 'name': name, 'time': time};
 
   factory MealItem.fromMap(Map<String, dynamic> m) => MealItem(
-    emoji: m['emoji'] ?? '', name: m['name'] ?? '', time: m['time'] ?? '',
-  );
+        emoji: m['emoji'] ?? '',
+        name: m['name'] ?? '',
+        time: m['time'] ?? '',
+      );
 }
 
 /// Eating plan for one day
@@ -136,17 +152,20 @@ class DayMealPlan {
 
   DayMealPlan copyWith({
     List<MealItem>? meals,
-  }) => DayMealPlan(
-    meals: meals ?? this.meals,
-  );
+  }) =>
+      DayMealPlan(
+        meals: meals ?? this.meals,
+      );
 
   Map<String, dynamic> toMap() => {
-    'meals': meals.map((e) => e.toMap()).toList(),
-  };
+        'meals': meals.map((e) => e.toMap()).toList(),
+      };
 
   factory DayMealPlan.fromMap(Map<String, dynamic> m) => DayMealPlan(
-    meals: (m['meals'] as List? ?? []).map((e) => MealItem.fromMap(Map<String, dynamic>.from(e))).toList(),
-  );
+        meals: (m['meals'] as List? ?? [])
+            .map((e) => MealItem.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
 }
 
 /// One class in the weekly timetable
@@ -154,36 +173,46 @@ class ClassItem {
   final String subject;
   final String room;
   final String professor;
-  final String startTime;   // "09:00"
-  final String endTime;     // "10:00"
-  final int    weekday;     // 1=Mon … 7=Sun
+  final String startTime; // "09:00"
+  final String endTime; // "10:00"
+  final int weekday; // 1=Mon … 7=Sun
   final String colorHex;
   const ClassItem({
-    required this.subject, required this.room,
-    required this.professor, required this.startTime,
-    required this.endTime, required this.weekday,
+    required this.subject,
+    required this.room,
+    required this.professor,
+    required this.startTime,
+    required this.endTime,
+    required this.weekday,
     required this.colorHex,
   });
 
   Map<String, dynamic> toMap() => {
-    'subject': subject, 'room': room, 'professor': professor,
-    'startTime': startTime, 'endTime': endTime,
-    'weekday': weekday, 'colorHex': colorHex,
-  };
+        'subject': subject,
+        'room': room,
+        'professor': professor,
+        'startTime': startTime,
+        'endTime': endTime,
+        'weekday': weekday,
+        'colorHex': colorHex,
+      };
 
   factory ClassItem.fromMap(Map<String, dynamic> m) => ClassItem(
-    subject: m['subject'] ?? '', room: m['room'] ?? '',
-    professor: m['professor'] ?? '',
-    startTime: m['startTime'] ?? '', endTime: m['endTime'] ?? '',
-    weekday: m['weekday'] ?? 1, colorHex: m['colorHex'] ?? '#FFFFFF',
-  );
+        subject: m['subject'] ?? '',
+        room: m['room'] ?? '',
+        professor: m['professor'] ?? '',
+        startTime: m['startTime'] ?? '',
+        endTime: m['endTime'] ?? '',
+        weekday: m['weekday'] ?? 1,
+        colorHex: m['colorHex'] ?? '#FFFFFF',
+      );
 }
 
 class CustomTask {
   final String id;
   final String title;
   final String emoji;
-  final String time;   // "HH:MM"
+  final String time; // "HH:MM"
   final DateTime date;
   final Color color;
 
@@ -197,15 +226,22 @@ class CustomTask {
   });
 
   Map<String, dynamic> toMap() => {
-    'id': id, 'title': title, 'emoji': emoji, 'time': time,
-    'date': date.toIso8601String(), 'color': color.toARGB32(),
-  };
+        'id': id,
+        'title': title,
+        'emoji': emoji,
+        'time': time,
+        'date': date.toIso8601String(),
+        'color': color.toARGB32(),
+      };
 
   factory CustomTask.fromMap(Map<String, dynamic> m) => CustomTask(
-    id: m['id'] ?? '', title: m['title'] ?? '', emoji: m['emoji'] ?? '',
-    time: m['time'] ?? '', date: DateTime.parse(m['date']),
-    color: Color(m['color'] ?? 0xFF000000),
-  );
+        id: m['id'] ?? '',
+        title: m['title'] ?? '',
+        emoji: m['emoji'] ?? '',
+        time: m['time'] ?? '',
+        date: DateTime.parse(m['date']),
+        color: Color(m['color'] ?? 0xFF000000),
+      );
 }
 
 /// Long-term commitments set by the User or AI
@@ -229,18 +265,24 @@ class LongTermGoal {
   });
 
   Map<String, dynamic> toMap() => {
-    'id': id, 'title': title, 'emoji': emoji,
-    'startDate': startDate.toIso8601String(),
-    'endDate': endDate.toIso8601String(),
-    'dailyTaskTime': dailyTaskTime, 'colorHex': colorHex,
-  };
+        'id': id,
+        'title': title,
+        'emoji': emoji,
+        'startDate': startDate.toIso8601String(),
+        'endDate': endDate.toIso8601String(),
+        'dailyTaskTime': dailyTaskTime,
+        'colorHex': colorHex,
+      };
 
   factory LongTermGoal.fromMap(Map<String, dynamic> m) => LongTermGoal(
-    id: m['id'] ?? '', title: m['title'] ?? '', emoji: m['emoji'] ?? '',
-    startDate: DateTime.parse(m['startDate']),
-    endDate: DateTime.parse(m['endDate']),
-    dailyTaskTime: m['dailyTaskTime'], colorHex: m['colorHex'] ?? '#FFFFFF',
-  );
+        id: m['id'] ?? '',
+        title: m['title'] ?? '',
+        emoji: m['emoji'] ?? '',
+        startDate: DateTime.parse(m['startDate']),
+        endDate: DateTime.parse(m['endDate']),
+        dailyTaskTime: m['dailyTaskTime'],
+        colorHex: m['colorHex'] ?? '#FFFFFF',
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,47 +310,58 @@ class RoutineState {
   final List<LongTermGoal> longTermGoals;
 
   const RoutineState({
-    this.fixedBlocks       = const [],
+    this.fixedBlocks = const [],
     this.fixedScheduleSetUp = false,
     List<DaySkinPlan>? skinCarePlans,
-    this.skinCareSetUp     = false,
+    this.skinCareSetUp = false,
     List<DayMealPlan>? mealPlans,
-    this.eatingSetUp       = false,
-    this.classes           = const [],
-    this.classesSetUp      = false,
-    this.longTermGoals     = const [],
+    this.eatingSetUp = false,
+    this.classes = const [],
+    this.classesSetUp = false,
+    this.longTermGoals = const [],
   })  : skinCarePlans = skinCarePlans ??
             const [
-              DaySkinPlan(), DaySkinPlan(), DaySkinPlan(), DaySkinPlan(),
-              DaySkinPlan(), DaySkinPlan(), DaySkinPlan(),
+              DaySkinPlan(),
+              DaySkinPlan(),
+              DaySkinPlan(),
+              DaySkinPlan(),
+              DaySkinPlan(),
+              DaySkinPlan(),
+              DaySkinPlan(),
             ],
         mealPlans = mealPlans ??
             const [
-              DayMealPlan(), DayMealPlan(), DayMealPlan(), DayMealPlan(),
-              DayMealPlan(), DayMealPlan(), DayMealPlan(),
+              DayMealPlan(),
+              DayMealPlan(),
+              DayMealPlan(),
+              DayMealPlan(),
+              DayMealPlan(),
+              DayMealPlan(),
+              DayMealPlan(),
             ];
 
   RoutineState copyWith({
-    List<FixedBlock>?    fixedBlocks,
-    bool?                fixedScheduleSetUp,
-    List<DaySkinPlan>?   skinCarePlans,
-    bool?                skinCareSetUp,
-    List<DayMealPlan>?   mealPlans,
-    bool?                eatingSetUp,
-    List<ClassItem>?     classes,
-    bool?                classesSetUp,
-    List<LongTermGoal>?  longTermGoals,
-  }) => RoutineState(
-    fixedBlocks:        fixedBlocks        ?? this.fixedBlocks,
-    fixedScheduleSetUp: fixedScheduleSetUp ?? this.fixedScheduleSetUp,
-    skinCarePlans:      skinCarePlans      ?? this.skinCarePlans,
-    skinCareSetUp:      skinCareSetUp      ?? this.skinCareSetUp,
-    mealPlans:          mealPlans          ?? this.mealPlans,
-    eatingSetUp:        eatingSetUp        ?? this.eatingSetUp,
-    classes:            classes            ?? this.classes,
-    classesSetUp:       classesSetUp       ?? this.classesSetUp,
-    longTermGoals:      longTermGoals      ?? this.longTermGoals,
-  );
+    List<FixedBlock>? fixedBlocks,
+    bool? fixedScheduleSetUp,
+    List<DaySkinPlan>? skinCarePlans,
+    bool? skinCareSetUp,
+    List<DayMealPlan>? mealPlans,
+    bool? eatingSetUp,
+    List<ClassItem>? classes,
+    bool? classesSetUp,
+    List<LongTermGoal>? longTermGoals,
+  }) =>
+      RoutineState(
+        fixedBlocks: fixedBlocks ?? this.fixedBlocks,
+        fixedScheduleSetUp: fixedScheduleSetUp ?? this.fixedScheduleSetUp,
+        skinCarePlans: skinCarePlans ?? this.skinCarePlans,
+        skinCareSetUp: skinCareSetUp ?? this.skinCareSetUp,
+        mealPlans: mealPlans ?? this.mealPlans,
+        eatingSetUp: eatingSetUp ?? this.eatingSetUp,
+        classes: classes ?? this.classes,
+        classesSetUp: classesSetUp ?? this.classesSetUp,
+        longTermGoals: longTermGoals ?? this.longTermGoals,
+      );
 
   // ── Convenience getters ──────────────────────────────────────────────────
 
@@ -327,33 +380,38 @@ class RoutineState {
   // ── Firestore serialization ─────────────────────────────────────────────
 
   Map<String, dynamic> toMap() => {
-    'fixedBlocks': fixedBlocks.map((e) => e.toMap()).toList(),
-    'fixedScheduleSetUp': fixedScheduleSetUp,
-    'skinCarePlans': skinCarePlans.map((e) => e.toMap()).toList(),
-    'skinCareSetUp': skinCareSetUp,
-    'mealPlans': mealPlans.map((e) => e.toMap()).toList(),
-    'eatingSetUp': eatingSetUp,
-    'classes': classes.map((e) => e.toMap()).toList(),
-    'classesSetUp': classesSetUp,
-    'longTermGoals': longTermGoals.map((e) => e.toMap()).toList(),
-  };
+        'fixedBlocks': fixedBlocks.map((e) => e.toMap()).toList(),
+        'fixedScheduleSetUp': fixedScheduleSetUp,
+        'skinCarePlans': skinCarePlans.map((e) => e.toMap()).toList(),
+        'skinCareSetUp': skinCareSetUp,
+        'mealPlans': mealPlans.map((e) => e.toMap()).toList(),
+        'eatingSetUp': eatingSetUp,
+        'classes': classes.map((e) => e.toMap()).toList(),
+        'classesSetUp': classesSetUp,
+        'longTermGoals': longTermGoals.map((e) => e.toMap()).toList(),
+      };
 
   factory RoutineState.fromMap(Map<String, dynamic> m) => RoutineState(
-    fixedBlocks: (m['fixedBlocks'] as List? ?? [])
-        .map((e) => FixedBlock.fromMap(Map<String, dynamic>.from(e))).toList(),
-    fixedScheduleSetUp: m['fixedScheduleSetUp'] ?? false,
-    skinCarePlans: (m['skinCarePlans'] as List?)
-        ?.map((e) => DaySkinPlan.fromMap(Map<String, dynamic>.from(e))).toList(),
-    skinCareSetUp: m['skinCareSetUp'] ?? false,
-    mealPlans: (m['mealPlans'] as List?)
-        ?.map((e) => DayMealPlan.fromMap(Map<String, dynamic>.from(e))).toList(),
-    eatingSetUp: m['eatingSetUp'] ?? false,
-    classes: (m['classes'] as List? ?? [])
-        .map((e) => ClassItem.fromMap(Map<String, dynamic>.from(e))).toList(),
-    classesSetUp: m['classesSetUp'] ?? false,
-    longTermGoals: (m['longTermGoals'] as List? ?? [])
-        .map((e) => LongTermGoal.fromMap(Map<String, dynamic>.from(e))).toList(),
-  );
+        fixedBlocks: (m['fixedBlocks'] as List? ?? [])
+            .map((e) => FixedBlock.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+        fixedScheduleSetUp: m['fixedScheduleSetUp'] ?? false,
+        skinCarePlans: (m['skinCarePlans'] as List?)
+            ?.map((e) => DaySkinPlan.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+        skinCareSetUp: m['skinCareSetUp'] ?? false,
+        mealPlans: (m['mealPlans'] as List?)
+            ?.map((e) => DayMealPlan.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+        eatingSetUp: m['eatingSetUp'] ?? false,
+        classes: (m['classes'] as List? ?? [])
+            .map((e) => ClassItem.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+        classesSetUp: m['classesSetUp'] ?? false,
+        longTermGoals: (m['longTermGoals'] as List? ?? [])
+            .map((e) => LongTermGoal.fromMap(Map<String, dynamic>.from(e)))
+            .toList(),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -362,11 +420,10 @@ class RoutineState {
 
 class RoutineNotifier extends StateNotifier<RoutineState> {
   final RoutineRepository _repo;
-  final EventService _eventService;
   final TaskService _taskService;
   Timer? _debounce;
 
-  RoutineNotifier(this._repo, this._eventService, this._taskService) : super(const RoutineState()) {
+  RoutineNotifier(this._repo, this._taskService) : super(const RoutineState()) {
     _loadRoutine();
   }
 
@@ -452,7 +509,8 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
 
     for (int i = 0; i < 14; i++) {
       final date = today.add(Duration(days: i));
-      final dateStr = '${date.year}_${date.month.toString().padLeft(2, '0')}_${date.day.toString().padLeft(2, '0')}';
+      final dateStr =
+          '${date.year}_${date.month.toString().padLeft(2, '0')}_${date.day.toString().padLeft(2, '0')}';
       final dayIdx = (date.weekday - 1).clamp(0, 6);
 
       // 1. Fixed Blocks
@@ -460,7 +518,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
         for (final fb in state.fixedBlocks) {
           final plannedStart = date.add(Duration(minutes: fb.startMinute));
           final plannedEnd = date.add(Duration(minutes: fb.endMinute));
-          
+
           tasks.add(TaskModel(
             id: 'routine_${dateStr}_fixed_${fb.id}',
             type: TaskType.fixed,
@@ -487,7 +545,9 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
             color: '#A1F094', // kMint equiv
             plannedStart: date.add(const Duration(hours: 7, minutes: 30)),
             plannedEnd: date.add(const Duration(hours: 7, minutes: 45)),
-            subtasks: p.morning.map((s) => Subtask(id: s.name, title: s.name)).toList(),
+            subtasks: p.morning
+                .map((s) => Subtask(id: s.name, title: s.name))
+                .toList(),
             createdAt: now,
             updatedAt: now,
           ));
@@ -501,7 +561,9 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
             color: '#A1F094',
             plannedStart: date.add(const Duration(hours: 13, minutes: 0)),
             plannedEnd: date.add(const Duration(hours: 13, minutes: 15)),
-            subtasks: p.afternoon.map((s) => Subtask(id: s.name, title: s.name)).toList(),
+            subtasks: p.afternoon
+                .map((s) => Subtask(id: s.name, title: s.name))
+                .toList(),
             createdAt: now,
             updatedAt: now,
           ));
@@ -515,7 +577,8 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
             color: '#C084FC', // kPurple equiv
             plannedStart: date.add(const Duration(hours: 22, minutes: 0)),
             plannedEnd: date.add(const Duration(hours: 22, minutes: 15)),
-            subtasks: p.night.map((s) => Subtask(id: s.name, title: s.name)).toList(),
+            subtasks:
+                p.night.map((s) => Subtask(id: s.name, title: s.name)).toList(),
             createdAt: now,
             updatedAt: now,
           ));
@@ -538,10 +601,10 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
               if (parts[1].toUpperCase() == 'PM' && hour != 12) hour += 12;
               if (parts[1].toUpperCase() == 'AM' && hour == 12) hour = 0;
             } else {
-               // Fallback to 24hr format
-               final timeParts = meal.time.split(':');
-               hour = int.parse(timeParts[0]);
-               min = int.parse(timeParts[1]);
+              // Fallback to 24hr format
+              final timeParts = meal.time.split(':');
+              hour = int.parse(timeParts[0]);
+              min = int.parse(timeParts[1]);
             }
           } catch (_) {
             hour = 12; // fallback
@@ -577,7 +640,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
             endH = int.parse(ep[0]);
             endM = int.parse(ep[1]);
           } catch (_) {}
-          
+
           tasks.add(TaskModel(
             id: 'routine_${dateStr}_class_${c.subject.replaceAll(' ', '_')}',
             type: TaskType.classBlock,
@@ -586,7 +649,10 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
             color: c.colorHex,
             plannedStart: date.add(Duration(hours: startH, minutes: startM)),
             plannedEnd: date.add(Duration(hours: endH, minutes: endM)),
-            subtasks: [Subtask(id: 'room', title: c.room), Subtask(id: 'prof', title: c.professor)],
+            subtasks: [
+              Subtask(id: 'room', title: c.room),
+              Subtask(id: 'prof', title: c.professor)
+            ],
             createdAt: now,
             updatedAt: now,
           ));
@@ -596,29 +662,30 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       // 5. Long Term Goals
       final targetDate = DateTime(date.year, date.month, date.day);
       for (final g in state.longTermGoals) {
-        final gStart = DateTime(g.startDate.year, g.startDate.month, g.startDate.day);
+        final gStart =
+            DateTime(g.startDate.year, g.startDate.month, g.startDate.day);
         final gEnd = DateTime(g.endDate.year, g.endDate.month, g.endDate.day);
         if (!targetDate.isBefore(gStart) && !targetDate.isAfter(gEnd)) {
-           int h = 0, m = 0;
-           try {
-             if (g.dailyTaskTime != null) {
-               final sp = g.dailyTaskTime!.split(':');
-               h = int.parse(sp[0]);
-               m = int.parse(sp[1]);
-             }
-           } catch (_) {}
-           final plannedStart = date.add(Duration(hours: h, minutes: m));
-           tasks.add(TaskModel(
-             id: 'routine_${dateStr}_goal_${g.id}',
-             type: TaskType.custom,
-             title: g.title,
-             emoji: g.emoji,
-             color: g.colorHex,
-             plannedStart: plannedStart,
-             plannedEnd: plannedStart.add(const Duration(minutes: 30)),
-             createdAt: now,
-             updatedAt: now,
-           ));
+          int h = 0, m = 0;
+          try {
+            if (g.dailyTaskTime != null) {
+              final sp = g.dailyTaskTime!.split(':');
+              h = int.parse(sp[0]);
+              m = int.parse(sp[1]);
+            }
+          } catch (_) {}
+          final plannedStart = date.add(Duration(hours: h, minutes: m));
+          tasks.add(TaskModel(
+            id: 'routine_${dateStr}_goal_${g.id}',
+            type: TaskType.custom,
+            title: g.title,
+            emoji: g.emoji,
+            color: g.colorHex,
+            plannedStart: plannedStart,
+            plannedEnd: plannedStart.add(const Duration(minutes: 30)),
+            createdAt: now,
+            updatedAt: now,
+          ));
         }
       }
     }
@@ -640,8 +707,8 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   }
 
   void updateFixedBlock(FixedBlock updated) {
-    final list = state.fixedBlocks.map((b) =>
-        b.id == updated.id ? updated : b).toList();
+    final list =
+        state.fixedBlocks.map((b) => b.id == updated.id ? updated : b).toList();
     state = state.copyWith(fixedBlocks: list);
     _saveDebounced();
   }
@@ -691,8 +758,9 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
 
   void removeClass(ClassItem c) {
     state = state.copyWith(
-      classes: state.classes.where((x) =>
-          x.subject != c.subject || x.weekday != c.weekday).toList(),
+      classes: state.classes
+          .where((x) => x.subject != c.subject || x.weekday != c.weekday)
+          .toList(),
     );
     _saveDebounced();
   }
@@ -721,11 +789,9 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
 // PROVIDERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-final routineProvider =
-    StateNotifierProvider<RoutineNotifier, RoutineState>(
+final routineProvider = StateNotifierProvider<RoutineNotifier, RoutineState>(
   (ref) => RoutineNotifier(
     ref.read(routineRepositoryProvider),
-    ref.read(eventServiceProvider),
     ref.read(taskServiceProvider),
   ),
 );
@@ -733,57 +799,83 @@ final routineProvider =
 final customTasksProvider =
     StateProvider<Map<String, List<CustomTask>>>((ref) => {});
 
-final isPremiumProvider =
-    StateProvider<bool>((ref) => false);
+final isPremiumProvider = StateProvider<bool>((ref) => false);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFAULT SEED DATA  (used when app is demoed without going through onboarding)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const kDefaultFixedBlocks = <FixedBlock>[
-  FixedBlock(id:'sleep',   title:'Sleep',   emoji:'🛏️',
-      startMinute:  0, endMinute: 390, colorHex:'#C084FC'), // 12AM–6:30AM
-  FixedBlock(id:'classes', title:'Classes', emoji:'🎓',
-      startMinute:540, endMinute: 720, colorHex:'#378ADD'), // 9AM–12PM
-  FixedBlock(id:'eating',  title:'Eating',  emoji:'🍽️',
-      startMinute:780, endMinute:1020, colorHex:'#FF9560'), // 1PM–5PM
+  FixedBlock(
+      id: 'sleep',
+      title: 'Sleep',
+      emoji: '🛏️',
+      startMinute: 0,
+      endMinute: 390,
+      colorHex: '#C084FC'), // 12AM–6:30AM
+  FixedBlock(
+      id: 'classes',
+      title: 'Classes',
+      emoji: '🎓',
+      startMinute: 540,
+      endMinute: 720,
+      colorHex: '#378ADD'), // 9AM–12PM
+  FixedBlock(
+      id: 'eating',
+      title: 'Eating',
+      emoji: '🍽️',
+      startMinute: 780,
+      endMinute: 1020,
+      colorHex: '#FF9560'), // 1PM–5PM
 ];
 
 const kDefaultSkinPlan = DaySkinPlan(
   morning: [
-    SkinStep(emoji:'🟡', name:'Vitamin C Serum', tag:'Brightening'),
-    SkinStep(emoji:'☀️', name:'SPF 50 Sunscreen', tag:'UV Protection'),
+    SkinStep(emoji: '🟡', name: 'Vitamin C Serum', tag: 'Brightening'),
+    SkinStep(emoji: '☀️', name: 'SPF 50 Sunscreen', tag: 'UV Protection'),
   ],
   afternoon: [
-    SkinStep(emoji:'🫧', name:'Face Wash', tag:'Gentle Cleanser'),
+    SkinStep(emoji: '🫧', name: 'Face Wash', tag: 'Gentle Cleanser'),
   ],
   night: [
-    SkinStep(emoji:'🌙', name:'Repair Night Cream', tag:'Deep Moisturizing'),
+    SkinStep(emoji: '🌙', name: 'Repair Night Cream', tag: 'Deep Moisturizing'),
   ],
 );
 
 const kDefaultMealPlanMon = DayMealPlan(
   meals: [
-    MealItem(emoji:'🥣', name:'Oatmeal & Berries',        time:'08:00 AM'),
-    MealItem(emoji:'🥗', name:'Grilled Chicken Salad',    time:'01:00 PM'),
-    MealItem(emoji:'🍎', name:'Green Apple & Walnuts',    time:'05:00 PM'),
-    MealItem(emoji:'🍣', name:'Salmon with Asparagus',    time:'08:30 PM'),
+    MealItem(emoji: '🥣', name: 'Oatmeal & Berries', time: '08:00 AM'),
+    MealItem(emoji: '🥗', name: 'Grilled Chicken Salad', time: '01:00 PM'),
+    MealItem(emoji: '🍎', name: 'Green Apple & Walnuts', time: '05:00 PM'),
+    MealItem(emoji: '🍣', name: 'Salmon with Asparagus', time: '08:30 PM'),
   ],
 );
 
 const kDefaultClasses = <ClassItem>[
-  ClassItem(subject:'Data Structures', room:'Room 304',
-      professor:'Prof. Sarah Jenkins',
-      startTime:'09:00', endTime:'10:00', weekday:3,
-      colorHex:'#378ADD'),
-  ClassItem(subject:'Operating Systems', room:'Lab A',
-      professor:'Dr. Alan Turing',
-      startTime:'11:00', endTime:'12:00', weekday:3,
-      colorHex:'#FF9560'),
-  ClassItem(subject:'Chemistry Lab', room:'Building C',
-      professor:'Ms. Curie',
-      startTime:'14:00', endTime:'15:00', weekday:3,
-      colorHex:'#9B8FFF'),
+  ClassItem(
+      subject: 'Data Structures',
+      room: 'Room 304',
+      professor: 'Prof. Sarah Jenkins',
+      startTime: '09:00',
+      endTime: '10:00',
+      weekday: 3,
+      colorHex: '#378ADD'),
+  ClassItem(
+      subject: 'Operating Systems',
+      room: 'Lab A',
+      professor: 'Dr. Alan Turing',
+      startTime: '11:00',
+      endTime: '12:00',
+      weekday: 3,
+      colorHex: '#FF9560'),
+  ClassItem(
+      subject: 'Chemistry Lab',
+      room: 'Building C',
+      professor: 'Ms. Curie',
+      startTime: '14:00',
+      endTime: '15:00',
+      weekday: 3,
+      colorHex: '#9B8FFF'),
 ];
 
 enum RoutineFilter { all, fixedSchedule, skinCare, classes, eating }

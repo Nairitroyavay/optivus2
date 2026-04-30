@@ -8,22 +8,31 @@ import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/streak_model.dart';
-import 'package:optivus2/models/day_summary_model.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const _kInk     = Color(0xFF0F111A);
-const _kAmber   = Color(0xFFFFB830);
+const _kInk = Color(0xFF0F111A);
+const _kAmber = Color(0xFFFFB830);
 const _kSubtext = Color(0xFF6B7280);
-const _kRingDark = Color(0xFF1A1F3C);   // deep navy for ring arc
+const _kRingDark = Color(0xFF1A1F3C); // deep navy for ring arc
 
 const _months = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
-const _weekDays = ['S','M','T','W','T','F','S'];
+const _weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HOME TAB
@@ -44,11 +53,12 @@ class HomeTab extends ConsumerStatefulWidget {
   ConsumerState<HomeTab> createState() => _HomeTabState();
 }
 
-class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStateMixin {
+class _HomeTabState extends ConsumerState<HomeTab>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ringCtrl;
-  late final Animation<double>   _ringAnim;
+  late final Animation<double> _ringAnim;
 
-  DateTime _focusMonth  = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime _focusMonth = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime _selectedDay = DateTime.now();
 
   // TODO: Populate event dots from actual routine data
@@ -58,7 +68,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _ringCtrl = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1500));
+        vsync: this, duration: const Duration(milliseconds: 1500));
     _ringAnim = CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOutCubic);
     Future.delayed(const Duration(milliseconds: 250), () {
       if (mounted) _ringCtrl.forward();
@@ -66,7 +76,10 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
   }
 
   @override
-  void dispose() { _ringCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ringCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +96,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
             shaderCallback: (Rect bounds) {
               // Fade from transparent to solid white right underneath the header
               final fadeStart = headerH / bounds.height;
-              final fadeEnd   = (headerH + 24) / bounds.height;
+              final fadeEnd = (headerH + 24) / bounds.height;
               return LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -147,8 +160,29 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
   }
 
   String get _dynamicDateLabel {
-    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-    const mos  = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const days = [
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+      'SUNDAY'
+    ];
+    const mos = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC'
+    ];
     final now = DateTime.now();
     return '${days[now.weekday - 1]}, ${mos[now.month - 1]} ${now.day}';
   }
@@ -173,18 +207,24 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                   Text(
                     _dynamicDateLabel,
                     style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700,
-                      color: _kSubtext, letterSpacing: .8),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _kSubtext,
+                        letterSpacing: .8),
                   ),
                   const SizedBox(height: 4),
                   RichText(
                     text: TextSpan(
                       style: const TextStyle(
-                        fontSize: 28, fontWeight: FontWeight.w900,
-                        color: _kInk, letterSpacing: -0.5, height: 1.15),
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: _kInk,
+                          letterSpacing: -0.5,
+                          height: 1.15),
                       children: [
                         TextSpan(text: '$_dynamicGreeting\n'),
-                        TextSpan(text: _userName,
+                        TextSpan(
+                            text: _userName,
                             style: const TextStyle(color: _kInk)),
                       ],
                     ),
@@ -198,14 +238,18 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
               colors: [const Color(0xFFD0D8E8), const Color(0xFFB8C4D8)],
               child: Stack(
                 children: [
-                  const Center(child: Icon(Icons.notifications_outlined,
-                      size: 20, color: _kInk)),
+                  const Center(
+                      child: Icon(Icons.notifications_outlined,
+                          size: 20, color: _kInk)),
                   Positioned(
-                    top: 8, right: 8,
+                    top: 8,
+                    right: 8,
                     child: Container(
-                      width: 8, height: 8,
+                      width: 8,
+                      height: 8,
                       decoration: const BoxDecoration(
-                        color: _kAmber, shape: BoxShape.circle,
+                        color: _kAmber,
+                        shape: BoxShape.circle,
                       ),
                     ),
                   ),
@@ -223,7 +267,8 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
     final tasksAsync = ref.watch(todayTasksProvider);
     final tasks = tasksAsync.valueOrNull ?? [];
     final totalTasks = tasks.length;
-    final completedTasks = tasks.where((t) => t.status == TaskStatus.completed).length;
+    final completedTasks =
+        tasks.where((t) => t.state == TaskState.completed).length;
     final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
 
     return Padding(
@@ -237,7 +282,9 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text("Today's Mission",
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800,
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
                         color: _kInk)),
                 _GlassOrb(
                   size: 34,
@@ -260,7 +307,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
               children: [
                 _statPill('Tasks', '$completedTasks/$totalTasks'),
                 _statPill('Focus', '0h'),
-                _statPill('Cal',   '0'),
+                _statPill('Cal', '0'),
               ],
             ),
           ],
@@ -273,16 +320,22 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
     return LiquidCard.solid(
       radius: 16,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            child: Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-                  color: _kSubtext, letterSpacing: 0.8)),
+              style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: _kSubtext,
+                  letterSpacing: 0.8)),
           const SizedBox(height: 3),
           Text(value,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
-                  color: _kInk, letterSpacing: -0.5)),
+              style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: _kInk,
+                  letterSpacing: -0.5)),
         ],
       ),
     );
@@ -292,10 +345,10 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
   Widget _habitSection() {
     final habitsAsync = ref.watch(habitsProvider);
     final logsAsync = ref.watch(todayHabitLogsProvider);
-    
+
     final habits = habitsAsync.valueOrNull ?? [];
     final logs = logsAsync.valueOrNull ?? [];
-    
+
     // Quick lookup for habits that have a 'good' log today
     final completedHabitIds = logs
         .where((doc) => doc.data()['logType'] == 'good')
@@ -313,13 +366,15 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Habit Check-in',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800,
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
                         color: _kInk)),
                 GestureDetector(
                   onTap: () {},
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 5),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(20),
@@ -328,7 +383,8 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                     ),
                     child: const Text('View All',
                         style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
                             color: _kInk)),
                   ),
                 ),
@@ -343,7 +399,8 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                     padding: EdgeInsets.only(left: 4),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Text('No habits yet.', style: TextStyle(color: _kSubtext)),
+                      child: Text('No habits yet.',
+                          style: TextStyle(color: _kSubtext)),
                     ),
                   )
                 : ListView.separated(
@@ -351,10 +408,12 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                     physics: const BouncingScrollPhysics(),
                     padding: const EdgeInsets.only(right: 20),
                     itemCount: habits.length,
-                    separatorBuilder: (context, index) => const SizedBox(width: 10),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 10),
                     itemBuilder: (context, i) {
                       final h = habits[i];
-                      return _HabitPill(h, completedToday: completedHabitIds.contains(h.id));
+                      return _HabitPill(h,
+                          completedToday: completedHabitIds.contains(h.id));
                     },
                   ),
           ),
@@ -367,7 +426,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
   Widget _streakSection() {
     final streaksAsync = ref.watch(allStreaksProvider);
     final streaks = streaksAsync.valueOrNull ?? [];
-    
+
     int longestActive = 0;
     for (final s in streaks) {
       if (s.state == StreakState.active && s.currentCount > longestActive) {
@@ -385,8 +444,8 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Streak Summary',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                      color: _kInk)),
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800, color: _kInk)),
               const SizedBox(height: 10),
               Column(
                 children: [
@@ -395,7 +454,10 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                     value: longestActive.toString(),
                     badge: 'Active',
                     label: 'Longest Streak',
-                    gradColors: [const Color(0xFFFF9B3E), const Color(0xFFFFB830)],
+                    gradColors: [
+                      const Color(0xFFFF9B3E),
+                      const Color(0xFFFFB830)
+                    ],
                     badgeColor: const Color(0xFF60D4A0),
                   ),
                   const SizedBox(height: 12),
@@ -404,7 +466,10 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                     value: '0h',
                     badge: 'Total',
                     label: 'Focus Time',
-                    gradColors: [const Color(0xFF8B7FFF), const Color(0xFF6B5FEF)],
+                    gradColors: [
+                      const Color(0xFF8B7FFF),
+                      const Color(0xFF6B5FEF)
+                    ],
                     badgeColor: const Color(0xFF9B8FFF),
                     light: true,
                   ),
@@ -422,8 +487,10 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Plan by Date',
-                        style: TextStyle(fontSize: 16,
-                            fontWeight: FontWeight.w800, color: _kInk)),
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: _kInk)),
                     GestureDetector(
                       onTap: () {},
                       child: Container(
@@ -433,11 +500,13 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                           color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.5), width: 1),
+                              color: Colors.white.withValues(alpha: 0.5),
+                              width: 1),
                         ),
                         child: const Text('Open Cal',
                             style: TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
                                 color: _kInk)),
                       ),
                     ),
@@ -491,26 +560,30 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
               children: [
                 Text(value,
                     style: TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w900,
-                        color: textColor, letterSpacing: -0.5)),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: textColor,
+                        letterSpacing: -0.5)),
                 const SizedBox(width: 5),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 4, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(badge,
                       style: const TextStyle(
-                          fontSize: 9, fontWeight: FontWeight.w700,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
                           color: Colors.white)),
                 ),
               ],
             ),
             Text(label,
                 style: TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w500,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
                     color: subtextColor)),
           ],
         ),
@@ -522,7 +595,7 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
   Widget _routinesSection() {
     final tasksAsync = ref.watch(todayTasksProvider);
     final tasks = tasksAsync.valueOrNull ?? [];
-    
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
       child: Column(
@@ -547,12 +620,13 @@ class _HomeTabState extends ConsumerState<HomeTab> with SingleTickerProviderStat
                 padding: const EdgeInsets.only(bottom: 10),
                 child: GestureDetector(
                   onTap: () {
-                    // We map context to appropriate tap callbacks for now
-                    if (t.context == 'skin_care') {
+                    // Route by task type until routine-specific screens own these rows.
+                    final routineType = t.type.toJson();
+                    if (routineType == 'skin_care') {
                       widget.onSkinCareTapped?.call();
-                    } else if (t.context == 'class') {
+                    } else if (routineType == 'class') {
                       widget.onClassesTapped?.call();
-                    } else if (t.context == 'eating') {
+                    } else if (routineType == 'eating') {
                       widget.onEatingTapped?.call();
                     }
                   },
@@ -592,8 +666,8 @@ class _GlassOrb extends StatelessWidget {
           ],
           stops: const [0.0, 0.45, 1.0],
         ),
-        border: Border.all(
-            color: Colors.white.withValues(alpha: 0.80), width: 1.2),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.80), width: 1.2),
         boxShadow: [
           BoxShadow(
               color: colors[1].withValues(alpha: 0.28),
@@ -627,7 +701,9 @@ class _HabitPill extends StatelessWidget {
     return LiquidCard.solid(
       radius: 30,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      tint: completedToday ? const Color(0xFF60D4A0).withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.15),
+      tint: completedToday
+          ? const Color(0xFF60D4A0).withValues(alpha: 0.15)
+          : Colors.white.withValues(alpha: 0.15),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -645,8 +721,7 @@ class _HabitPill extends StatelessWidget {
           const SizedBox(width: 10),
           Text(h.name,
               style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700,
-                  color: _kInk)),
+                  fontSize: 14, fontWeight: FontWeight.w700, color: _kInk)),
         ],
       ),
     );
@@ -665,11 +740,19 @@ class _TaskRow extends StatelessWidget {
   Widget build(BuildContext context) {
     Color orbColor = const Color(0xFF60D4A0);
     String emoji = '📌';
-    if (t.context == 'skin_care') { emoji = '🌿'; orbColor = const Color(0xFF60D4A0); }
-    else if (t.context == 'class') { emoji = '🎓'; orbColor = const Color(0xFF60B8FF); }
-    else if (t.context == 'eating') { emoji = '🍽️'; orbColor = const Color(0xFFFFB830); }
+    final routineType = t.type.toJson();
+    if (routineType == 'skin_care') {
+      emoji = '🌿';
+      orbColor = const Color(0xFF60D4A0);
+    } else if (routineType == 'class') {
+      emoji = '🎓';
+      orbColor = const Color(0xFF60B8FF);
+    } else if (routineType == 'eating') {
+      emoji = '🍽️';
+      orbColor = const Color(0xFFFFB830);
+    }
 
-    final isCompleted = t.status == TaskStatus.completed;
+    final isCompleted = t.state == TaskState.completed;
 
     return LiquidCard.solid(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -694,13 +777,17 @@ class _TaskRow extends StatelessWidget {
               children: [
                 Text(t.title,
                     style: TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w800,
-                        decoration: isCompleted ? TextDecoration.lineThrough : null,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        decoration:
+                            isCompleted ? TextDecoration.lineThrough : null,
                         color: _kInk)),
                 const SizedBox(height: 2),
-                Text(t.durationMinutes != null ? '${t.durationMinutes} min' : 'Scheduled',
-                    style: const TextStyle(
-                        fontSize: 12, color: _kSubtext)),
+                Text(
+                    t.plannedDurationMin > 0
+                        ? '${t.plannedDurationMin} min'
+                        : 'Scheduled',
+                    style: const TextStyle(fontSize: 12, color: _kSubtext)),
               ],
             ),
           ),
@@ -722,7 +809,8 @@ class _MissionRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 160, height: 160,
+      width: 160,
+      height: 160,
       child: CustomPaint(
         painter: _RingPainter(progress: progress),
         child: Center(
@@ -732,14 +820,18 @@ class _MissionRing extends StatelessWidget {
               Text(
                 '${(progress * 100).round()}%',
                 style: const TextStyle(
-                    fontSize: 38, fontWeight: FontWeight.w900,
-                    color: _kInk, letterSpacing: -1.5),
+                    fontSize: 38,
+                    fontWeight: FontWeight.w900,
+                    color: _kInk,
+                    letterSpacing: -1.5),
               ),
               const Text(
                 'COMPLETE',
                 style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700,
-                    color: _kSubtext, letterSpacing: 1.8),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: _kSubtext,
+                    letterSpacing: 1.8),
               ),
             ],
           ),
@@ -755,12 +847,14 @@ class _RingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final c    = Offset(size.width / 2, size.height / 2);
-    final r    = size.width / 2 - 12;
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2 - 12;
     final rect = Rect.fromCircle(center: c, radius: r);
 
     // Track
-    canvas.drawCircle(c, r,
+    canvas.drawCircle(
+      c,
+      r,
       Paint()
         ..color = const Color(0xFFDDDDDD).withValues(alpha: 0.60)
         ..style = PaintingStyle.stroke
@@ -769,7 +863,11 @@ class _RingPainter extends CustomPainter {
     );
     // Progress arc — dark navy like reference
     if (progress > 0) {
-      canvas.drawArc(rect, -math.pi / 2, 2 * math.pi * progress, false,
+      canvas.drawArc(
+        rect,
+        -math.pi / 2,
+        2 * math.pi * progress,
+        false,
         Paint()
           ..color = _kRingDark
           ..style = PaintingStyle.stroke
@@ -804,12 +902,12 @@ class _InlineCalendar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstDay      = DateTime(focusMonth.year, focusMonth.month, 1);
-    final daysInMth     = DateTime(focusMonth.year, focusMonth.month + 1, 0).day;
-    final startCol      = firstDay.weekday % 7;
+    final firstDay = DateTime(focusMonth.year, focusMonth.month, 1);
+    final daysInMth = DateTime(focusMonth.year, focusMonth.month + 1, 0).day;
+    final startCol = firstDay.weekday % 7;
     final prevMonthDays = DateTime(focusMonth.year, focusMonth.month, 0).day;
-    final totalCells    = startCol + daysInMth;
-    final rows          = (totalCells / 7).ceil();
+    final totalCells = startCol + daysInMth;
+    final rows = (totalCells / 7).ceil();
 
     return Column(
       children: [
@@ -837,20 +935,24 @@ class _InlineCalendar extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Row(
-          children: _weekDays.map((d) => Expanded(
-            child: Center(
-              child: Text(d,
-                  style: const TextStyle(
-                      fontSize: 9, fontWeight: FontWeight.w800,
-                      color: _kInk, letterSpacing: .4)),
-            ),
-          )).toList(),
+          children: _weekDays
+              .map((d) => Expanded(
+                    child: Center(
+                      child: Text(d,
+                          style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: _kInk,
+                              letterSpacing: .4)),
+                    ),
+                  ))
+              .toList(),
         ),
         const SizedBox(height: 3),
         for (int row = 0; row < rows; row++)
           Row(
             children: List.generate(7, (col) {
-              final idx    = row * 7 + col;
+              final idx = row * 7 + col;
               final dayNum = idx - startCol + 1;
 
               if (dayNum < 1 || dayNum > daysInMth) {
@@ -870,9 +972,9 @@ class _InlineCalendar extends StatelessWidget {
               }
 
               final date = DateTime(focusMonth.year, focusMonth.month, dayNum);
-              final isSel = date.year  == selectedDay.year &&
-                            date.month == selectedDay.month &&
-                            date.day   == selectedDay.day;
+              final isSel = date.year == selectedDay.year &&
+                  date.month == selectedDay.month &&
+                  date.day == selectedDay.day;
               final dot = events[dayNum];
 
               return Expanded(
@@ -885,7 +987,8 @@ class _InlineCalendar extends StatelessWidget {
                       children: [
                         AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
-                          width: 26, height: 26,
+                          width: 26,
+                          height: 26,
                           decoration: BoxDecoration(
                             color: isSel ? _kRingDark : Colors.transparent,
                             shape: BoxShape.circle,
@@ -894,16 +997,16 @@ class _InlineCalendar extends StatelessWidget {
                             child: Text('$dayNum',
                                 style: TextStyle(
                                   fontSize: 10,
-                                  fontWeight: isSel
-                                      ? FontWeight.w800
-                                      : FontWeight.w500,
+                                  fontWeight:
+                                      isSel ? FontWeight.w800 : FontWeight.w500,
                                   color: isSel ? Colors.white : _kInk,
                                 )),
                           ),
                         ),
                         dot != null
                             ? Container(
-                                width: 3, height: 3,
+                                width: 3,
+                                height: 3,
                                 decoration: BoxDecoration(
                                     color: dot, shape: BoxShape.circle))
                             : const SizedBox(height: 3),
@@ -919,4 +1022,3 @@ class _InlineCalendar extends StatelessWidget {
     );
   }
 }
-

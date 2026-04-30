@@ -1122,10 +1122,11 @@ class _CoachTabState extends ConsumerState<CoachTab> {
                       physics: const BouncingScrollPhysics(),
                       itemCount: _messages.length + (_isTyping ? 1 : 0),
                       itemBuilder: (context, i) {
-                        if (_isTyping && i == 0)
+                        if (_isTyping && i == 0) {
                           return const Padding(
                               padding: EdgeInsets.only(bottom: 16),
                               child: _TypingBubble());
+                        }
                         final offset = _isTyping ? 1 : 0;
                         final msg =
                             _messages[_messages.length - 1 - (i - offset)];
