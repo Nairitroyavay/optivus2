@@ -44,6 +44,9 @@ class HabitService {
   CollectionReference<Map<String, dynamic>> get _habitsRef =>
       _firestore.collection('users').doc(_uid).collection('habits');
 
+  CollectionReference<Map<String, dynamic>> get _habitLogsRef =>
+      _firestore.collection('users').doc(_uid).collection('habit_logs');
+
   /// Returns a zero-padded `YYYY-MM-DD` string for [date].
   String _dateString(DateTime date) =>
       '${date.year}-'
@@ -80,13 +83,30 @@ class HabitService {
 
   /// Returns the count of log items for [habitId] on [date].
   Future<int> dailyLogCount(String habitId, DateTime date) async {
-    final snap = await _itemsRef(habitId, date).count().get();
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    final snap = await _habitLogsRef
+        .where('habitId', isEqualTo: habitId)
+        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .count()
+        .get();
+
     return snap.count ?? 0;
   }
 
   /// Returns the sum of quantities for a good habit on [date].
   Future<num> dailyTotal(String habitId, DateTime date) async {
-    final snap = await _itemsRef(habitId, date).get();
+    final startOfDay = DateTime(date.year, date.month, date.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    final snap = await _habitLogsRef
+        .where('habitId', isEqualTo: habitId)
+        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .get();
+
     num total = 0;
     for (final doc in snap.docs) {
       total += (doc.data()['quantity'] as num?) ?? 1;
@@ -197,22 +217,23 @@ class HabitService {
     final log = HabitLog(
       logId: logId,
       habitId: habitId,
+      habitKind: habit.kind.name,
+      logType: 'good',
       occurredAt: occurred,
       loggedAt: now,
       quantity: amount,
+      unit: habit.unit,
       note: note,
       source: source ?? 'manual',
       schemaVersion: 1,
     );
 
-    final docRef = _itemsRef(habitId, occurred).doc(logId);
+    final nestedDocRef = _itemsRef(habitId, occurred).doc(logId);
+    final canonicalDocRef = _habitLogsRef.doc(logId);
     final batch = _firestore.batch();
 
-    batch.set(docRef, {
-      ...log.toFirestore(),
-      'logType': 'good',
-      'schemaVersion': 1,
-    });
+    batch.set(nestedDocRef, log.toFirestore());
+    batch.set(canonicalDocRef, log.toFirestore());
 
     await _eventService.emit(
       eventName: EventNames.goodHabitLogged,
@@ -259,6 +280,8 @@ class HabitService {
     final log = HabitLog(
       logId: logId,
       habitId: habitId,
+      habitKind: habit.kind.name,
+      logType: 'slip',
       occurredAt: occurred,
       loggedAt: now,
       trigger: trigger,
@@ -267,14 +290,12 @@ class HabitService {
       schemaVersion: 1,
     );
 
-    final docRef = _itemsRef(habitId, occurred).doc(logId);
+    final nestedDocRef = _itemsRef(habitId, occurred).doc(logId);
+    final canonicalDocRef = _habitLogsRef.doc(logId);
     final batch = _firestore.batch();
 
-    batch.set(docRef, {
-      ...log.toFirestore(),
-      'logType': 'slip',
-      'schemaVersion': 1,
-    });
+    batch.set(nestedDocRef, log.toFirestore());
+    batch.set(canonicalDocRef, log.toFirestore());
 
     await _eventService.emit(
       eventName: EventNames.badHabitSlipLogged,
