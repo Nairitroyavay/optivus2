@@ -36,6 +36,7 @@ class EventOrchestrator {
   final StateAggregatorService _stateAggregatorService;
   final RuleEngineService _ruleEngineService;
   final GeminiService _geminiService;
+  final CoachService _coachService;
   final FirebaseAuth _auth;
 
   StreamSubscription<Event>? _subscription;
@@ -44,6 +45,7 @@ class EventOrchestrator {
     required EventService eventService,
     required StreakService streakService,
     required NotificationService notificationService,
+    required CoachService coachService,
     StateAggregatorService? stateAggregatorService,
     RuleEngineService? ruleEngineService,
     GeminiService? geminiService,
@@ -51,6 +53,7 @@ class EventOrchestrator {
   })  : _eventService = eventService,
         _streakService = streakService,
         _notificationService = notificationService,
+        _coachService = coachService,
         _stateAggregatorService =
             stateAggregatorService ?? StateAggregatorService(),
         _ruleEngineService = ruleEngineService ?? RuleEngineService(),
@@ -151,10 +154,35 @@ class EventOrchestrator {
 
         // ── Execute decision ──────────────────────────────────────────────
         if (decision == 'spoke' && rule != null) {
+          // Rule has decided to speak — now call the Cloud Function with
+          // enriched context.  The LLM generates text; it does NOT decide
+          // whether to speak.  That decision was already made above.
+          debugPrint('[Coach] Rule selected: ${rule.id} — '
+              'building context payload before Cloud Function call.');
+
+          final contextPayload = await _coachService.buildContextPayload(
+            uid: uid,
+            snapshot: snapshot,
+            rule: rule,
+          );
+
+          debugPrint('[Coach] Context payload built — '
+              'calling Cloud Function (aiGenerate) for text generation.');
+
+          String coachMessage;
+          try {
+            coachMessage = await _geminiService.generateWithContext(
+              rulePrompt: rule.promptTemplate,
+              contextPayload: contextPayload,
+            );
+          } catch (e) {
+            debugPrint('[Coach] Cloud Function failed: $e — '
+                'using fallback message.');
+            coachMessage = rule.fallbackMessage;
+          }
+
           // saveProactiveCoachMessage writes the coach message AND the
           // "spoke" speak-log row in a single atomic WriteBatch.
-          final coachMessage =
-              await _geminiService.generateOnce(rule.promptTemplate);
           await CoachService.saveProactiveCoachMessage(
             uid: uid,
             rule: rule,

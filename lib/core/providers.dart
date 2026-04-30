@@ -68,6 +68,7 @@ final eventOrchestratorProvider = Provider<EventOrchestrator>((ref) {
     eventService: ref.read(eventServiceProvider),
     streakService: ref.read(streakServiceProvider),
     notificationService: ref.read(notificationServiceProvider),
+    coachService: ref.read(coachServiceProvider),
   );
   orchestrator.init();
   ref.onDispose(orchestrator.dispose);

@@ -10,6 +10,7 @@ import 'package:optivus2/services/gemini_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:optivus2/core/providers.dart';
+import 'dart:async';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Model
@@ -37,7 +38,8 @@ Path _buildBubblePath(Size size, {required bool isUser}) {
 
   // Tail geometry
   final double tailEdgeOffset = isUser ? w - _kTailX : _kTailX;
-  final double tailTipX = isUser ? tailEdgeOffset + _kTailW * 0.5 : tailEdgeOffset - _kTailW * 0.5;
+  final double tailTipX =
+      isUser ? tailEdgeOffset + _kTailW * 0.5 : tailEdgeOffset - _kTailW * 0.5;
 
   final p = Path();
 
@@ -54,28 +56,40 @@ Path _buildBubblePath(Size size, {required bool isUser}) {
     p.lineTo(tailEdgeOffset, bH);
     // User tail (bottom-right pointing down-right)
     p.cubicTo(
-      tailEdgeOffset + 2, bH,
-      tailTipX - 2, bH + _kTailH * 0.8,
-      tailTipX, bH + _kTailH,
+      tailEdgeOffset + 2,
+      bH,
+      tailTipX - 2,
+      bH + _kTailH * 0.8,
+      tailTipX,
+      bH + _kTailH,
     );
     p.cubicTo(
-      tailTipX - 10, bH + _kTailH * 0.5,
-      tailEdgeOffset - _kTailW + 8, bH,
-      tailEdgeOffset - _kTailW, bH,
+      tailTipX - 10,
+      bH + _kTailH * 0.5,
+      tailEdgeOffset - _kTailW + 8,
+      bH,
+      tailEdgeOffset - _kTailW,
+      bH,
     );
     p.lineTo(r, bH);
   } else {
     p.lineTo(tailEdgeOffset + _kTailW, bH);
     // AI tail (bottom-left pointing down-left)
     p.cubicTo(
-      tailEdgeOffset + _kTailW - 8, bH,
-      tailTipX + 10, bH + _kTailH * 0.5,
-      tailTipX, bH + _kTailH,
+      tailEdgeOffset + _kTailW - 8,
+      bH,
+      tailTipX + 10,
+      bH + _kTailH * 0.5,
+      tailTipX,
+      bH + _kTailH,
     );
     p.cubicTo(
-      tailTipX + 2, bH + _kTailH * 0.8,
-      tailEdgeOffset - 2, bH,
-      tailEdgeOffset, bH,
+      tailTipX + 2,
+      bH + _kTailH * 0.8,
+      tailEdgeOffset - 2,
+      bH,
+      tailEdgeOffset,
+      bH,
     );
     p.lineTo(r, bH);
   }
@@ -105,7 +119,8 @@ class _BubbleShadowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _BubbleShadowPainter old) => old.isUser != isUser;
+  bool shouldRepaint(covariant _BubbleShadowPainter old) =>
+      old.isUser != isUser;
 }
 
 class _HeavyGlassPainter extends CustomPainter {
@@ -135,9 +150,10 @@ class _HeavyGlassPainter extends CustomPainter {
           end: Alignment.bottomRight,
           colors: [
             Colors.white.withValues(alpha: 0.95), // hot white reflection
-            Colors.white.withValues(alpha: 0.5),  // solid glass body transiton
-            Colors.black.withValues(alpha: 0.2),  // soft shadow wrapping
-            Colors.black.withValues(alpha: 0.4),  // deep inner shadow bottom-right
+            Colors.white.withValues(alpha: 0.5), // solid glass body transiton
+            Colors.black.withValues(alpha: 0.2), // soft shadow wrapping
+            Colors.black
+                .withValues(alpha: 0.4), // deep inner shadow bottom-right
           ],
           stops: const [0.0, 0.4, 0.7, 1.0],
         ).createShader(rect),
@@ -191,8 +207,10 @@ class _HeavyGlassPainter extends CustomPainter {
     final lensPath = Path();
     lensPath.moveTo(0, size.height * 0.35);
     lensPath.quadraticBezierTo(
-      size.width * 0.5, size.height * 0.05,
-      size.width, size.height * 0.30,
+      size.width * 0.5,
+      size.height * 0.05,
+      size.width,
+      size.height * 0.30,
     );
     lensPath.lineTo(size.width, 0);
     lensPath.lineTo(0, 0);
@@ -232,8 +250,6 @@ class _HeavyGlassPainter extends CustomPainter {
   bool shouldRepaint(covariant _HeavyGlassPainter old) => old.isUser != isUser;
 }
 
-
-
 class _BubbleClipper extends CustomClipper<Path> {
   final bool isUser;
   const _BubbleClipper({required this.isUser});
@@ -260,7 +276,8 @@ class _SpeechBubble extends StatelessWidget {
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
         child: CustomPaint(
           painter: _BubbleShadowPainter(isUser: isUser),
           foregroundPainter: _HeavyGlassPainter(isUser: isUser),
@@ -269,14 +286,16 @@ class _SpeechBubble extends StatelessWidget {
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
-                color: Colors.white.withValues(alpha: 0.06), // Very faint base frost
+                color: Colors.white
+                    .withValues(alpha: 0.06), // Very faint base frost
                 padding: contentPad,
                 child: Text(
                   message.text,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF111111), // pure black/dark grey text per reference
+                    color: Color(
+                        0xFF111111), // pure black/dark grey text per reference
                     height: 1.3,
                     letterSpacing: -0.3,
                   ),
@@ -296,15 +315,23 @@ class _TypingBubble extends StatefulWidget {
   State<_TypingBubble> createState() => _TypingBubbleState();
 }
 
-class _TypingBubbleState extends State<_TypingBubble> with SingleTickerProviderStateMixin {
+class _TypingBubbleState extends State<_TypingBubble>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200))
+      ..repeat();
   }
+
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Align(
@@ -329,9 +356,13 @@ class _TypingBubbleState extends State<_TypingBubble> with SingleTickerProviderS
                       final bounce = math.sin(t * math.pi);
                       return Container(
                         margin: EdgeInsets.symmetric(horizontal: 3),
-                        width: 10, height: 10,
+                        width: 10,
+                        height: 10,
                         transform: Matrix4.translationValues(0, -bounce * 6, 0),
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF0F172A).withValues(alpha: 0.4 + bounce * 0.6)),
+                        decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF0F172A)
+                                .withValues(alpha: 0.4 + bounce * 0.6)),
                       );
                     },
                   );
@@ -366,13 +397,16 @@ class _HeavyGlassInput extends StatefulWidget {
   State<_HeavyGlassInput> createState() => _HeavyGlassInputState();
 }
 
-class _HeavyGlassInputState extends State<_HeavyGlassInput> with SingleTickerProviderStateMixin {
+class _HeavyGlassInputState extends State<_HeavyGlassInput>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _anim;
 
   @override
   void initState() {
     super.initState();
-    _anim = AnimationController(vsync: this, duration: const Duration(seconds: 4))..repeat();
+    _anim =
+        AnimationController(vsync: this, duration: const Duration(seconds: 4))
+          ..repeat();
   }
 
   @override
@@ -404,7 +438,7 @@ class _HeavyGlassInputState extends State<_HeavyGlassInput> with SingleTickerPro
                         // --- Left '+' Icon ---
                         const SizedBox(width: 4),
                         _buildIconBtn(Icons.add_rounded, 30),
-                        
+
                         // --- Inner Cavity ---
                         Expanded(
                           child: Padding(
@@ -428,13 +462,16 @@ class _HeavyGlassInputState extends State<_HeavyGlassInput> with SingleTickerPro
                                       decoration: InputDecoration(
                                         hintText: 'Type a message...',
                                         hintStyle: TextStyle(
-                                          color: const Color(0xFF94A3B8).withValues(alpha: 0.9),
+                                          color: const Color(0xFF94A3B8)
+                                              .withValues(alpha: 0.9),
                                           fontSize: 16,
                                           fontWeight: FontWeight.w400,
                                         ),
                                         border: InputBorder.none,
                                         isDense: true,
-                                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                                vertical: 12),
                                       ),
                                     ),
                                   ),
@@ -450,12 +487,14 @@ class _HeavyGlassInputState extends State<_HeavyGlassInput> with SingleTickerPro
                           child: widget.hasText
                               ? Padding(
                                   key: const ValueKey('send'),
-                                  padding: const EdgeInsets.only(right: 6, left: 6),
+                                  padding:
+                                      const EdgeInsets.only(right: 6, left: 6),
                                   child: _buildSendBtn(),
                                 )
                               : Padding(
                                   key: const ValueKey('mic'),
-                                  padding: const EdgeInsets.only(right: 6, left: 6),
+                                  padding:
+                                      const EdgeInsets.only(right: 6, left: 6),
                                   child: _buildIconBtn(Icons.mic_rounded, 26),
                                 ),
                         ),
@@ -473,7 +512,9 @@ class _HeavyGlassInputState extends State<_HeavyGlassInput> with SingleTickerPro
 
   Widget _buildIconBtn(IconData icon, double size) {
     return GestureDetector(
-      onTap: () { HapticFeedback.lightImpact(); },
+      onTap: () {
+        HapticFeedback.lightImpact();
+      },
       child: Container(
         width: 48,
         height: 48,
@@ -487,14 +528,18 @@ class _HeavyGlassInputState extends State<_HeavyGlassInput> with SingleTickerPro
 
   Widget _buildSendBtn() {
     return GestureDetector(
-      onTap: () { HapticFeedback.lightImpact(); widget.onSend(); },
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onSend();
+      },
       child: Container(
         width: 42,
         height: 42,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: const LinearGradient(
-            begin: Alignment.topLeft, end: Alignment.bottomRight, 
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [Color(0xFFC084FC), Color(0xFF6366F1)],
           ),
           boxShadow: [
@@ -513,77 +558,77 @@ class _HeavyGlassInputState extends State<_HeavyGlassInput> with SingleTickerPro
   }
 }
 
-Path _getMorphingPillPath(Size size, double phase, {
-  double ampTop = 4.0, 
-  double ampBot = 4.0, 
-  double topYOffset = 0.0, 
-  double botYOffset = 0.0, 
-  double phaseOffset = 0.0
-}) {
+Path _getMorphingPillPath(Size size, double phase,
+    {double ampTop = 4.0,
+    double ampBot = 4.0,
+    double topYOffset = 0.0,
+    double botYOffset = 0.0,
+    double phaseOffset = 0.0}) {
   final w = size.width;
   final h = size.height;
   final r = h / 2;
   final path = Path();
   final segments = 50;
-  
+
   final startTopX = r;
   final endTopX = w - r;
-  
+
   // Math for identical endcaps considering offsets
   // Default radius is 'r' for offset 0; adjusts mathematically when inset
-  final arcRadius = Radius.circular(math.max(0.1, r - (topYOffset - botYOffset) / 2));
-  
+  final arcRadius =
+      Radius.circular(math.max(0.1, r - (topYOffset - botYOffset) / 2));
+
   path.moveTo(startTopX, topYOffset);
-  
+
   // Top wave (left to right)
   for (int i = 0; i <= segments; i++) {
     double t = i / segments;
     double x = startTopX + t * (endTopX - startTopX);
-    
+
     // Attenuate zero-slope at connection points
     double attenuation = math.sin(t * math.pi);
     attenuation = attenuation * attenuation * (3 - 2 * attenuation);
 
     double wave = math.sin(t * math.pi * 3 + phase + phaseOffset) * 0.7 +
-                  math.cos(t * math.pi * 5 - phase * 1.3) * 0.3;
-                  
+        math.cos(t * math.pi * 5 - phase * 1.3) * 0.3;
+
     double y = topYOffset + wave * ampTop * attenuation;
     if (i == 0 || i == segments) y = topYOffset; // Lock exact endpoints
-    
+
     path.lineTo(x, y);
   }
-  
-  // Perfect right semi-circle 
+
+  // Perfect right semi-circle
   path.arcToPoint(
     Offset(endTopX, h + botYOffset),
     radius: arcRadius,
     clockwise: true,
   );
-  
+
   // Bottom wave (right to left)
   for (int i = segments; i >= 0; i--) {
     double t = i / segments;
     double x = startTopX + t * (endTopX - startTopX);
-    
+
     double attenuation = math.sin(t * math.pi);
     attenuation = attenuation * attenuation * (3 - 2 * attenuation);
 
     double wave = math.sin(t * math.pi * 4 - phase + phaseOffset) * 0.7 +
-                  math.cos(t * math.pi * 6 + phase * 1.1) * 0.3;
-                  
+        math.cos(t * math.pi * 6 + phase * 1.1) * 0.3;
+
     double y = h + botYOffset + wave * ampBot * attenuation;
     if (i == 0 || i == segments) y = h + botYOffset; // Lock exactly
-    
+
     path.lineTo(x, y);
   }
-  
+
   // Perfect left semi-circle
   path.arcToPoint(
     Offset(startTopX, topYOffset),
     radius: arcRadius,
     clockwise: true,
   );
-  
+
   path.close();
   return path;
 }
@@ -592,7 +637,8 @@ class _WavyClipper extends CustomClipper<Path> {
   final double phase;
   _WavyClipper(this.phase);
   @override
-  Path getClip(Size size) => _getMorphingPillPath(size, phase, ampTop: 5.0, ampBot: 5.0);
+  Path getClip(Size size) =>
+      _getMorphingPillPath(size, phase, ampTop: 5.0, ampBot: 5.0);
   @override
   bool shouldReclip(covariant _WavyClipper old) => old.phase != phase;
 }
@@ -600,16 +646,17 @@ class _WavyClipper extends CustomClipper<Path> {
 class _OuterShadowWavyPainter extends CustomPainter {
   final double phase;
   _OuterShadowWavyPainter(this.phase);
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     final path = _getMorphingPillPath(size, phase, ampTop: 5.0, ampBot: 5.0);
     // Dark shadow tracking the outer shape exactly
     canvas.drawShadow(path, Colors.black.withValues(alpha: 0.08), 16, true);
   }
-  
+
   @override
-  bool shouldRepaint(covariant _OuterShadowWavyPainter old) => old.phase != phase;
+  bool shouldRepaint(covariant _OuterShadowWavyPainter old) =>
+      old.phase != phase;
 }
 
 class _WavyGlassInputPainter extends CustomPainter {
@@ -619,7 +666,8 @@ class _WavyGlassInputPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final baseLayer = _getMorphingPillPath(size, phase, ampTop: 5.0, ampBot: 5.0);
+    final baseLayer =
+        _getMorphingPillPath(size, phase, ampTop: 5.0, ampBot: 5.0);
 
     canvas.save();
     canvas.clipPath(baseLayer);
@@ -634,7 +682,8 @@ class _WavyGlassInputPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 24
         ..shader = LinearGradient(
-          begin: Alignment.topCenter, end: Alignment.bottomCenter,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
             Colors.black.withValues(alpha: 0.12),
             Colors.transparent,
@@ -648,7 +697,8 @@ class _WavyGlassInputPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 36
       ..shader = LinearGradient(
-        begin: Alignment.centerLeft, end: Alignment.centerRight,
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
         colors: [
           Colors.black.withValues(alpha: 0.14),
           Colors.transparent,
@@ -657,21 +707,23 @@ class _WavyGlassInputPainter extends CustomPainter {
         stops: const [0.0, 0.35, 1.0],
       ).createShader(rect);
     canvas.drawPath(baseLayer, sideRefraction);
-    
+
     // 3. Iridescent caustics
     // offset 3px inside logically, mimicking internal liquid reflections!
-    final iridescencePath = _getMorphingPillPath(size, phase, ampTop: 5.0, ampBot: 5.0, topYOffset: 3.0, botYOffset: -3.0);
+    final iridescencePath = _getMorphingPillPath(size, phase,
+        ampTop: 5.0, ampBot: 5.0, topYOffset: 3.0, botYOffset: -3.0);
     canvas.drawPath(
       iridescencePath,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 5.0
         ..shader = LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
             const Color(0xFFC084FC).withValues(alpha: 0.7), // Theme purple glow
-            Colors.white.withValues(alpha: 0.2),            // Transparent pass
-            Colors.cyan.withValues(alpha: 0.5),             // Fluid inner gradient 
+            Colors.white.withValues(alpha: 0.2), // Transparent pass
+            Colors.cyan.withValues(alpha: 0.5), // Fluid inner gradient
             const Color(0xFF9333EA).withValues(alpha: 0.6), // Darker coach vibe
           ],
           stops: const [0.0, 0.4, 0.7, 1.0],
@@ -681,14 +733,20 @@ class _WavyGlassInputPainter extends CustomPainter {
 
     // 4. Heavy white fluid reflections
     // Flowing independently mostly on top inner edge
-    final topWhite = _getMorphingPillPath(size, phase, ampTop: 6.0, ampBot: 4.0, topYOffset: 1.0, botYOffset: -1.0, phaseOffset: 0.5);
+    final topWhite = _getMorphingPillPath(size, phase,
+        ampTop: 6.0,
+        ampBot: 4.0,
+        topYOffset: 1.0,
+        botYOffset: -1.0,
+        phaseOffset: 0.5);
     canvas.drawPath(
       topWhite,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.0
         ..shader = LinearGradient(
-          begin: Alignment.centerLeft, end: Alignment.centerRight,
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
           colors: [
             Colors.white.withValues(alpha: 0.0),
             Colors.white.withValues(alpha: 0.9),
@@ -701,14 +759,20 @@ class _WavyGlassInputPainter extends CustomPainter {
     );
 
     // Thin inner rim highlight (gives depth to the bottom edge)
-    final botWhite = _getMorphingPillPath(size, phase, ampTop: 4.0, ampBot: 6.0, topYOffset: 5.0, botYOffset: -5.0, phaseOffset: -0.5);
+    final botWhite = _getMorphingPillPath(size, phase,
+        ampTop: 4.0,
+        ampBot: 6.0,
+        topYOffset: 5.0,
+        botYOffset: -5.0,
+        phaseOffset: -0.5);
     canvas.drawPath(
       botWhite,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0
         ..shader = LinearGradient(
-          begin: Alignment.centerLeft, end: Alignment.centerRight,
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
           colors: [
             Colors.transparent,
             Colors.white.withValues(alpha: 0.6),
@@ -727,10 +791,11 @@ class _WavyGlassInputPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0
         ..shader = LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: [
             Colors.white.withValues(alpha: 0.9),
-            const Color(0xFFC084FC).withValues(alpha: 0.4), 
+            const Color(0xFFC084FC).withValues(alpha: 0.4),
             Colors.black.withValues(alpha: 0.15),
           ],
         ).createShader(rect),
@@ -738,17 +803,20 @@ class _WavyGlassInputPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _WavyGlassInputPainter old) => old.phase != phase;
+  bool shouldRepaint(covariant _WavyGlassInputPainter old) =>
+      old.phase != phase;
 }
 
 class _InnerCavityPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(size.height / 2));
-    
+    final rrect =
+        RRect.fromRectAndRadius(rect, Radius.circular(size.height / 2));
+
     // Frost base
-    canvas.drawRRect(rrect, Paint()..color = Colors.white.withValues(alpha: 0.15));
+    canvas.drawRRect(
+        rrect, Paint()..color = Colors.white.withValues(alpha: 0.15));
 
     // Inner top shadow
     canvas.save();
@@ -763,7 +831,8 @@ class _InnerCavityPainter extends CustomPainter {
 
     // Bottom crisp white lip
     canvas.save();
-    canvas.clipRect(Rect.fromLTWH(0, size.height * 0.5, size.width, size.height * 0.5));
+    canvas.clipRect(
+        Rect.fromLTWH(0, size.height * 0.5, size.width, size.height * 0.5));
     final bottomLip = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
@@ -771,6 +840,7 @@ class _InnerCavityPainter extends CustomPainter {
     canvas.drawRRect(rrect, bottomLip);
     canvas.restore();
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
@@ -798,14 +868,72 @@ class _CoachTabState extends ConsumerState<CoachTab> {
   final List<_CoachMessage> _messages = [];
   final List<Map<String, dynamic>> _geminiHistory = [];
 
+  /// IDs of messages already displayed — prevents proactive stream duplicates.
+  final Set<String> _seenMessageIds = {};
+
+  /// Firestore listener for proactive rule-triggered coach messages.
+  StreamSubscription? _proactiveSub;
+
   @override
   void initState() {
     super.initState();
     _fetchCoachName();
     _loadHistory();
+    _listenForProactiveMessages();
     _ctrl.addListener(() {
       final has = _ctrl.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
+    });
+  }
+
+  /// Subscribes to `/users/{uid}/coach_messages` ordered by timestamp.
+  /// When the rule engine sends a proactive message, it appears here
+  /// in real time alongside interactive chat turns.
+  void _listenForProactiveMessages() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    _proactiveSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('coach_messages')
+        .orderBy('timestamp')
+        .snapshots()
+        .listen((snapshot) {
+      for (final change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final data = change.doc.data();
+          if (data == null) continue;
+          final messageId = data['messageId'] as String? ?? change.doc.id;
+          // Skip if already displayed (loaded from coach_chats history)
+          if (_seenMessageIds.contains(messageId)) continue;
+          _seenMessageIds.add(messageId);
+
+          final text = data['text'] as String? ??
+              data['message'] as String? ??
+              data['body'] as String? ??
+              '';
+          if (text.isEmpty) continue;
+
+          if (mounted) {
+            setState(() {
+              _messages.add(_CoachMessage(text: text, isUser: false));
+              _geminiHistory.add({
+                'role': 'model',
+                'parts': [
+                  {'text': text},
+                ],
+              });
+            });
+            _chatSession?.appendModelMessage(text);
+            debugPrint(
+                '[CoachTab] Proactive coach message displayed: $messageId');
+            _scrollToBottom();
+          }
+        }
+      }
+    }, onError: (e) {
+      debugPrint('[CoachTab] Error listening to coach_messages: $e');
     });
   }
 
@@ -819,10 +947,14 @@ class _CoachTabState extends ConsumerState<CoachTab> {
           for (final turn in turns) {
             final isUser = turn['isUser'] as bool;
             final text = turn['text'] as String;
+            final id = turn['id'] as String? ?? '';
+            if (id.isNotEmpty) _seenMessageIds.add(id);
             _messages.add(_CoachMessage(text: text, isUser: isUser));
             _geminiHistory.add({
               'role': isUser ? 'user' : 'model',
-              'parts': [{'text': text}],
+              'parts': [
+                {'text': text}
+              ],
             });
           }
         });
@@ -830,7 +962,8 @@ class _CoachTabState extends ConsumerState<CoachTab> {
       } else if (mounted) {
         setState(() {
           _messages.add(_CoachMessage(
-            text: "Hello! I'm $_coachName, your personal AI coach. How can I support you today?",
+            text:
+                "Hello! I'm $_coachName, your personal AI coach. How can I support you today?",
             isUser: false,
           ));
         });
@@ -848,7 +981,8 @@ class _CoachTabState extends ConsumerState<CoachTab> {
         if (data != null && mounted) {
           if (data.containsKey('onboarding')) {
             final ob = data['onboarding'] as Map<String, dynamic>;
-            if (ob.containsKey('coachName') && ob['coachName'].toString().isNotEmpty) {
+            if (ob.containsKey('coachName') &&
+                ob['coachName'].toString().isNotEmpty) {
               setState(() => _coachName = ob['coachName'].toString());
             }
           }
@@ -861,6 +995,7 @@ class _CoachTabState extends ConsumerState<CoachTab> {
 
   @override
   void dispose() {
+    _proactiveSub?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
     _focus.dispose();
@@ -870,7 +1005,8 @@ class _CoachTabState extends ConsumerState<CoachTab> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
-        _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        _scroll.animateTo(0,
+            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
   }
@@ -885,7 +1021,7 @@ class _CoachTabState extends ConsumerState<CoachTab> {
     });
     _ctrl.clear();
     _scrollToBottom();
-    
+
     try {
       final userTurnId = const Uuid().v4();
       await FirestoreService().saveCoachChatTurn('main_thread', userTurnId, {
@@ -897,14 +1033,16 @@ class _CoachTabState extends ConsumerState<CoachTab> {
 
       if (_chatSession == null) {
         final ob = ref.read(onboardingProvider);
-        final tone = ob.coachStyle.isEmpty ? 'Empathetic and motivating' : ob.coachStyle;
+        final tone =
+            ob.coachStyle.isEmpty ? 'Empathetic and motivating' : ob.coachStyle;
         final coachService = ref.read(coachServiceProvider);
-        
-        _chatSession = await coachService.startChat(_coachName, tone, initialHistory: List.from(_geminiHistory));
+
+        _chatSession = await coachService.startChat(_coachName, tone,
+            initialHistory: List.from(_geminiHistory));
       }
-      
+
       final reply = await _chatSession!.sendMessage(text);
-      
+
       final coachTurnId = const Uuid().v4();
       await FirestoreService().saveCoachChatTurn('main_thread', coachTurnId, {
         'id': coachTurnId,
@@ -914,7 +1052,7 @@ class _CoachTabState extends ConsumerState<CoachTab> {
       });
 
       if (!mounted) return;
-      
+
       setState(() {
         _isTyping = false;
         _messages.add(_CoachMessage(text: reply, isUser: false));
@@ -924,7 +1062,10 @@ class _CoachTabState extends ConsumerState<CoachTab> {
       if (!mounted) return;
       setState(() {
         _isTyping = false;
-        _messages.add(_CoachMessage(text: "I'm having trouble connecting right now, but remember: Every setback is data, not defeat. Keep moving forward! 🌟", isUser: false));
+        _messages.add(_CoachMessage(
+            text:
+                "I'm having trouble connecting right now, but remember: Every setback is data, not defeat. Keep moving forward! 🌟",
+            isUser: false));
       });
       _scrollToBottom();
     }
@@ -942,8 +1083,8 @@ class _CoachTabState extends ConsumerState<CoachTab> {
     // When keyboard is up, lift the input bar above the keyboard
     final double keyboardHeight = mq.viewInsets.bottom;
     final double inputBottom = keyboardHeight > 0
-        ? keyboardHeight + 8          // above keyboard
-        : tabBarHeight;               // above tab bar normally
+        ? keyboardHeight + 8 // above keyboard
+        : tabBarHeight; // above tab bar normally
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -961,7 +1102,11 @@ class _CoachTabState extends ConsumerState<CoachTab> {
                       return const LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, Colors.white, Colors.white],
+                        colors: [
+                          Colors.transparent,
+                          Colors.white,
+                          Colors.white
+                        ],
                         stops: [0.0, 0.05, 1.0],
                       ).createShader(bounds);
                     },
@@ -977,9 +1122,13 @@ class _CoachTabState extends ConsumerState<CoachTab> {
                       physics: const BouncingScrollPhysics(),
                       itemCount: _messages.length + (_isTyping ? 1 : 0),
                       itemBuilder: (context, i) {
-                        if (_isTyping && i == 0) return const Padding(padding: EdgeInsets.only(bottom: 16), child: _TypingBubble());
+                        if (_isTyping && i == 0)
+                          return const Padding(
+                              padding: EdgeInsets.only(bottom: 16),
+                              child: _TypingBubble());
                         final offset = _isTyping ? 1 : 0;
-                        final msg = _messages[_messages.length - 1 - (i - offset)];
+                        final msg =
+                            _messages[_messages.length - 1 - (i - offset)];
                         return Padding(
                           key: ValueKey(_messages.length - 1 - (i - offset)),
                           padding: const EdgeInsets.only(bottom: 16),
@@ -1019,12 +1168,14 @@ class _CoachTabState extends ConsumerState<CoachTab> {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 58, height: 58,
+            width: 58,
+            height: 58,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: const Color(0xFFC084FC).withValues(alpha: 0.25),
             ),
-            child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF9333EA), size: 30),
+            child: const Icon(Icons.smart_toy_rounded,
+                color: Color(0xFF9333EA), size: 30),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1032,33 +1183,53 @@ class _CoachTabState extends ConsumerState<CoachTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(_coachName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: -0.5)),
+                Text(_coachName,
+                    style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.5)),
                 const SizedBox(height: 4),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Container(
-                      width: 8, height: 8,
+                      width: 8,
+                      height: 8,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle, color: const Color(0xFF4CAF50),
-                        boxShadow: [BoxShadow(color: const Color(0xFF4CAF50).withValues(alpha: 0.5), blurRadius: 4)],
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF4CAF50),
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFF4CAF50)
+                                  .withValues(alpha: 0.5),
+                              blurRadius: 4)
+                        ],
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text('Online · Here for you', style: TextStyle(fontSize: 14, color: const Color(0xFF64748B).withValues(alpha: 0.9), fontWeight: FontWeight.w600)),
+                    Text('Online · Here for you',
+                        style: TextStyle(
+                            fontSize: 14,
+                            color:
+                                const Color(0xFF64748B).withValues(alpha: 0.9),
+                            fontWeight: FontWeight.w600)),
                   ],
                 ),
               ],
             ),
           ),
           Container(
-            width: 48, height: 48,
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white.withValues(alpha: 0.35),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.9), width: 1.2),
             ),
-            child: const Icon(Icons.more_horiz_rounded, color: Color(0xFF64748B), size: 24),
+            child: const Icon(Icons.more_horiz_rounded,
+                color: Color(0xFF64748B), size: 24),
           ),
         ],
       ),

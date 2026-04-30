@@ -1,10 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+// firebase_auth is not directly used here — auth comes through UserRepository.
 import 'package:flutter/foundation.dart';
+import 'package:optivus2/models/context_snapshot.dart';
 import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/streak_service.dart';
 import 'package:optivus2/services/habit_service.dart';
 import 'package:optivus2/core/utils/uuid_generator.dart';
 import 'package:optivus2/models/coach_rule.dart';
+import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/event_model.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/services/gemini_service.dart';
@@ -26,48 +29,77 @@ class CoachService {
         _userRepo = userRepo;
 
   Future<String> generateSystemPrompt(String coachName, String tone) async {
-    // 1. Fetch onboarding data for goals and bad habits
-    final onboardingSnapshot = await _userRepo.getOnboardingData();
-    final onboarding = onboardingSnapshot?.onboarding;
-    final goals = (onboarding?['goals'] as List?)?.join(', ') ?? 'No specific goals set';
-    final badHabits = (onboarding?['badHabits'] as List?)?.join(', ') ?? 'None specified';
-
-    // 2. Fetch today's tasks
-    final today = DateTime.now();
-    final tasks = await _taskService.tasksFor(today).first;
-    final tasksList = tasks
-        .map((t) => "- ${t.type.name} at ${t.plannedStart.hour}:${t.plannedStart.minute.toString().padLeft(2, '0')}")
-        .join('\n');
-
-    // 3. Fetch active streaks
-    final activeHabits = await _habitService.habits().first;
-    final streaksList = <String>[];
-    for (var habit in activeHabits) {
-      final streak = await _streakService.getStreak(habit.id);
-      if (streak != null && streak.currentCount > 0) {
-        streaksList.add("- ${habit.name}: ${streak.currentCount} days");
-      }
-    }
-    final streaksText = streaksList.isNotEmpty ? streaksList.join('\n') : "No active streaks yet.";
+    final context = await _loadCoachGroundingContext();
 
     return '''You are the user's personal Optivus AI life coach. Your name is $coachName.
 Your tone should be: $tone.
-User's main goals: $goals.
-Habits trying to break: $badHabits.
+User's main goals: ${context.goals}.
+Good habits they want to build: ${context.goodHabits}.
+Habits trying to break: ${context.badHabits}.
 
 Current Context:
 Today's Tasks:
-${tasksList.isEmpty ? "None scheduled for today." : tasksList}
+${context.todayTasks}
+
+Active Habits:
+${context.activeHabits}
 
 Active Streaks:
-$streaksText
+${context.activeStreaks}
 
-You are embedded in their daily timeline app. Keep responses engaging, supportive, and relatively concise (1-3 paragraphs max) so they fit well in a chat bubble.''';
+You are embedded in their daily timeline app. Keep responses engaging, supportive, and relatively concise (1-3 paragraphs max) so they fit well in a chat bubble.
+Return only the final coach message text, with no JSON or markdown.''';
   }
 
-  Future<GeminiChatSession> startChat(String coachName, String tone, {List<Map<String, dynamic>>? initialHistory}) async {
+  Future<GeminiChatSession> startChat(
+    String coachName,
+    String tone, {
+    List<Map<String, dynamic>>? initialHistory,
+  }) async {
     final systemPrompt = await generateSystemPrompt(coachName, tone);
-    return GeminiService().startChat(systemPrompt, initialHistory: initialHistory);
+    return GeminiService()
+        .startChat(systemPrompt, initialHistory: initialHistory);
+  }
+
+  /// Builds a structured context payload for the Cloud Function.
+  ///
+  /// Reads onboarding, today's tasks, habits, and streaks from Firestore
+  /// and returns a map that the Cloud Function uses to build an enriched
+  /// system prompt.  Called by [EventOrchestrator] after the rule engine
+  /// has already decided to speak — this method does NOT decide whether
+  /// to speak.
+  Future<Map<String, dynamic>> buildContextPayload({
+    required String uid,
+    required ContextSnapshot snapshot,
+    required Rule rule,
+  }) async {
+    debugPrint(
+        '[CoachService] Building rule context: uid=$uid ruleId=${rule.id}');
+
+    final onboardingSnapshot = await _userRepo.getOnboardingData();
+    final onboarding = onboardingSnapshot?.onboarding;
+    final coachName = (onboarding?['coachName'] as String?)?.isNotEmpty == true
+        ? onboarding!['coachName'] as String
+        : 'AI Coach';
+    final tone = (onboarding?['coachStyle'] as String?)?.isNotEmpty == true
+        ? onboarding!['coachStyle'] as String
+        : 'Empathetic and motivating';
+    final context = await _loadCoachGroundingContext();
+
+    return <String, dynamic>{
+      'coachName': coachName,
+      'tone': tone,
+      'goals': context.goals,
+      'goodHabits': context.goodHabits,
+      'badHabits': context.badHabits,
+      'todayTasks': context.todayTasks,
+      'activeHabits': context.activeHabits,
+      'activeStreaks': context.activeStreaks,
+      'ruleId': rule.id,
+      'ruleIntent': rule.aiIntent,
+      'userState': snapshot.userState,
+      'missionScore': snapshot.missionScore,
+    };
   }
 
   /// Saves a proactive coach message to Firestore and writes the
@@ -97,7 +129,11 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
       'messageType': 'check_in',
       'priority': rule.priority,
       'ruleId': rule.id,
+      'ruleIntent': rule.aiIntent,
+      'source': 'rule_engine',
+      'deliveryType': 'proactive_rule',
       'triggerEventId': triggerEvent.eventId,
+      'triggerEventName': triggerEvent.eventName,
       'timestamp': Timestamp.fromDate(now),
       'createdAt': Timestamp.fromDate(now),
       'aiGenerated': true,
@@ -114,7 +150,11 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
     );
 
     batch.set(
-      userRef.collection('coach_chats').doc('main_thread').collection('turns').doc(messageId),
+      userRef
+          .collection('coach_chats')
+          .doc('main_thread')
+          .collection('turns')
+          .doc(messageId),
       {
         'id': messageId,
         'text': message,
@@ -132,10 +172,14 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
       userRef.collection('coach_speak_log').doc(logId),
       {
         'logId': logId,
+        'userId': uid,
         'triggerEventId': triggerEvent.eventId,
+        'triggerEventName': triggerEvent.eventName,
         'ruleId': rule.id,
+        'ruleIntent': rule.aiIntent,
         'decision': 'spoke',
         'messageId': messageId,
+        'messagePath': 'users/$uid/coach_messages/$messageId',
         'createdAt': Timestamp.fromDate(now),
         'schemaVersion': 1,
       },
@@ -178,7 +222,7 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
         .set({
       'logId': logId,
       'triggerEventId': triggerEventId,
-      'ruleId': ruleId,       // null when no rule matched
+      'ruleId': ruleId, // null when no rule matched
       'decision': decision,
       'messageId': messageId, // null for all drop decisions
       'createdAt': Timestamp.fromDate(now),
@@ -188,5 +232,83 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
     debugPrint('[CoachService] DECISION — '
         'decision=$decision ruleId=$ruleId '
         'trigger=$triggerEventId logId=$logId');
+  }
+
+  Future<
+      ({
+        String goals,
+        String goodHabits,
+        String badHabits,
+        String todayTasks,
+        String activeHabits,
+        String activeStreaks,
+      })> _loadCoachGroundingContext() async {
+    final onboardingSnapshot = await _userRepo.getOnboardingData();
+    final onboarding = onboardingSnapshot?.onboarding;
+    final goals =
+        (onboarding?['goals'] as List?)?.join(', ') ?? 'No specific goals set';
+    final goodHabits =
+        (onboarding?['goodHabits'] as List?)?.join(', ') ?? 'None specified';
+    final badHabits =
+        (onboarding?['badHabits'] as List?)?.join(', ') ?? 'None specified';
+
+    final today = DateTime.now();
+    final tasks = await _taskService.tasksFor(today).first;
+    final todayTasks = tasks.isEmpty
+        ? 'None scheduled for today.'
+        : tasks
+            .map(
+              (task) => '- ${task.title.isEmpty ? task.type.name : task.title} '
+                  '(${_formatTime(task.plannedStart)}-${_formatTime(task.plannedEnd)})',
+            )
+            .join('\n');
+
+    final activeHabits = await _habitService.habits().first;
+    final activeHabitsText = activeHabits.isEmpty
+        ? 'No active habits yet.'
+        : activeHabits.map(_formatHabitSummary).join('\n');
+
+    final streaksList = <String>[];
+    for (final habit in activeHabits) {
+      final streak = await _streakService.getStreak(habit.id);
+      if (streak != null && streak.currentCount > 0) {
+        streaksList.add('- ${habit.name}: ${streak.currentCount} days');
+      }
+    }
+    final activeStreaks = streaksList.isNotEmpty
+        ? streaksList.join('\n')
+        : 'No active streaks yet.';
+
+    return (
+      goals: goals,
+      goodHabits: goodHabits,
+      badHabits: badHabits,
+      todayTasks: todayTasks,
+      activeHabits: activeHabitsText,
+      activeStreaks: activeStreaks,
+    );
+  }
+
+  String _formatHabitSummary(HabitModel habit) {
+    if (habit.kind == HabitKind.good) {
+      final goalText = habit.dailyGoal != null
+          ? 'goal: ${habit.dailyGoal} ${habit.unit}/day'
+          : 'goal: show up';
+      return '- ${habit.name} (build, $goalText)';
+    }
+
+    final goalText = switch (habit.goalType ?? BadHabitGoalType.awarenessOnly) {
+      BadHabitGoalType.eliminate => 'goal: eliminate',
+      BadHabitGoalType.reduceToTarget =>
+        'goal: <= ${habit.target ?? "target"} ${habit.unit}/day',
+      BadHabitGoalType.awarenessOnly => 'goal: awareness',
+    };
+    return '- ${habit.name} (reduce, $goalText)';
+  }
+
+  String _formatTime(DateTime time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
   }
 }
