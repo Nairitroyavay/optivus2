@@ -54,20 +54,8 @@ class ProfileTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
 
-                // 4. Identity Statement
-                _buildIdentityStatement(),
-                const SizedBox(height: 24),
-
-                // 5. Strengths
-                _buildSectionHeader('STRENGTHS'),
-                const SizedBox(height: 12),
-                _buildStrengths(),
-                const SizedBox(height: 24),
-
-                // 6. Areas to Improve
-                _buildSectionHeader('AREAS TO IMPROVE'),
-                const SizedBox(height: 12),
-                _buildAreasToImprove(),
+                // 4. Profile insights
+                _buildProfileInsights(),
                 const SizedBox(height: 24),
                 // 7. Account
                 _buildSectionHeader('ACCOUNT'),
@@ -163,26 +151,60 @@ class ProfileTab extends StatelessWidget {
                 ),
               ),
             ),
-            // Edit button on bottom right
-            Positioned(
-              bottom: 4,
-              right: 8,
-              child: LiquidIconBtn(
-                icon: Icons.edit_rounded,
-                size: 36,
-                color: const Color(
-                    0xFF5589BD), // Exactly matching the blue pencil in the image
-                isCircle: true,
-                onTap: () {},
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildIdentityStatement() {
+  Widget _buildProfileInsights() {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: FirestoreService().getUserProfile(),
+      builder: (context, snapshot) {
+        final profile = snapshot.data ?? const <String, dynamic>{};
+        final onboarding = Map<String, dynamic>.from(
+          profile['onboarding'] as Map? ?? const <String, dynamic>{},
+        );
+        final goals =
+            List<String>.from(onboarding['goals'] as List? ?? const []);
+        final categories = List<String>.from(
+            onboarding['selectedCategories'] as List? ?? const []);
+        final badHabits =
+            List<String>.from(onboarding['badHabits'] as List? ?? const []);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildIdentityStatement(goals),
+            const SizedBox(height: 24),
+            _buildSectionHeader('FOCUS AREAS'),
+            const SizedBox(height: 12),
+            _buildPills(
+              values: categories,
+              emptyLabel: 'No focus areas selected',
+              icon: Icons.track_changes_rounded,
+              baseColor: const Color(0xFF4DB685),
+            ),
+            const SizedBox(height: 24),
+            _buildSectionHeader('HABITS TO BREAK'),
+            const SizedBox(height: 12),
+            _buildPills(
+              values: badHabits,
+              emptyLabel: 'No habits selected',
+              icon: Icons.hourglass_empty_rounded,
+              baseColor: const Color(0xFFD66A3D),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildIdentityStatement(List<String> goals) {
+    final text = goals.isEmpty
+        ? 'Complete onboarding to define your active identity goals.'
+        : 'Working toward ${goals.take(3).join(', ').replaceAll('\n', ' ')}.';
+
     return LiquidCard(
       frosted: true,
       padding: const EdgeInsets.all(20),
@@ -207,9 +229,9 @@ class ProfileTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            '"Optimizing life through clarity and purpose. Driven by data, fueled by ambition."',
-            style: TextStyle(
+          Text(
+            text,
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: kInk,
@@ -234,46 +256,33 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
-  Widget _buildStrengths() {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _GlassPill(
-          icon: Icons.bolt_rounded,
-          label: 'Strategic',
-          baseColor: const Color(0xFF4DB685),
+  Widget _buildPills({
+    required List<String> values,
+    required String emptyLabel,
+    required IconData icon,
+    required Color baseColor,
+  }) {
+    if (values.isEmpty) {
+      return Text(
+        emptyLabel,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: kSub.withValues(alpha: 0.8),
         ),
-        _GlassPill(
-          icon: Icons.track_changes_rounded,
-          label: 'Focused',
-          baseColor: const Color(0xFF4DB685),
-        ),
-        _GlassPill(
-          icon: Icons.lightbulb_outline_rounded,
-          label: 'Creative',
-          baseColor: const Color(0xFF4DB685),
-        ),
-      ],
-    );
-  }
+      );
+    }
 
-  Widget _buildAreasToImprove() {
     return Wrap(
       spacing: 12,
       runSpacing: 12,
-      children: [
-        _GlassPill(
-          icon: Icons.hourglass_empty_rounded,
-          label: 'Impatient',
-          baseColor: const Color(0xFFD66A3D),
-        ),
-        _GlassPill(
-          icon: Icons.accessibility_new_rounded,
-          label: 'Perfectionist',
-          baseColor: const Color(0xFFD66A3D),
-        ),
-      ],
+      children: values
+          .map((value) => _GlassPill(
+                icon: icon,
+                label: value.replaceAll('\n', ' '),
+                baseColor: baseColor,
+              ))
+          .toList(),
     );
   }
 
@@ -288,21 +297,18 @@ class ProfileTab extends StatelessWidget {
             icon: Icons.email_outlined,
             iconColor: const Color(0xFF4B8EE3),
             title: 'Email',
-            hasArrow: true,
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.star_border_rounded,
             iconColor: const Color(0xFFC48E33),
             title: 'Subscription',
-            hasArrow: true,
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.notifications_outlined,
             iconColor: const Color(0xFF4DB685),
             title: 'Notification',
-            hasArrow: true,
           ),
           _buildDivider(),
           _buildPrefTile(
@@ -317,7 +323,6 @@ class ProfileTab extends StatelessWidget {
             icon: Icons.lock_outline_rounded,
             iconColor: const Color(0xFFD66A3D),
             title: 'Security',
-            hasArrow: true,
           ),
         ],
       ),
@@ -382,28 +387,24 @@ class ProfileTab extends StatelessWidget {
             icon: Icons.bug_report_outlined,
             iconColor: const Color(0xFFD66A3D),
             title: 'Report bug',
-            hasArrow: true,
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.help_outline_rounded,
             iconColor: const Color(0xFF4B8EE3),
             title: 'Help center',
-            hasArrow: true,
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.description_outlined,
             iconColor: const Color(0xFF4DB685),
             title: 'Terms of use',
-            hasArrow: true,
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.privacy_tip_outlined,
             iconColor: const Color(0xFF5E4B9C),
             title: 'Privacy policy',
-            hasArrow: true,
           ),
           _buildDivider(),
           _buildPrefTile(
@@ -411,7 +412,7 @@ class ProfileTab extends StatelessWidget {
             iconColor: const Color(0xFFC48E33),
             title: 'Version',
             trailing: Text(
-              'Optivus v2.4.0',
+              'Optivus v1.0.0',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,

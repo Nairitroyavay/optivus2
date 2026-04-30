@@ -1,4 +1,3 @@
-
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,7 +20,6 @@ class _LiquidSwitchState extends State<_LiquidSwitch>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final Animation<double> _anim;
-
 
   @override
   void initState() {
@@ -79,10 +77,8 @@ class _SwitchPainter extends CustomPainter {
 
     // ── 1. Drop shadow ─────────────────────────────────────────────────────
     final shadowPaint = Paint()
-      ..color = Color.lerp(
-          Colors.black.withValues(alpha: 0.08),
-          const Color(0xFF00CDCD).withValues(alpha: 0.22),
-          t)!
+      ..color = Color.lerp(Colors.black.withValues(alpha: 0.08),
+          const Color(0xFF00CDCD).withValues(alpha: 0.22), t)!
       ..maskFilter = const MaskFilter.blur(BlurStyle.outer, 6);
     canvas.drawRRect(trackRect, shadowPaint);
 
@@ -116,8 +112,8 @@ class _SwitchPainter extends CustomPainter {
     }
 
     // ── 3. Inner top highlight shimmer ────────────────────────────────────
-    final sheenRect =
-        RRect.fromRectAndRadius(Rect.fromLTWH(2, 1, w - 4, h * 0.4), Radius.circular(r));
+    final sheenRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(2, 1, w - 4, h * 0.4), Radius.circular(r));
     final sheenPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
@@ -155,8 +151,7 @@ class _SwitchPainter extends CustomPainter {
         thumbCenter,
         thumbR + 3,
         Paint()
-          ..color =
-              const Color(0xFF00FFFF).withValues(alpha: t * 0.25)
+          ..color = const Color(0xFF00FFFF).withValues(alpha: t * 0.25)
           ..maskFilter = const MaskFilter.blur(BlurStyle.outer, 6),
       );
     }
@@ -171,8 +166,7 @@ class _SwitchPainter extends CustomPainter {
     );
 
     // 5c. Thumb body — radial glass sphere gradient
-    final thumbRect =
-        Rect.fromCircle(center: thumbCenter, radius: thumbR);
+    final thumbRect = Rect.fromCircle(center: thumbCenter, radius: thumbR);
     final thumbPaint = Paint()
       ..shader = RadialGradient(
         center: const Alignment(-0.30, -0.45),
@@ -187,9 +181,11 @@ class _SwitchPainter extends CustomPainter {
     canvas.drawCircle(thumbCenter, thumbR, thumbPaint);
 
     // 5d. Specular highlight (top-left crescent)
-    final hlOffset = Offset(thumbCenter.dx - thumbR * 0.28, thumbCenter.dy - thumbR * 0.32);
+    final hlOffset =
+        Offset(thumbCenter.dx - thumbR * 0.28, thumbCenter.dy - thumbR * 0.32);
     canvas.drawOval(
-      Rect.fromCenter(center: hlOffset, width: thumbR * 0.70, height: thumbR * 0.42),
+      Rect.fromCenter(
+          center: hlOffset, width: thumbR * 0.70, height: thumbR * 0.42),
       Paint()
         ..shader = RadialGradient(
           colors: [
@@ -447,7 +443,8 @@ class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
               ),
               // ── Row content ──────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 child: Row(
                   children: [
                     _GlassOrb(
@@ -473,123 +470,6 @@ class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── "Add Custom Habit" glass pill ─────────────────────────────────────────
-  Widget _buildAddCustomButton() {
-    return GestureDetector(
-      onTap: () {},
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.70),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
-            ),
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.45),
-              blurRadius: 8,
-              spreadRadius: -2,
-              offset: const Offset(-1, -1),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28.5),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-            child: Stack(
-              children: [
-                // iridescent tint
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.55),
-                          Colors.white.withValues(alpha: 0.28),
-                          Colors.white.withValues(alpha: 0.18),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                // Specular top line
-                Positioned(
-                  top: 0,
-                  left: 24,
-                  right: 24,
-                  child: Container(
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [
-                        Colors.white.withValues(alpha: 0.0),
-                        Colors.white.withValues(alpha: 0.80),
-                        Colors.white.withValues(alpha: 0.0),
-                      ]),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Colors.white.withValues(alpha: 0.85),
-                              Colors.white.withValues(alpha: 0.40),
-                            ],
-                          ),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.70),
-                            width: 1.0,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.add, color: Color(0xFF5A5A72), size: 14),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'Add Custom Habit',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF3A3A55),
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       ),
@@ -710,10 +590,16 @@ class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
                           // Cigarettes — warm amber / pink iridescence
                           _buildHabitRow(
                             icon: Icons.smoking_rooms_outlined,
-                            orbGradient: [const Color(0xFFFFB87A), const Color(0xFFF97D6A)],
+                            orbGradient: [
+                              const Color(0xFFFFB87A),
+                              const Color(0xFFF97D6A)
+                            ],
                             iconColor: const Color(0xFF92400E),
                             glowColor: const Color(0xFFFF9E5C),
-                            rowTint: [const Color(0xFFFFC9A0), const Color(0xFFFFA0B0)],
+                            rowTint: [
+                              const Color(0xFFFFC9A0),
+                              const Color(0xFFFFA0B0)
+                            ],
                             title: 'Cigarettes',
                             value: _cigarettes,
                             onChanged: (v) {
@@ -725,10 +611,16 @@ class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
                           // Doom Scrolling — sky blue with cyan iridescence
                           _buildHabitRow(
                             icon: Icons.phone_iphone_rounded,
-                            orbGradient: [const Color(0xFF98E8FF), const Color(0xFF38BDF8)],
+                            orbGradient: [
+                              const Color(0xFF98E8FF),
+                              const Color(0xFF38BDF8)
+                            ],
                             iconColor: const Color(0xFF0369A1),
                             glowColor: const Color(0xFF00CDCD),
-                            rowTint: [const Color(0xFFB0E8FF), const Color(0xFFB0C8FF)],
+                            rowTint: [
+                              const Color(0xFFB0E8FF),
+                              const Color(0xFFB0C8FF)
+                            ],
                             title: 'Doom Scrolling',
                             value: _doomScrolling,
                             onChanged: (v) {
@@ -740,10 +632,16 @@ class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
                           // Junk Food — golden yellow / peach iridescence
                           _buildHabitRow(
                             icon: Icons.fastfood_rounded,
-                            orbGradient: [const Color(0xFFFFE68A), const Color(0xFFFFB347)],
+                            orbGradient: [
+                              const Color(0xFFFFE68A),
+                              const Color(0xFFFFB347)
+                            ],
                             iconColor: const Color(0xFF78350F),
                             glowColor: const Color(0xFFF59E0B),
-                            rowTint: [const Color(0xFFFFE9A0), const Color(0xFFFFD0A0)],
+                            rowTint: [
+                              const Color(0xFFFFE9A0),
+                              const Color(0xFFFFD0A0)
+                            ],
                             title: 'Junk Food',
                             value: _junkFood,
                             onChanged: (v) {
@@ -755,10 +653,16 @@ class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
                           // Procrastination — violet / lavender iridescence
                           _buildHabitRow(
                             icon: Icons.schedule_rounded,
-                            orbGradient: [const Color(0xFFD9C4FF), const Color(0xFF9F7AEA)],
+                            orbGradient: [
+                              const Color(0xFFD9C4FF),
+                              const Color(0xFF9F7AEA)
+                            ],
                             iconColor: const Color(0xFF4C1D95),
                             glowColor: const Color(0xFF8B5CF6),
-                            rowTint: [const Color(0xFFD8B4FF), const Color(0xFFB4BCFF)],
+                            rowTint: [
+                              const Color(0xFFD8B4FF),
+                              const Color(0xFFB4BCFF)
+                            ],
                             title: 'Procrastination',
                             value: _procrastination,
                             onChanged: (v) {
@@ -766,11 +670,6 @@ class _OnboardingPage2State extends ConsumerState<OnboardingPage2> {
                               _updateHabits();
                             },
                           ),
-
-                          const SizedBox(height: 2),
-
-                          // Add Custom Habit
-                          _buildAddCustomButton(),
                         ],
                       ),
                     ),

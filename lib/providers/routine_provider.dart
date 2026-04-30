@@ -435,7 +435,8 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
 
   // ── Persistence ─────────────────────────────────────────────────────────
 
-  /// Load from Firestore; seed defaults if first-time user.
+  /// Load from Firestore. First-time users start with an empty routine until
+  /// onboarding or setup screens save their actual schedule.
   ///
   /// Always ends with a `_syncTasksToFirestore()` call so that task docs at
   /// `/users/{uid}/tasks` are up-to-date after every app start — not just
@@ -450,44 +451,12 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
         // never overwritten).
         _syncTasksToFirestore();
       } else {
-        // First-time user — seed demo defaults and persist them.
-        _seedDefaults();
-        _saveDebounced(); // _saveDebounced already calls _syncTasksToFirestore
+        state = const RoutineState();
       }
     } catch (e) {
       debugPrint('RoutineNotifier: failed to load routine: $e');
-      // Fallback to defaults so the UI isn't empty.
-      _seedDefaults();
-      // Attempt a best-effort sync even on error so today's tasks exist.
-      _syncTasksToFirestore();
+      state = const RoutineState();
     }
-  }
-
-  void _seedDefaults() {
-    final now = DateTime.now();
-    state = state.copyWith(
-      fixedBlocks: kDefaultFixedBlocks,
-      fixedScheduleSetUp: true,
-      longTermGoals: [
-        LongTermGoal(
-          id: 'goal_quit_smoking',
-          title: 'Quit smoking and alcohol',
-          emoji: '🚭',
-          startDate: now,
-          endDate: now.add(const Duration(days: 14)),
-          colorHex: '#CBD5E1',
-        ),
-        LongTermGoal(
-          id: 'goal_gym',
-          title: 'Gym Workout',
-          emoji: '💪',
-          startDate: now,
-          endDate: now.add(const Duration(days: 90)),
-          dailyTaskTime: '10:00',
-          colorHex: '#38BDF8',
-        ),
-      ],
-    );
   }
 
   /// Debounced save — collapses rapid mutations into a single Firestore write.
@@ -800,82 +769,5 @@ final customTasksProvider =
     StateProvider<Map<String, List<CustomTask>>>((ref) => {});
 
 final isPremiumProvider = StateProvider<bool>((ref) => false);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DEFAULT SEED DATA  (used when app is demoed without going through onboarding)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const kDefaultFixedBlocks = <FixedBlock>[
-  FixedBlock(
-      id: 'sleep',
-      title: 'Sleep',
-      emoji: '🛏️',
-      startMinute: 0,
-      endMinute: 390,
-      colorHex: '#C084FC'), // 12AM–6:30AM
-  FixedBlock(
-      id: 'classes',
-      title: 'Classes',
-      emoji: '🎓',
-      startMinute: 540,
-      endMinute: 720,
-      colorHex: '#378ADD'), // 9AM–12PM
-  FixedBlock(
-      id: 'eating',
-      title: 'Eating',
-      emoji: '🍽️',
-      startMinute: 780,
-      endMinute: 1020,
-      colorHex: '#FF9560'), // 1PM–5PM
-];
-
-const kDefaultSkinPlan = DaySkinPlan(
-  morning: [
-    SkinStep(emoji: '🟡', name: 'Vitamin C Serum', tag: 'Brightening'),
-    SkinStep(emoji: '☀️', name: 'SPF 50 Sunscreen', tag: 'UV Protection'),
-  ],
-  afternoon: [
-    SkinStep(emoji: '🫧', name: 'Face Wash', tag: 'Gentle Cleanser'),
-  ],
-  night: [
-    SkinStep(emoji: '🌙', name: 'Repair Night Cream', tag: 'Deep Moisturizing'),
-  ],
-);
-
-const kDefaultMealPlanMon = DayMealPlan(
-  meals: [
-    MealItem(emoji: '🥣', name: 'Oatmeal & Berries', time: '08:00 AM'),
-    MealItem(emoji: '🥗', name: 'Grilled Chicken Salad', time: '01:00 PM'),
-    MealItem(emoji: '🍎', name: 'Green Apple & Walnuts', time: '05:00 PM'),
-    MealItem(emoji: '🍣', name: 'Salmon with Asparagus', time: '08:30 PM'),
-  ],
-);
-
-const kDefaultClasses = <ClassItem>[
-  ClassItem(
-      subject: 'Data Structures',
-      room: 'Room 304',
-      professor: 'Prof. Sarah Jenkins',
-      startTime: '09:00',
-      endTime: '10:00',
-      weekday: 3,
-      colorHex: '#378ADD'),
-  ClassItem(
-      subject: 'Operating Systems',
-      room: 'Lab A',
-      professor: 'Dr. Alan Turing',
-      startTime: '11:00',
-      endTime: '12:00',
-      weekday: 3,
-      colorHex: '#FF9560'),
-  ClassItem(
-      subject: 'Chemistry Lab',
-      room: 'Building C',
-      professor: 'Ms. Curie',
-      startTime: '14:00',
-      endTime: '15:00',
-      weekday: 3,
-      colorHex: '#9B8FFF'),
-];
 
 enum RoutineFilter { all, fixedSchedule, skinCare, classes, eating }

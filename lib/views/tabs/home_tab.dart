@@ -61,9 +61,6 @@ class _HomeTabState extends ConsumerState<HomeTab>
   DateTime _focusMonth = DateTime(DateTime.now().year, DateTime.now().month);
   DateTime _selectedDay = DateTime.now();
 
-  // TODO: Populate event dots from actual routine data
-  final _events = const <int, Color>{};
-
   @override
   void initState() {
     super.initState();
@@ -269,6 +266,12 @@ class _HomeTabState extends ConsumerState<HomeTab>
     final totalTasks = tasks.length;
     final completedTasks =
         tasks.where((t) => t.state == TaskState.completed).length;
+    final plannedMinutes =
+        tasks.fold<int>(0, (sum, task) => sum + task.plannedDurationMin);
+    final completedMinutes = tasks.fold<int>(
+      0,
+      (sum, task) => sum + (task.actualDurationMin ?? 0),
+    );
     final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
 
     return Padding(
@@ -306,8 +309,8 @@ class _HomeTabState extends ConsumerState<HomeTab>
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _statPill('Tasks', '$completedTasks/$totalTasks'),
-                _statPill('Focus', '0h'),
-                _statPill('Cal', '0'),
+                _statPill('Done', '${completedMinutes}m'),
+                _statPill('Planned', '${plannedMinutes}m'),
               ],
             ),
           ],
@@ -370,24 +373,11 @@ class _HomeTabState extends ConsumerState<HomeTab>
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: _kInk)),
-                GestureDetector(
-                  onTap: () {},
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.5), width: 1),
-                    ),
-                    child: const Text('View All',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _kInk)),
-                  ),
-                ),
+                Text('${habits.length}',
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _kSubtext)),
               ],
             ),
           ),
@@ -425,6 +415,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
   // ── Streak Summary + Plan by Date (2-column) ───────────────────────────────
   Widget _streakSection() {
     final streaksAsync = ref.watch(allStreaksProvider);
+    final tasksAsync = ref.watch(todayTasksProvider);
     final streaks = streaksAsync.valueOrNull ?? [];
 
     int longestActive = 0;
@@ -491,25 +482,6 @@ class _HomeTabState extends ConsumerState<HomeTab>
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
                             color: _kInk)),
-                    GestureDetector(
-                      onTap: () {},
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.5),
-                              width: 1),
-                        ),
-                        child: const Text('Open Cal',
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: _kInk)),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -519,7 +491,9 @@ class _HomeTabState extends ConsumerState<HomeTab>
                   child: _InlineCalendar(
                     focusMonth: _focusMonth,
                     selectedDay: _selectedDay,
-                    events: _events,
+                    events: _eventsForMonth(
+                      tasksAsync.valueOrNull ?? const <TaskModel>[],
+                    ),
                     onMonthChanged: (d) => setState(() => _focusMonth = d),
                     onDayTapped: (d) => setState(() => _selectedDay = d),
                   ),
@@ -637,6 +611,18 @@ class _HomeTabState extends ConsumerState<HomeTab>
         ],
       ),
     );
+  }
+
+  Map<int, Color> _eventsForMonth(List<TaskModel> tasks) {
+    final events = <int, Color>{};
+    for (final task in tasks) {
+      if (task.plannedStart.year == _focusMonth.year &&
+          task.plannedStart.month == _focusMonth.month) {
+        events[task.plannedStart.day] =
+            task.state == TaskState.completed ? _kAmber : _kRingDark;
+      }
+    }
+    return events;
   }
 }
 

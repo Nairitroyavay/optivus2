@@ -62,17 +62,27 @@ class ScheduleItem {
   static IconData? _getIconData(dynamic code) {
     if (code == null) return null;
     final int codePoint = (code as num).toInt();
-    
+
     // We must return constant IconData to allow tree-shaking in release builds.
     // Dynamic IconData(codePoint) is not allowed.
-    if (codePoint == Icons.bed_rounded.codePoint) return Icons.bed_rounded;
-    if (codePoint == Icons.school_rounded.codePoint) return Icons.school_rounded;
-    if (codePoint == Icons.work_rounded.codePoint) return Icons.work_rounded;
-    if (codePoint == Icons.fitness_center_rounded.codePoint) return Icons.fitness_center_rounded;
-    if (codePoint == Icons.star_rounded.codePoint) return Icons.star_rounded;
-    
+    if (codePoint == Icons.bed_rounded.codePoint) {
+      return Icons.bed_rounded;
+    }
+    if (codePoint == Icons.school_rounded.codePoint) {
+      return Icons.school_rounded;
+    }
+    if (codePoint == Icons.work_rounded.codePoint) {
+      return Icons.work_rounded;
+    }
+    if (codePoint == Icons.fitness_center_rounded.codePoint) {
+      return Icons.fitness_center_rounded;
+    }
+    if (codePoint == Icons.star_rounded.codePoint) {
+      return Icons.star_rounded;
+    }
+
     // Fallback if not found
-    return Icons.star_rounded; 
+    return Icons.star_rounded;
   }
 }
 
@@ -109,15 +119,10 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
       } else {
         setState(() {
           items = [
-            ScheduleItem(id: 'sleep', title: 'Sleep', start: 0, duration: 6.5, icon: Icons.bed_rounded, color: const Color(0xFF8B5CF6), hasTopTape: true, hasBottomTape: true),
-            ScheduleItem(id: 'add1', title: '', start: 7.75, isAdd: true),
-            ScheduleItem(id: 'classes', title: 'Classes', start: 9, duration: 3, icon: Icons.school_rounded, color: const Color(0xFF3B82F6), hasTopTape: true, hasBottomTape: true),
-            ScheduleItem(id: 'add2', title: '', start: 12.5, isAdd: true),
-            ScheduleItem(id: 'work', title: 'Work', start: 13, duration: 4, icon: Icons.work_rounded, color: const Color(0xFFF59E0B), hasTopTape: true, hasBottomTape: true),
-            ScheduleItem(id: 'gym', title: 'Gym', start: 17.5, duration: 1.5, icon: Icons.fitness_center_rounded, color: const Color(0xFF10B981), hasTopTape: true, hasBottomTape: true),
-            ScheduleItem(id: 'dinner', title: 'Dinner', start: 19.5, duration: 1.0, isMini: true),
-            ScheduleItem(id: 'leisure', title: 'Leisure', start: 20.75, duration: 1.0, isMini: true),
-            ScheduleItem(id: 'end', title: 'End of Day', start: 22.0, duration: 1.0, isMini: true),
+            ScheduleItem(id: 'add_morning', title: '', start: 7.5, isAdd: true),
+            ScheduleItem(id: 'add_midday', title: '', start: 12.5, isAdd: true),
+            ScheduleItem(
+                id: 'add_evening', title: '', start: 18.0, isAdd: true),
           ];
         });
         _updateProvider();
@@ -126,7 +131,9 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
   }
 
   void _updateProvider() {
-    ref.read(onboardingProvider.notifier).updateScheduleItems(items.map((e) => e.toMap()).toList());
+    ref
+        .read(onboardingProvider.notifier)
+        .updateScheduleItems(items.map((e) => e.toMap()).toList());
   }
 
   String _formatTime(double hour) {
@@ -172,15 +179,14 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
     final item = items[index];
 
     TextEditingController nameCtrl = TextEditingController(text: item.title);
-    
+
     double tempStart = item.start;
     double tempDuration = item.isAdd ? 1.5 : item.duration;
-    
+
     await showDialog(
-      context: context,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
+        context: context,
+        builder: (ctx) {
+          return StatefulBuilder(builder: (context, setDialogState) {
             final startH = tempStart.floor();
             final startM = ((tempStart - startH) * 60).round();
             final startTime = TimeOfDay(hour: startH, minute: startM);
@@ -188,115 +194,138 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
             final endDouble = tempStart + tempDuration;
             int endH = endDouble.floor();
             int endM = ((endDouble - endH) * 60).round();
-            if (endH >= 24) { endH = 23; endM = 59; }
+            if (endH >= 24) {
+              endH = 23;
+              endM = 59;
+            }
             final endTime = TimeOfDay(hour: endH, minute: endM);
 
             return AlertDialog(
-              backgroundColor: Colors.white.withValues(alpha: 0.95),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: Text(item.isAdd ? 'Add New Task' : 'Edit Task Details', style: const TextStyle(fontWeight: FontWeight.bold)),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Task Name',
-                      border: OutlineInputBorder(),
+                backgroundColor: Colors.white.withValues(alpha: 0.95),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                title: Text(item.isAdd ? 'Add New Task' : 'Edit Task Details',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Task Name',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Start Time:'),
-                      TextButton(
-                        onPressed: () async {
-                          final picked = await showTimePicker(
-                            context: ctx,
-                            initialTime: startTime,
-                            helpText: 'Select Start Time',
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              double nStart = picked.hour + picked.minute / 60.0;
-                              double currentEnd = tempStart + tempDuration;
-                              tempStart = nStart;
-                              if (currentEnd <= tempStart) currentEnd = tempStart + 0.5;
-                              tempDuration = currentEnd - tempStart;
-                            });
-                          }
-                        },
-                        child: Text(startTime.format(ctx), style: const TextStyle(fontWeight: FontWeight.bold)),
-                      )
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('End Time:'),
-                      TextButton(
-                        onPressed: () async {
-                          final picked = await showTimePicker(
-                            context: ctx,
-                            initialTime: endTime,
-                            helpText: 'Select End Time',
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              double nEnd = picked.hour + picked.minute / 60.0;
-                              if (nEnd <= tempStart) nEnd += 24.0;
-                              if (nEnd > 24) nEnd = 24.0;
-                              tempDuration = nEnd - tempStart;
-                            });
-                          }
-                        },
-                        child: Text(endTime.format(ctx), style: const TextStyle(fontWeight: FontWeight.bold)),
-                      )
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      item.title = nameCtrl.text.isEmpty ? 'New Task' : nameCtrl.text;
-                      item.start = tempStart;
-                      item.duration = tempDuration;
-                      if (item.isAdd) {
-                        item.isAdd = false;
-                        item.hasTopTape = true;
-                        item.hasBottomTape = true;
-                        item.icon = Icons.star_rounded;
-                        item.color = _cycleColors[_colorIndex % _cycleColors.length];
-                        _colorIndex++;
-                      }
-                    });
-                    _updateProvider();
-                    Navigator.pop(ctx);
-                  }, 
-                  child: Text(item.isAdd ? 'Create Task' : 'Save Fixed Time')
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Start Time:'),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: ctx,
+                              initialTime: startTime,
+                              helpText: 'Select Start Time',
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                double nStart =
+                                    picked.hour + picked.minute / 60.0;
+                                double currentEnd = tempStart + tempDuration;
+                                tempStart = nStart;
+                                if (currentEnd <= tempStart) {
+                                  currentEnd = tempStart + 0.5;
+                                }
+                                tempDuration = currentEnd - tempStart;
+                              });
+                            }
+                          },
+                          child: Text(startTime.format(ctx),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                        )
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('End Time:'),
+                        TextButton(
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: ctx,
+                              initialTime: endTime,
+                              helpText: 'Select End Time',
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                double nEnd =
+                                    picked.hour + picked.minute / 60.0;
+                                if (nEnd <= tempStart) nEnd += 24.0;
+                                if (nEnd > 24) nEnd = 24.0;
+                                tempDuration = nEnd - tempStart;
+                              });
+                            }
+                          },
+                          child: Text(endTime.format(ctx),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold)),
+                        )
+                      ],
+                    ),
+                  ],
                 ),
-              ]
-            );
-          }
-        );
-      }
-    );
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel')),
+                  ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          item.title = nameCtrl.text.isEmpty
+                              ? 'New Task'
+                              : nameCtrl.text;
+                          item.start = tempStart;
+                          item.duration = tempDuration;
+                          if (item.isAdd) {
+                            item.isAdd = false;
+                            item.hasTopTape = true;
+                            item.hasBottomTape = true;
+                            item.icon = Icons.star_rounded;
+                            item.color =
+                                _cycleColors[_colorIndex % _cycleColors.length];
+                            _colorIndex++;
+                          }
+                        });
+                        _updateProvider();
+                        Navigator.pop(ctx);
+                      },
+                      child:
+                          Text(item.isAdd ? 'Create Task' : 'Save Fixed Time')),
+                ]);
+          });
+        });
   }
 
   Widget _buildDroplet(double size, {Color color = Colors.white}) {
     return Container(
-      width: size, height: size,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color.withValues(alpha: 0.4),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4, offset: const Offset(1, 2)),
-          BoxShadow(color: Colors.white.withValues(alpha: 0.8), blurRadius: 4, offset: const Offset(-1, -1)),
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 4,
+              offset: const Offset(1, 2)),
+          BoxShadow(
+              color: Colors.white.withValues(alpha: 0.8),
+              blurRadius: 4,
+              offset: const Offset(-1, -1)),
         ],
       ),
     );
@@ -312,13 +341,18 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
           alignment: Alignment.center,
           children: [
             Container(
-              width: 56, height: 16,
+              width: 56,
+              height: 16,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.95), width: 1.5),
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.95), width: 1.5),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 3)),
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 4,
+                      offset: const Offset(0, 3)),
                 ],
               ),
               child: ClipRRect(
@@ -346,13 +380,18 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
 
     String timeText = '';
     if (item.id == 'sleep') {
-      timeText = 'Start: ${_formatTime(item.start)} | End: ${_formatTime(item.start + item.duration)}';
+      timeText =
+          'Start: ${_formatTime(item.start)} | End: ${_formatTime(item.start + item.duration)}';
     } else {
-      timeText = '${_formatTime(item.start)} - ${_formatTime(item.start + item.duration)}';
+      timeText =
+          '${_formatTime(item.start)} - ${_formatTime(item.start + item.duration)}';
     }
 
     return Positioned(
-      top: top, left: kLeftOffset, right: 0, height: height,
+      top: top,
+      left: kLeftOffset,
+      right: 0,
+      height: height,
       child: GestureDetector(
         onTap: () => _showEditDialog(index),
         onLongPress: () => _showEditDialog(index),
@@ -364,13 +403,24 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
                   gradient: LinearGradient(
-                    begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    colors: [item.color!.withValues(alpha: 0.3), item.color!.withValues(alpha: 0.05)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      item.color!.withValues(alpha: 0.3),
+                      item.color!.withValues(alpha: 0.05)
+                    ],
                   ),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.8), width: 1.5),
                   boxShadow: [
-                    BoxShadow(color: item.color!.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 6)),
-                    BoxShadow(color: Colors.white.withValues(alpha: 0.7), blurRadius: 8, offset: const Offset(-2, -2)),
+                    BoxShadow(
+                        color: item.color!.withValues(alpha: 0.2),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6)),
+                    BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        blurRadius: 8,
+                        offset: const Offset(-2, -2)),
                   ],
                 ),
                 child: ClipRRect(
@@ -381,47 +431,77 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                       child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16, vertical: isSmall ? 6 : 16),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 16, vertical: isSmall ? 6 : 16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Row(
                               children: [
-                                Icon(item.icon, color: item.color!.withValues(alpha: 0.9), size: isSmall ? 20 : 24),
+                                Icon(item.icon,
+                                    color: item.color!.withValues(alpha: 0.9),
+                                    size: isSmall ? 20 : 24),
                                 const SizedBox(width: 10),
-                                Expanded(child: Text(item.title, style: TextStyle(fontSize: isSmall ? 16 : 18, fontWeight: FontWeight.w800, color: const Color(0xFF1E293B)))),
-                                const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B), size: 20),
+                                Expanded(
+                                    child: Text(item.title,
+                                        style: TextStyle(
+                                            fontSize: isSmall ? 16 : 18,
+                                            fontWeight: FontWeight.w800,
+                                            color: const Color(0xFF1E293B)))),
+                                const Icon(Icons.more_vert_rounded,
+                                    color: Color(0xFF64748B), size: 20),
                               ],
                             ),
                             if (timeText.isNotEmpty) ...[
-                              if (isSmall) const SizedBox(height: 2) else const SizedBox(height: 12),
+                              if (isSmall)
+                                const SizedBox(height: 2)
+                              else
+                                const SizedBox(height: 12),
                               Container(
                                 height: isSmall ? 22 : 32,
                                 width: double.infinity,
                                 decoration: BoxDecoration(
                                   color: Colors.white.withValues(alpha: 0.35),
-                                  borderRadius: BorderRadius.circular(isSmall ? 11 : 16),
-                                  border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1),
+                                  borderRadius:
+                                      BorderRadius.circular(isSmall ? 11 : 16),
+                                  border: Border.all(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.8),
+                                      width: 1),
                                 ),
                                 child: Stack(
                                   children: [
                                     Positioned(
-                                      top: 0, left: 0, right: 0, height: 6,
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      height: 6,
                                       child: ClipRRect(
-                                        borderRadius: BorderRadius.vertical(top: Radius.circular(isSmall ? 11 : 16)),
+                                        borderRadius: BorderRadius.vertical(
+                                            top: Radius.circular(
+                                                isSmall ? 11 : 16)),
                                         child: Container(
                                           decoration: BoxDecoration(
                                             gradient: LinearGradient(
-                                              begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                                              colors: [Colors.black.withValues(alpha: 0.06), Colors.transparent],
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.black
+                                                    .withValues(alpha: 0.06),
+                                                Colors.transparent
+                                              ],
                                             ),
                                           ),
                                         ),
                                       ),
                                     ),
                                     Center(
-                                      child: Text(timeText, style: TextStyle(fontSize: isSmall ? 11 : 13, fontWeight: FontWeight.w600, color: const Color(0xFF334155))),
+                                      child: Text(timeText,
+                                          style: TextStyle(
+                                              fontSize: isSmall ? 11 : 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: const Color(0xFF334155))),
                                     ),
                                   ],
                                 ),
@@ -435,16 +515,22 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                 ),
               ),
             ),
-            if (item.hasTopTape) 
+            if (item.hasTopTape)
               Positioned(
-                top: -8, left: 0, right: 0, 
-                child: Center(child: _buildTapeWithDrops(onDrag: (d) => _onTopTapeDrag(index, d)))
-              ),
-            if (item.hasBottomTape) 
+                  top: -8,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                      child: _buildTapeWithDrops(
+                          onDrag: (d) => _onTopTapeDrag(index, d)))),
+            if (item.hasBottomTape)
               Positioned(
-                bottom: -8, left: 0, right: 0, 
-                child: Center(child: _buildTapeWithDrops(onDrag: (d) => _onBottomTapeDrag(index, d)))
-              ),
+                  bottom: -8,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                      child: _buildTapeWithDrops(
+                          onDrag: (d) => _onBottomTapeDrag(index, d)))),
           ],
         ),
       ),
@@ -455,7 +541,10 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
     final top = item.start * kHourHeight + 4;
     final height = kHourHeight - 8;
     return Positioned(
-      top: top, left: kLeftOffset, right: 0, height: height,
+      top: top,
+      left: kLeftOffset,
+      right: 0,
+      height: height,
       child: GestureDetector(
         onTap: () => _showEditDialog(index),
         onLongPress: () => _showEditDialog(index),
@@ -463,10 +552,17 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(height / 2),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.8), width: 1.5),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 2)),
-              BoxShadow(color: Colors.white.withValues(alpha: 0.6), blurRadius: 4, offset: const Offset(-1, -1)),
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2)),
+              BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  blurRadius: 4,
+                  offset: const Offset(-1, -1)),
             ],
           ),
           child: ClipRRect(
@@ -478,8 +574,13 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(item.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
-                    const Icon(Icons.more_vert_rounded, color: Color(0xFF94A3B8), size: 18),
+                    Text(item.title,
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF334155))),
+                    const Icon(Icons.more_vert_rounded,
+                        color: Color(0xFF94A3B8), size: 18),
                   ],
                 ),
               ),
@@ -495,18 +596,24 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
     // Add buttons dynamically span 1 hour for layout visually
     final top = item.start * kHourHeight - height / 2;
     return Positioned(
-      top: top, left: kLeftOffset, right: 0, height: height,
+      top: top,
+      left: kLeftOffset,
+      right: 0,
+      height: height,
       child: GestureDetector(
         onTap: () => _showEditDialog(index),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.25),
-            borderRadius: BorderRadius.circular(height / 2),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 1.5),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 4, offset: const Offset(0, 2)),
-            ]
-          ),
+              color: Colors.white.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(height / 2),
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.7), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2)),
+              ]),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(height / 2),
             child: BackdropFilter(
@@ -514,18 +621,26 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
               child: Stack(
                 children: [
                   Positioned(
-                    top: 0, left: 0, right: 0, height: 6,
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 6,
                     child: Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                          colors: [Colors.black.withValues(alpha: 0.05), Colors.transparent],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.05),
+                            Colors.transparent
+                          ],
                         ),
                       ),
                     ),
                   ),
                   const Center(
-                    child: Icon(Icons.add_rounded, color: Color(0xFF60A5FA), size: 28),
+                    child: Icon(Icons.add_rounded,
+                        color: Color(0xFF60A5FA), size: 28),
                   ),
                 ],
               ),
@@ -539,12 +654,14 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
   @override
   Widget build(BuildContext context) {
     final topPadding = MediaQuery.of(context).padding.top + kIndicatorOverlayH;
-    final bottomPadding = MediaQuery.of(context).padding.bottom + kButtonOverlayH;
+    final bottomPadding =
+        MediaQuery.of(context).padding.bottom + kButtonOverlayH;
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, topPadding + 16, 20, bottomPadding + 16),
+        padding:
+            EdgeInsets.fromLTRB(20, topPadding + 16, 20, bottomPadding + 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -586,31 +703,55 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                 children: [
                   // Axis lines + text
                   ...List.generate(24, (i) {
-                    String label = i == 0 ? "12 AM" : (i < 12 ? "$i AM" : (i == 12 ? "12 PM" : "${i - 12} PM"));
+                    String label = i == 0
+                        ? "12 AM"
+                        : (i < 12
+                            ? "$i AM"
+                            : (i == 12 ? "12 PM" : "${i - 12} PM"));
                     return Positioned(
-                      top: i * kHourHeight - 10, left: 0, width: 44,
+                      top: i * kHourHeight - 10,
+                      left: 0,
+                      width: 44,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                          Text(label,
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B))),
                           const SizedBox(width: 6),
-                          Container(width: 4, height: 1.5, color: const Color(0xFFCBD5E1)),
+                          Container(
+                              width: 4,
+                              height: 1.5,
+                              color: const Color(0xFFCBD5E1)),
                         ],
                       ),
                     );
                   }),
-                  
+
                   // Glass Ruler
                   Positioned(
-                    top: 0, bottom: 0, left: 48, width: 10,
+                    top: 0,
+                    bottom: 0,
+                    left: 48,
+                    width: 10,
                     child: Container(
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.35),
                         borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            width: 1.2),
                         boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(2, 2)),
-                          BoxShadow(color: Colors.white.withValues(alpha: 0.7), blurRadius: 4, offset: const Offset(-2, -2)),
+                          BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 4,
+                              offset: const Offset(2, 2)),
+                          BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              blurRadius: 4,
+                              offset: const Offset(-2, -2)),
                         ],
                       ),
                       child: ClipRRect(
@@ -620,8 +761,15 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                           child: Stack(
                             children: List.generate(24, (i) {
                               return Positioned(
-                                top: i * kHourHeight - 0.75, left: 0, right: 0,
-                                child: Center(child: Container(width: 4, height: 1.5, color: Colors.white.withValues(alpha: 0.8))),
+                                top: i * kHourHeight - 0.75,
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                    child: Container(
+                                        width: 4,
+                                        height: 1.5,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.8))),
                               );
                             }),
                           ),
@@ -629,7 +777,7 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                       ),
                     ),
                   ),
-                  
+
                   // Render Blocks
                   ...items.asMap().entries.map((entry) {
                     int idx = entry.key;

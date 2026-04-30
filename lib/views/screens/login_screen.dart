@@ -5,17 +5,18 @@ import 'package:go_router/go_router.dart';
 import 'package:optivus2/widgets/glass_logo.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/widgets/liquid_glass_panel.dart';
+import 'package:optivus2/services/auth_service.dart';
 import 'package:optivus2/widgets/wavy_loading_indicator.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLOUR TOKENS
 // ─────────────────────────────────────────────────────────────────────────────
-const _kInk   = Color(0xFF0F111A);
-const _kSub   = Color(0xFF6B7280);
+const _kInk = Color(0xFF0F111A);
+const _kSub = Color(0xFF6B7280);
 const _kAmber = Color(0xFFFFB830);
-const _kRed   = Color(0xFFEF4444);
+const _kRed = Color(0xFFEF4444);
 const _kCream = Color(0xFFF6E6B4);
-const _kBg    = Color(0xFFFCF8EE);
+const _kBg = Color(0xFFFCF8EE);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN SCREEN
@@ -29,15 +30,16 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _emailCtrl = TextEditingController();
-  final _passCtrl  = TextEditingController();
+  final _passCtrl = TextEditingController();
 
   final _emailFocus = FocusNode();
-  final _passFocus  = FocusNode();
+  final _passFocus = FocusNode();
 
-  bool    _obscurePass = true;
-  bool    _loading     = false;
+  bool _obscurePass = true;
+  bool _loading = false;
   Future<void>? _authOperation;
   String? _errorMsg;
+  final AuthService _authService = AuthService();
 
   @override
   void dispose() {
@@ -52,14 +54,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
   String? _validate() {
     final email = _emailCtrl.text.trim();
-    final pass  = _passCtrl.text;
+    final pass = _passCtrl.text;
 
     if (email.isEmpty) return 'Please enter your email address.';
     if (!RegExp(r'^[\w\.\+\-]+@[\w\-]+\.[a-z]{2,}$', caseSensitive: false)
         .hasMatch(email)) {
       return 'Please enter a valid email address.';
     }
-    if (pass.isEmpty)  return 'Please enter your password.';
+    if (pass.isEmpty) return 'Please enter your password.';
     if (pass.length < 8) return 'Password must be at least 8 characters.';
     return null;
   }
@@ -69,20 +71,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _signIn() async {
     FocusScope.of(context).unfocus();
 
-
     final error = _validate();
     if (error != null) {
       setState(() => _errorMsg = error);
       return;
     }
 
-    final authCall = FirebaseAuth.instance.signInWithEmailAndPassword(
-      email:    _emailCtrl.text.trim(),
-      password: _passCtrl.text,
+    final authCall = _authService.signIn(
+      _emailCtrl.text.trim(),
+      _passCtrl.text,
     );
 
-    setState(() { 
-      _loading = true; 
+    setState(() {
+      _loading = true;
       _errorMsg = null;
       _authOperation = authCall.then((_) {});
     });
@@ -130,8 +131,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailCtrl.text.trim();
 
     if (email.isEmpty) {
-      setState(() =>
-          _errorMsg = 'Enter your email above to reset your password.');
+      setState(
+          () => _errorMsg = 'Enter your email above to reset your password.');
       return;
     }
 
@@ -143,8 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
           content: Text('Password reset email sent to $email'),
           backgroundColor: const Color(0xFF22C55E),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
     } on FirebaseAuthException catch (e) {
@@ -189,13 +190,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       // Welcome back
                       const Text('Welcome back.',
                           style: TextStyle(
-                            fontSize: 30, fontWeight: FontWeight.w900,
-                            color: _kInk, letterSpacing: -0.8,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w900,
+                            color: _kInk,
+                            letterSpacing: -0.8,
                           )),
                       const SizedBox(height: 6),
                       Text('Sign in to your Optivus account.',
                           style: TextStyle(
-                            fontSize: 15, color: Colors.blueGrey.shade600,
+                            fontSize: 15,
+                            color: Colors.blueGrey.shade600,
                             fontWeight: FontWeight.w500,
                           )),
                       const SizedBox(height: 36),
@@ -210,12 +214,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             _FieldLabel('Email'),
                             const SizedBox(height: 6),
                             _GlassInput(
-                              controller:   _emailCtrl,
-                              focusNode:    _emailFocus,
-                              hint:         'you@example.com',
-                              icon:         Icons.email_outlined,
+                              controller: _emailCtrl,
+                              focusNode: _emailFocus,
+                              hint: 'you@example.com',
+                              icon: Icons.email_outlined,
                               keyboardType: TextInputType.emailAddress,
-                              next:         _passFocus,
+                              next: _passFocus,
                             ),
                             const SizedBox(height: 18),
 
@@ -224,11 +228,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 6),
                             _GlassInput(
                               controller: _passCtrl,
-                              focusNode:  _passFocus,
-                              hint:       'Your password',
-                              icon:       Icons.lock_outline,
-                              obscure:    _obscurePass,
-                              onSubmit:   (_) => _signIn(),
+                              focusNode: _passFocus,
+                              hint: 'Your password',
+                              icon: Icons.lock_outline,
+                              obscure: _obscurePass,
+                              onSubmit: (_) => _signIn(),
                               suffix: Padding(
                                 padding: const EdgeInsets.only(right: 8),
                                 child: IconButton(
@@ -236,7 +240,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     _obscurePass
                                         ? Icons.visibility_off_outlined
                                         : Icons.visibility_outlined,
-                                    color: Colors.grey.shade600, size: 20,
+                                    color: Colors.grey.shade600,
+                                    size: 20,
                                   ),
                                   onPressed: () => setState(
                                       () => _obscurePass = !_obscurePass),
@@ -305,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       child: const Text('Sign Up',
                           style: TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 14)),
+                              fontWeight: FontWeight.w800, fontSize: 14)),
                     ),
                   ],
                 ),
@@ -330,8 +335,10 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(text,
         style: const TextStyle(
-          fontSize: 12, fontWeight: FontWeight.w700,
-          color: _kSub, letterSpacing: 0.4,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: _kSub,
+          letterSpacing: 0.4,
         ));
   }
 }
@@ -351,8 +358,7 @@ class _ErrorBanner extends StatelessWidget {
           decoration: BoxDecoration(
             color: _kRed.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-                color: _kRed.withValues(alpha: 0.35), width: 1),
+            border: Border.all(color: _kRed.withValues(alpha: 0.35), width: 1),
           ),
           child: Row(children: [
             Icon(Icons.error_outline_rounded, color: _kRed, size: 18),
@@ -360,7 +366,8 @@ class _ErrorBanner extends StatelessWidget {
             Expanded(
               child: Text(message,
                   style: const TextStyle(
-                    fontSize: 13, color: _kRed,
+                    fontSize: 13,
+                    color: _kRed,
                     fontWeight: FontWeight.w600,
                   )),
             ),
@@ -370,7 +377,6 @@ class _ErrorBanner extends StatelessWidget {
     );
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOADING BUTTON — glass pill with wavy spinner, mirrors AppButton dimensions
@@ -423,7 +429,6 @@ class _LoadingButton extends StatelessWidget {
 }
 
 class _GlassInput extends StatefulWidget {
-
   final TextEditingController controller;
   final FocusNode focusNode;
   final String hint;
@@ -439,7 +444,7 @@ class _GlassInput extends StatefulWidget {
     required this.focusNode,
     required this.hint,
     required this.icon,
-    this.obscure      = false,
+    this.obscure = false,
     this.keyboardType = TextInputType.text,
     this.next,
     this.suffix,
@@ -483,7 +488,8 @@ class _GlassInputState extends State<_GlassInput> {
           ),
           BoxShadow(
             color: Colors.white.withValues(alpha: 0.50),
-            blurRadius: 16, spreadRadius: -2,
+            blurRadius: 16,
+            spreadRadius: -2,
             offset: const Offset(-2, -2),
           ),
         ],
@@ -512,8 +518,8 @@ class _GlassInputState extends State<_GlassInput> {
               ),
             ),
             TextField(
-              controller:  widget.controller,
-              focusNode:   widget.focusNode,
+              controller: widget.controller,
+              focusNode: widget.focusNode,
               obscureText: widget.obscure,
               keyboardType: widget.keyboardType,
               textInputAction: widget.next != null
@@ -528,14 +534,16 @@ class _GlassInputState extends State<_GlassInput> {
               style: const TextStyle(
                 color: Color(0xFF1E202A),
                 fontWeight: FontWeight.w600,
-                fontSize: 16, letterSpacing: 0.3,
+                fontSize: 16,
+                letterSpacing: 0.3,
               ),
               cursorColor: _kAmber,
               decoration: InputDecoration(
                 prefixIcon: Padding(
                   padding: const EdgeInsets.all(8),
                   child: Container(
-                    width: 44, height: 44,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
                       color: Colors.white.withValues(alpha: 0.25),
@@ -544,10 +552,12 @@ class _GlassInputState extends State<_GlassInput> {
                       boxShadow: [
                         BoxShadow(
                             color: Colors.black.withValues(alpha: 0.06),
-                            offset: const Offset(2, 2), blurRadius: 6),
+                            offset: const Offset(2, 2),
+                            blurRadius: 6),
                         BoxShadow(
                             color: Colors.white.withValues(alpha: 0.6),
-                            offset: const Offset(-2, -2), blurRadius: 6),
+                            offset: const Offset(-2, -2),
+                            blurRadius: 6),
                       ],
                     ),
                     child: Icon(widget.icon,
@@ -560,7 +570,8 @@ class _GlassInputState extends State<_GlassInput> {
                 hintStyle: TextStyle(
                   color: const Color(0xFF1E202A).withValues(alpha: 0.40),
                   fontWeight: FontWeight.w500,
-                  fontSize: 14, letterSpacing: 0.2,
+                  fontSize: 14,
+                  letterSpacing: 0.2,
                 ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 18),

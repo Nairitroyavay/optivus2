@@ -16,14 +16,12 @@ class RoutineSettingsScreen extends ConsumerWidget {
         ref.read(routineProvider.notifier).markSkinCareSetUp();
       })));
     } else if (f == RoutineFilter.eating) {
-      Navigator.push(context, slideRoute(EatingSetupScreen(
-          onComplete: () {})));
+      Navigator.push(context, slideRoute(EatingSetupScreen(onComplete: () {})));
     } else if (f == RoutineFilter.classes) {
-      Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {
-        ref.read(routineProvider.notifier).setClasses(kDefaultClasses);
-      })));
+      Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {})));
     } else if (f == RoutineFilter.fixedSchedule) {
-      Navigator.push(context, slideRoute(FixedScheduleSetupScreen(onComplete: () {})));
+      Navigator.push(
+          context, slideRoute(FixedScheduleSetupScreen(onComplete: () {})));
     }
   }
 
@@ -40,14 +38,15 @@ class RoutineSettingsScreen extends ConsumerWidget {
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24.0, vertical: 16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Header with back navigation button
                       _buildHeader(context),
                       const SizedBox(height: 32),
-                      
+
                       // Heading
                       Text(
                         'MANAGE ROUTINES',
@@ -59,7 +58,7 @@ class RoutineSettingsScreen extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      
+
                       // Options Container
                       LiquidCard(
                         frosted: true,
@@ -70,10 +69,12 @@ class RoutineSettingsScreen extends ConsumerWidget {
                             _buildPrefTile(
                               emoji: '🌿',
                               title: 'Skin Care Routine',
-                              subtitle: 'Set up morning, afternoon & night steps',
+                              subtitle:
+                                  'Set up morning, afternoon & night steps',
                               hasArrow: !s.skinCareSetUp,
                               isDone: s.skinCareSetUp,
-                              onTap: () => _doSetup(context, ref, RoutineFilter.skinCare),
+                              onTap: () => _doSetup(
+                                  context, ref, RoutineFilter.skinCare),
                             ),
                             _buildDivider(),
                             _buildPrefTile(
@@ -82,7 +83,8 @@ class RoutineSettingsScreen extends ConsumerWidget {
                               subtitle: 'Upload or enter your class timetable',
                               hasArrow: !s.classesSetUp,
                               isDone: s.classesSetUp,
-                              onTap: () => _doSetup(context, ref, RoutineFilter.classes),
+                              onTap: () =>
+                                  _doSetup(context, ref, RoutineFilter.classes),
                             ),
                             _buildDivider(),
                             _buildPrefTile(
@@ -91,7 +93,8 @@ class RoutineSettingsScreen extends ConsumerWidget {
                               subtitle: 'Plan your daily meals',
                               hasArrow: !s.eatingSetUp,
                               isDone: s.eatingSetUp,
-                              onTap: () => _doSetup(context, ref, RoutineFilter.eating),
+                              onTap: () =>
+                                  _doSetup(context, ref, RoutineFilter.eating),
                             ),
                             _buildDivider(),
                             _buildPrefTile(
@@ -100,12 +103,13 @@ class RoutineSettingsScreen extends ConsumerWidget {
                               subtitle: 'Base daily activities, sleep & work',
                               hasArrow: !s.fixedScheduleSetUp,
                               isDone: s.fixedScheduleSetUp,
-                              onTap: () => _doSetup(context, ref, RoutineFilter.fixedSchedule),
+                              onTap: () => _doSetup(
+                                  context, ref, RoutineFilter.fixedSchedule),
                             ),
                           ],
                         ),
                       ),
-                      
+
                       const SizedBox(height: 24),
                       Text(
                         'SETTINGS & EXPORT',
@@ -127,21 +131,17 @@ class RoutineSettingsScreen extends ConsumerWidget {
                               emoji: '🔔',
                               title: 'Notification Settings',
                               subtitle: 'Reminders for each routine block',
-                              hasArrow: true,
-                              onTap: () {},
                             ),
                             _buildDivider(),
                             _buildPrefTile(
                               emoji: '📤',
                               title: 'Export Schedule',
                               subtitle: 'Save to calendar or share as PDF',
-                              hasArrow: true,
-                              onTap: () {},
                             ),
                           ],
                         ),
                       ),
-                      
+
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -174,7 +174,7 @@ class RoutineSettingsScreen extends ConsumerWidget {
             letterSpacing: 1.5,
           ),
         ),
-        const SizedBox(width: 44), 
+        const SizedBox(width: 44),
       ],
     );
   }
@@ -200,7 +200,10 @@ class RoutineSettingsScreen extends ConsumerWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x0D000000), blurRadius: 8, offset: Offset(0, 2)),
+                  BoxShadow(
+                      color: Color(0x0D000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2)),
                 ],
               ),
               child: Center(
@@ -240,12 +243,14 @@ class RoutineSettingsScreen extends ConsumerWidget {
                 ),
                 child: const Text('Done',
                     style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF1A8A5A),
                     )),
               )
             else if (hasArrow)
-              const Icon(Icons.chevron_right_rounded, size: 20, color: Color(0xFF6B7280)),
+              const Icon(Icons.chevron_right_rounded,
+                  size: 20, color: Color(0xFF6B7280)),
           ],
         ),
       ),

@@ -21,7 +21,8 @@ class TimelineWeekView extends StatelessWidget {
   Widget build(BuildContext context) {
     // Determine the start of the week (Monday)
     final int daysToSubtract = activeDate.weekday - 1;
-    final DateTime startOfWeek = activeDate.subtract(Duration(days: daysToSubtract));
+    final DateTime startOfWeek =
+        activeDate.subtract(Duration(days: daysToSubtract));
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -34,17 +35,21 @@ class TimelineWeekView extends StatelessWidget {
               children: List.generate(7, (index) {
                 final day = startOfWeek.add(Duration(days: index));
                 final isToday = day.year == DateTime.now().year &&
-                                day.month == DateTime.now().month &&
-                                day.day == DateTime.now().day;
-                
+                    day.month == DateTime.now().month &&
+                    day.day == DateTime.now().day;
+
                 return Expanded(
                   child: Container(
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
-                      color: isToday ? kPurple.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.3),
+                      color: isToday
+                          ? kPurple.withValues(alpha: 0.1)
+                          : Colors.white.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: isToday ? kPurple.withValues(alpha: 0.3) : Colors.white.withValues(alpha: 0.6),
+                        color: isToday
+                            ? kPurple.withValues(alpha: 0.3)
+                            : Colors.white.withValues(alpha: 0.6),
                       ),
                     ),
                     child: Column(
@@ -55,7 +60,8 @@ class TimelineWeekView extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
-                            color: isToday ? kPurple : kSub.withValues(alpha: 0.8),
+                            color:
+                                isToday ? kPurple : kSub.withValues(alpha: 0.8),
                           ),
                         ),
                         Text(
@@ -67,16 +73,12 @@ class TimelineWeekView extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        // Mock blocks for demonstration of schedule density
                         Expanded(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _mockPill(kMint, 0.4),
-                              _mockPill(kRose, 0.6),
-                              if (index % 2 == 0) _mockPill(kBlue, 0.3),
-                              if (index == 3) _mockPill(kPurple, 0.5),
-                            ],
+                            children: _dayPills(day)
+                                .map((color) => _schedulePill(color, 0.55))
+                                .toList(),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -93,7 +95,31 @@ class TimelineWeekView extends StatelessWidget {
     );
   }
 
-  Widget _mockPill(Color c, double opacity) {
+  List<Color> _dayPills(DateTime day) {
+    final dayIndex = (day.weekday - 1).clamp(0, 6);
+    final colors = <Color>[];
+
+    if (filter == RoutineFilter.all || filter == RoutineFilter.fixedSchedule) {
+      colors.addAll(routineState.fixedBlocks.map((_) => kSub));
+    }
+    if (filter == RoutineFilter.all || filter == RoutineFilter.skinCare) {
+      final plan = routineState.skinPlanForDay(dayIndex);
+      if (plan.morning.isNotEmpty) colors.add(kMint);
+      if (plan.afternoon.isNotEmpty) colors.add(kMint);
+      if (plan.night.isNotEmpty) colors.add(kPurple);
+    }
+    if (filter == RoutineFilter.all || filter == RoutineFilter.eating) {
+      colors.addAll(
+          routineState.mealPlanForDay(dayIndex).meals.map((_) => kRose));
+    }
+    if (filter == RoutineFilter.all || filter == RoutineFilter.classes) {
+      colors.addAll(routineState.classesForDay(day.weekday).map((_) => kBlue));
+    }
+
+    return colors.take(5).toList();
+  }
+
+  Widget _schedulePill(Color c, double opacity) {
     return Container(
       width: 24,
       height: 60,
@@ -124,7 +150,8 @@ class TimelineMonthView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int daysInMonth = DateUtils.getDaysInMonth(activeDate.year, activeDate.month);
+    final int daysInMonth =
+        DateUtils.getDaysInMonth(activeDate.year, activeDate.month);
     final DateTime firstDay = DateTime(activeDate.year, activeDate.month, 1);
     final int offset = firstDay.weekday - 1; // 0 for Monday
 
@@ -135,14 +162,17 @@ class TimelineMonthView extends StatelessWidget {
           // Days of week header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => 
-              SizedBox(
-                width: 40,
-                child: Text(d, textAlign: TextAlign.center, style: TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w800, color: kSub.withValues(alpha: 0.7)
-                )),
-              )
-            ).toList(),
+            children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                .map((d) => SizedBox(
+                      width: 40,
+                      child: Text(d,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: kSub.withValues(alpha: 0.7))),
+                    ))
+                .toList(),
           ),
           const SizedBox(height: 16),
           // Grid
@@ -160,18 +190,22 @@ class TimelineMonthView extends StatelessWidget {
                 if (index < offset || index >= offset + daysInMonth) {
                   return const SizedBox();
                 }
-                
+
                 final int day = index - offset + 1;
                 final bool isToday = activeDate.year == DateTime.now().year &&
-                                     activeDate.month == DateTime.now().month &&
-                                     day == DateTime.now().day;
+                    activeDate.month == DateTime.now().month &&
+                    day == DateTime.now().day;
 
                 return Container(
                   decoration: BoxDecoration(
-                    color: isToday ? kRose.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.4),
+                    color: isToday
+                        ? kRose.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isToday ? kRose.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.8),
+                      color: isToday
+                          ? kRose.withValues(alpha: 0.4)
+                          : Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
                   child: Column(
@@ -181,7 +215,8 @@ class TimelineMonthView extends StatelessWidget {
                         '$day',
                         style: TextStyle(
                           fontSize: 16,
-                          fontWeight: isToday ? FontWeight.w900 : FontWeight.w600,
+                          fontWeight:
+                              isToday ? FontWeight.w900 : FontWeight.w600,
                           color: isToday ? kRose : kInk,
                         ),
                       ),
@@ -234,7 +269,20 @@ class TimelineYearView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const months = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC'
+    ];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -248,14 +296,19 @@ class TimelineYearView extends StatelessWidget {
         ),
         itemCount: 12,
         itemBuilder: (context, index) {
-          final isCurrentMonth = activeDate.year == DateTime.now().year && index + 1 == DateTime.now().month;
+          final isCurrentMonth = activeDate.year == DateTime.now().year &&
+              index + 1 == DateTime.now().month;
 
           return Container(
             decoration: BoxDecoration(
-              color: isCurrentMonth ? kBlue.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.4),
+              color: isCurrentMonth
+                  ? kBlue.withValues(alpha: 0.15)
+                  : Colors.white.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: isCurrentMonth ? kBlue.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.8),
+                color: isCurrentMonth
+                    ? kBlue.withValues(alpha: 0.4)
+                    : Colors.white.withValues(alpha: 0.8),
               ),
             ),
             padding: const EdgeInsets.all(12),
@@ -271,7 +324,7 @@ class TimelineYearView extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                // Mock mini-heatmap representing schedule load
+                // Mini heatmap representing saved schedule load
                 Wrap(
                   spacing: 2,
                   runSpacing: 2,
@@ -281,7 +334,8 @@ class TimelineYearView extends StatelessWidget {
                       width: 6,
                       height: 6,
                       decoration: BoxDecoration(
-                        color: (isCurrentMonth ? kBlue : kPurple).withValues(alpha: alpha),
+                        color: (isCurrentMonth ? kBlue : kPurple)
+                            .withValues(alpha: alpha),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     );

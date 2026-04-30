@@ -1,6 +1,7 @@
 import 'dart:ui';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/views/screens/onboarding_screen.dart';
 import 'package:optivus2/widgets/liquid_category_card.dart';
 
@@ -13,12 +14,24 @@ import 'package:optivus2/widgets/liquid_category_card.dart';
 //  • RepaintBoundary around each card — avoids GPU re-blur on scroll.
 //  • withValues() throughout — no deprecated withOpacity().
 // ─────────────────────────────────────────────────────────────────────────────
-class OnboardingPage9 extends StatelessWidget {
+class OnboardingPage9 extends ConsumerWidget {
   const OnboardingPage9({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final top    = MediaQuery.of(context).padding.top + kIndicatorOverlayH;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final onboarding = ref.watch(onboardingProvider);
+    final scheduleRows = onboarding.scheduleItems
+        .where((item) =>
+            item['isAdd'] != true &&
+            (item['title'] as String? ?? '').trim().isNotEmpty)
+        .take(2)
+        .toList();
+    final goals = onboarding.goals.take(3).toList();
+    final habits = [
+      ...onboarding.goodHabits,
+      ...onboarding.badHabits,
+    ].take(2).toList();
+    final top = MediaQuery.of(context).padding.top + kIndicatorOverlayH;
     final bottom = MediaQuery.of(context).padding.bottom + kButtonOverlayH;
 
     return SingleChildScrollView(
@@ -76,10 +89,18 @@ class OnboardingPage9 extends StatelessWidget {
               gradientEnd: Alignment.bottomRight,
               gradientStops: const [0.0, 0.30, 0.65, 1.0],
               droplets: const [
-                _DropSpec(right: 14, bottom: 14, size: 9,
-                    color: Color(0xFF93C5FD), alpha: 0.50),
-                _DropSpec(right: 27, bottom: 9,  size: 5,
-                    color: Color(0xFFBFDBFE), alpha: 0.45),
+                _DropSpec(
+                    right: 14,
+                    bottom: 14,
+                    size: 9,
+                    color: Color(0xFF93C5FD),
+                    alpha: 0.50),
+                _DropSpec(
+                    right: 27,
+                    bottom: 9,
+                    size: 5,
+                    color: Color(0xFFBFDBFE),
+                    alpha: 0.45),
               ],
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,8 +127,18 @@ class OnboardingPage9 extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  const _TimelineRow(time: '07:00 AM', title: 'Deep Work Session',    isActive: true,  isLast: false),
-                  const _TimelineRow(time: '08:30 AM', title: 'Team Sync & Planning', isActive: false, isLast: true),
+                  if (scheduleRows.isEmpty)
+                    const _EmptyPreviewText('No routine blocks selected yet.')
+                  else
+                    ...List.generate(scheduleRows.length, (index) {
+                      final item = scheduleRows[index];
+                      return _TimelineRow(
+                        time: _formatHour(item['start']),
+                        title: item['title'] as String? ?? 'Routine block',
+                        isActive: index == 0,
+                        isLast: index == scheduleRows.length - 1,
+                      );
+                    }),
                 ],
               ),
             ),
@@ -131,10 +162,18 @@ class OnboardingPage9 extends StatelessWidget {
               gradientEnd: Alignment.bottomLeft,
               gradientStops: const [0.0, 0.40, 0.80, 1.0],
               droplets: const [
-                _DropSpec(left: 14, bottom: 14, size: 9,
-                    color: Color(0xFFFBBF24), alpha: 0.42),
-                _DropSpec(left: 27, bottom: 9,  size: 5,
-                    color: Color(0xFFFDE68A), alpha: 0.48),
+                _DropSpec(
+                    left: 14,
+                    bottom: 14,
+                    size: 9,
+                    color: Color(0xFFFBBF24),
+                    alpha: 0.42),
+                _DropSpec(
+                    left: 27,
+                    bottom: 9,
+                    size: 5,
+                    color: Color(0xFFFDE68A),
+                    alpha: 0.48),
               ],
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -162,11 +201,20 @@ class OnboardingPage9 extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 14),
-                  const _GoalRow(label: 'Launch MVP Product', checked: true),
-                  const SizedBox(height: 8),
-                  const _GoalRow(label: 'Run 5k Marathon',    checked: false),
-                  const SizedBox(height: 8),
-                  const _GoalRow(label: 'Read 2 books/mo',    checked: false),
+                  if (goals.isEmpty)
+                    const _EmptyPreviewText('No goals selected yet.')
+                  else
+                    ...List.generate(goals.length, (index) {
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: index == goals.length - 1 ? 0 : 8,
+                        ),
+                        child: _GoalRow(
+                          label: goals[index].replaceAll('\n', ' '),
+                          checked: index == 0,
+                        ),
+                      );
+                    }),
                 ],
               ),
             ),
@@ -190,10 +238,18 @@ class OnboardingPage9 extends StatelessWidget {
               gradientEnd: Alignment.bottomLeft,
               gradientStops: const [0.0, 0.30, 0.75, 1.0],
               droplets: const [
-                _DropSpec(right: 14, bottom: 14, size: 9,
-                    color: Color(0xFF34D399), alpha: 0.42),
-                _DropSpec(right: 27, bottom: 9,  size: 5,
-                    color: Color(0xFF6EE7B7), alpha: 0.38),
+                _DropSpec(
+                    right: 14,
+                    bottom: 14,
+                    size: 9,
+                    color: Color(0xFF34D399),
+                    alpha: 0.42),
+                _DropSpec(
+                    right: 27,
+                    bottom: 9,
+                    size: 5,
+                    color: Color(0xFF6EE7B7),
+                    alpha: 0.38),
               ],
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -214,23 +270,15 @@ class OnboardingPage9 extends StatelessWidget {
                         )),
                   ]),
                   const SizedBox(height: 20),
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _RadialProgress(
-                        icon: Icons.nightlight_round,
-                        percentage: 75,
-                        color: Color(0xFF3B82F6),
-                        label: 'Sleep',
+                  if (habits.isEmpty)
+                    const _EmptyPreviewText('No habits selected yet.')
+                  else
+                    ...habits.map(
+                      (habit) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _GoalRow(label: habit, checked: false),
                       ),
-                      _RadialProgress(
-                        icon: Icons.fitness_center_rounded,
-                        percentage: 60,
-                        color: Color(0xFF10B981),
-                        label: 'Fitness',
-                      ),
-                    ],
-                  ),
+                    ),
                 ],
               ),
             ),
@@ -238,6 +286,15 @@ class OnboardingPage9 extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _formatHour(Object? value) {
+    final hourValue = (value as num?)?.toDouble() ?? 0;
+    final hour = hourValue.floor().clamp(0, 23);
+    final minute = ((hourValue - hour) * 60).round().clamp(0, 59);
+    final suffix = hour >= 12 ? 'PM' : 'AM';
+    final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+    return '$displayHour:${minute.toString().padLeft(2, '0')} $suffix';
   }
 }
 
@@ -323,7 +380,8 @@ class _GlassCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
               // tileMode: TileMode.decal prevents Impeller edge-pixel extension artefacts
-              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18, tileMode: TileMode.decal),
+              filter: ImageFilter.blur(
+                  sigmaX: 18, sigmaY: 18, tileMode: TileMode.decal),
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -346,45 +404,45 @@ class _GlassCard extends StatelessWidget {
                 child: Stack(
                   clipBehavior: Clip.hardEdge,
                   children: [
-              // Top-left specular sheen (glass reflection effect)
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: const Alignment(0.6, 0.5),
-                      colors: [
-                        Colors.white.withValues(alpha: 0.35),
-                        Colors.white.withValues(alpha: 0.0),
-                      ],
+                    // Top-left specular sheen (glass reflection effect)
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: const Alignment(0.6, 0.5),
+                            colors: [
+                              Colors.white.withValues(alpha: 0.35),
+                              Colors.white.withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+
+                    // Liquid droplet corner accents
+                    for (final d in droplets)
+                      Positioned(
+                        left: d.left,
+                        right: d.right,
+                        bottom: d.bottom,
+                        child: LiquidDroplet(
+                          color: d.color.withValues(alpha: d.alpha),
+                          size: d.size,
+                        ),
+                      ),
+
+                    // Content
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: child,
+                    ),
+                  ],
                 ),
               ),
-
-              // Liquid droplet corner accents
-              for (final d in droplets)
-                Positioned(
-                  left: d.left,
-                  right: d.right,
-                  bottom: d.bottom,
-                  child: LiquidDroplet(
-                    color: d.color.withValues(alpha: d.alpha),
-                    size: d.size,
-                  ),
-                ),
-
-              // Content
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: child,
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
-    ),
         ),
       ],
     );
@@ -399,7 +457,7 @@ class _SphereOrb extends StatelessWidget {
   final IconData icon;
   final Color color;
   final Color bgStart; // lighter tint
-  final Color bgEnd;   // slightly deeper tint
+  final Color bgEnd; // slightly deeper tint
 
   const _SphereOrb({
     required this.icon,
@@ -419,9 +477,9 @@ class _SphereOrb extends StatelessWidget {
           center: const Alignment(-0.25, -0.35),
           radius: 0.85,
           colors: [
-            Colors.white.withValues(alpha: 0.95),    // bright specular centre
-            bgStart.withValues(alpha: 0.90),          // soft tint
-            bgEnd.withValues(alpha: 0.80),            // rim
+            Colors.white.withValues(alpha: 0.95), // bright specular centre
+            bgStart.withValues(alpha: 0.90), // soft tint
+            bgEnd.withValues(alpha: 0.80), // rim
           ],
           stops: const [0.0, 0.50, 1.0],
         ),
@@ -528,7 +586,8 @@ class _TimelineRow extends StatelessWidget {
                   boxShadow: isActive
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF3B82F6).withValues(alpha: 0.40),
+                            color:
+                                const Color(0xFF3B82F6).withValues(alpha: 0.40),
                             blurRadius: 10,
                             spreadRadius: 1,
                           )
@@ -615,9 +674,7 @@ class _GoalRow extends StatelessWidget {
         children: [
           Icon(
             checked ? Icons.check_circle : Icons.radio_button_unchecked,
-            color: checked
-                ? const Color(0xFF3B82F6)
-                : const Color(0xFFD1D5DB),
+            color: checked ? const Color(0xFF3B82F6) : const Color(0xFFD1D5DB),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -633,119 +690,19 @@ class _GoalRow extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Radial progress — 270° arc ring with icon + percentage
-// ─────────────────────────────────────────────────────────────────────────────
-class _RadialProgress extends StatelessWidget {
-  final IconData icon;
-  final int percentage;
-  final Color color;
+class _EmptyPreviewText extends StatelessWidget {
   final String label;
-
-  const _RadialProgress({
-    required this.icon,
-    required this.percentage,
-    required this.color,
-    required this.label,
-  });
+  const _EmptyPreviewText(this.label);
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SizedBox(
-          width: 90,
-          height: 90,
-          child: CustomPaint(
-            painter: _ArcPainter(
-              value: percentage / 100,
-              color: color,
-              trackColor: color.withValues(alpha: 0.12),
-              strokeWidth: 8.0,
-            ),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: color, size: 22),
-                  const SizedBox(height: 3),
-                  Text(
-                    '$percentage%',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: color,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(label,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF6B7280),
-            )),
-      ],
+    return Text(
+      label,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF6B7280),
+      ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 270° arc CustomPainter — starts at ~7 o'clock, sweeps clockwise
-// ─────────────────────────────────────────────────────────────────────────────
-class _ArcPainter extends CustomPainter {
-  final double value;
-  final Color color;
-  final Color trackColor;
-  final double strokeWidth;
-
-  const _ArcPainter({
-    required this.value,
-    required this.color,
-    required this.trackColor,
-    required this.strokeWidth,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final inset = strokeWidth / 2;
-    final rect  = Rect.fromLTWH(
-        inset, inset, size.width - strokeWidth, size.height - strokeWidth);
-
-    // Track (full 270°)
-    canvas.drawArc(
-      rect,
-      math.pi * 0.75,
-      math.pi * 1.5,
-      false,
-      Paint()
-        ..color = trackColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // Value arc
-    if (value > 0) {
-      canvas.drawArc(
-        rect,
-        math.pi * 0.75,
-        math.pi * 1.5 * value,
-        false,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = strokeWidth
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ArcPainter old) =>
-      old.value != value || old.color != color || old.strokeWidth != strokeWidth;
 }

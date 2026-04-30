@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/widgets/liquid_glass_tabbar.dart';
 import 'package:optivus2/views/tabs/home_tab.dart';
 import 'package:optivus2/views/routine/routine_tab.dart' as rt;
@@ -7,7 +8,6 @@ import 'package:optivus2/views/tabs/tracker_tab.dart';
 import 'package:optivus2/views/tabs/coach_tab.dart';
 import 'package:optivus2/views/tabs/goals_tab.dart';
 import 'package:optivus2/views/tabs/profile_tab.dart';
-import 'package:optivus2/views/habits/log_habit_sheet.dart';
 
 // Per-tab gradient definitions
 const List<List<Color>> _tabGradients = [
@@ -19,19 +19,20 @@ const List<List<Color>> _tabGradients = [
   [Color(0xFFFFB830), Color(0xFFFFF6E0)], // Profile  – amber gold
 ];
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
   RoutineFilter _routineFilter = RoutineFilter.all;
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(routineProvider);
     final colors = _tabGradients[_currentIndex];
 
     return Scaffold(
@@ -53,25 +54,25 @@ class _HomeScreenState extends State<HomeScreen> {
           bottom: false,
           child: switch (_currentIndex) {
             0 => HomeTab(
-                  onSkinCareTapped: () {
-                    setState(() {
-                      _currentIndex = 1;
-                      _routineFilter = RoutineFilter.skinCare;
-                    });
-                  },
-                  onClassesTapped: () {
-                    setState(() {
-                      _currentIndex = 1;
-                      _routineFilter = RoutineFilter.classes;
-                    });
-                  },
-                  onEatingTapped: () {
-                    setState(() {
-                      _currentIndex = 1;
-                      _routineFilter = RoutineFilter.eating;
-                    });
-                  },
-                ),
+                onSkinCareTapped: () {
+                  setState(() {
+                    _currentIndex = 1;
+                    _routineFilter = RoutineFilter.skinCare;
+                  });
+                },
+                onClassesTapped: () {
+                  setState(() {
+                    _currentIndex = 1;
+                    _routineFilter = RoutineFilter.classes;
+                  });
+                },
+                onEatingTapped: () {
+                  setState(() {
+                    _currentIndex = 1;
+                    _routineFilter = RoutineFilter.eating;
+                  });
+                },
+              ),
             1 => rt.RoutineTab(initialFilter: _routineFilter),
             2 => const TrackerTab(),
             3 => const CoachTab(),
@@ -80,28 +81,14 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
       ),
-      floatingActionButton: _currentIndex == 0 ? FloatingActionButton(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (context) => const LogHabitSheet(),
-          );
-        },
-        backgroundColor: const Color(0xFF0F111A),
-        foregroundColor: Colors.white,
-        elevation: 8,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Icon(Icons.add_rounded, size: 32),
-      ) : null,
       bottomNavigationBar: LiquidGlassTabBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
             _currentIndex = index;
             if (index == 1) {
-              _routineFilter = RoutineFilter.all; // Normal tab bar tap resets filter
+              _routineFilter =
+                  RoutineFilter.all; // Normal tab bar tap resets filter
             }
           });
         },

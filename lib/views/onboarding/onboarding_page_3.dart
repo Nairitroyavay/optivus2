@@ -12,7 +12,7 @@ class OnboardingPage3 extends ConsumerStatefulWidget {
 }
 
 class _OnboardingPage3State extends ConsumerState<OnboardingPage3> {
-  final Set<String> _selectedHabits = {'Gym', 'Reading'};
+  final Set<String> _selectedHabits = {};
 
   @override
   void initState() {
@@ -24,9 +24,6 @@ class _OnboardingPage3State extends ConsumerState<OnboardingPage3> {
           _selectedHabits.clear();
           _selectedHabits.addAll(habits);
         });
-      } else {
-        // Initialize provider with defaults
-        ref.read(onboardingProvider.notifier).updateGoodHabits(_selectedHabits.toList());
       }
     });
   }
@@ -36,8 +33,8 @@ class _OnboardingPage3State extends ConsumerState<OnboardingPage3> {
   // ─────────────────────────────────────────────────────────────────────────
   Widget _buildGlassOrb({
     required double size,
-    required Color baseColor,   // dominant tint of the orb body
-    required Color glowColor,   // outer glow / shadow colour
+    required Color baseColor, // dominant tint of the orb body
+    required Color glowColor, // outer glow / shadow colour
     required Widget child,
     bool selected = false,
   }) {
@@ -139,7 +136,9 @@ class _OnboardingPage3State extends ConsumerState<OnboardingPage3> {
       baseColor: isSelected ? const Color(0xFF3DD68C) : const Color(0xFFB0BEC5),
       glowColor: isSelected ? const Color(0xFF22C55E) : Colors.grey,
       child: isSelected
-          ? const Icon(Icons.check_rounded, color: Colors.white, size: 18,
+          ? const Icon(Icons.check_rounded,
+              color: Colors.white,
+              size: 18,
               shadows: [Shadow(color: Color(0xFF14532D), blurRadius: 4)])
           : const SizedBox.shrink(),
     );
@@ -245,7 +244,9 @@ class _OnboardingPage3State extends ConsumerState<OnboardingPage3> {
             _selectedHabits.add(title);
           }
         });
-        ref.read(onboardingProvider.notifier).updateGoodHabits(_selectedHabits.toList());
+        ref
+            .read(onboardingProvider.notifier)
+            .updateGoodHabits(_selectedHabits.toList());
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 280),

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/core/utils/uuid_generator.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'skin_care_setup_screen.dart';
@@ -29,7 +30,8 @@ enum TimelineZoomLevel { day, week, month, year }
 class RoutineTab extends ConsumerStatefulWidget {
   final RoutineFilter initialFilter;
   const RoutineTab({super.key, this.initialFilter = RoutineFilter.all});
-  @override ConsumerState<RoutineTab> createState() => _RoutineTabState();
+  @override
+  ConsumerState<RoutineTab> createState() => _RoutineTabState();
 }
 
 class _RoutineTabState extends ConsumerState<RoutineTab> {
@@ -46,10 +48,14 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
   String get _todayKey {
     final n = DateTime.now();
-    return '${n.year}-${n.month.toString().padLeft(2,'0')}-${n.day.toString().padLeft(2,'0')}';
+    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
 
-  @override void initState() { super.initState(); _filter = widget.initialFilter; }
+  @override
+  void initState() {
+    super.initState();
+    _filter = widget.initialFilter;
+  }
 
   GlobalKey _getKeyFor(DateTime d) {
     return _dayKeys.putIfAbsent(d, () => GlobalKey());
@@ -57,26 +63,26 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
   void _updateActiveDayFromScroll() {
     DateTime? newActiveDate = _activeDate;
-    
+
     // Sort keys to evaluate top-to-bottom
     final sortedKeys = _dayKeys.keys.toList()..sort();
-    
+
     for (final d in sortedKeys) {
-       final ctx = _dayKeys[d]?.currentContext;
-       if (ctx == null) {
-         continue;
-       }
-       final box = ctx.findRenderObject() as RenderBox?;
-       if (box == null) {
-         continue;
-       }
-       final y = box.localToGlobal(Offset.zero).dy;
-       // 260px corresponds roughly to the area just below the filters
-       if (y <= 270) { 
-         newActiveDate = d;
-       }
+      final ctx = _dayKeys[d]?.currentContext;
+      if (ctx == null) {
+        continue;
+      }
+      final box = ctx.findRenderObject() as RenderBox?;
+      if (box == null) {
+        continue;
+      }
+      final y = box.localToGlobal(Offset.zero).dy;
+      // 260px corresponds roughly to the area just below the filters
+      if (y <= 270) {
+        newActiveDate = d;
+      }
     }
-    
+
     if (newActiveDate != null && newActiveDate != _activeDate) {
       Future.microtask(() {
         if (mounted) setState(() => _activeDate = newActiveDate);
@@ -91,16 +97,18 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     Map<DateTime, List<DisplayBlock>> days = {};
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
-    
+
     // Build blocks for the next 14 days.
     for (int i = 0; i < 14; i++) {
-       DateTime d = today.add(Duration(days: i));
-       // Pass the Firestore tasks for this specific calendar day.
-       final tasksForDay = tasksByDay[d] ?? const <TaskModel>[];
-       List<DisplayBlock> b = _buildBlocksForDay(s, d, firestoreTasks: tasksForDay);
-       if (b.isNotEmpty || i == 0) { // always include today even if empty
-           days[d] = b;
-       }
+      DateTime d = today.add(Duration(days: i));
+      // Pass the Firestore tasks for this specific calendar day.
+      final tasksForDay = tasksByDay[d] ?? const <TaskModel>[];
+      List<DisplayBlock> b =
+          _buildBlocksForDay(s, d, firestoreTasks: tasksForDay);
+      if (b.isNotEmpty || i == 0) {
+        // always include today even if empty
+        days[d] = b;
+      }
     }
     return days;
   }
@@ -121,7 +129,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
     // 1a) Inject Firestore-backed tasks (these carry lifecycle state)
     for (final task in firestoreTasks) {
-      final timeStr = tlFmtMin(task.plannedStart.hour * 60 + task.plannedStart.minute);
+      final timeStr =
+          tlFmtMin(task.plannedStart.hour * 60 + task.plannedStart.minute);
       firestoreTaskTimes.add('${timeStr}_${task.title}');
 
       Color accent;
@@ -152,7 +161,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
       if (_filter != RoutineFilter.all && _filter != blockType) continue;
 
-      final endTimeStr = tlFmtMin(task.plannedEnd.hour * 60 + task.plannedEnd.minute);
+      final endTimeStr =
+          tlFmtMin(task.plannedEnd.hour * 60 + task.plannedEnd.minute);
 
       scheduled.add(DisplayBlock(
         time: timeStr,
@@ -173,39 +183,67 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       for (final fb in s.fixedBlocks) {
         final timeStr = tlFmtMin(fb.startMinute);
         if (firestoreTaskTimes.contains('${timeStr}_${fb.title}')) continue;
-        
-        scheduled.add(DisplayBlock(time: timeStr, title: fb.title,
+
+        scheduled.add(DisplayBlock(
+            time: timeStr,
+            title: fb.title,
             subtitle: '${fb.startLabel} – ${fb.endLabel}',
-            accentColor: tlHexColor(fb.colorHex), emoji: fb.emoji, type: RoutineFilter.all));
+            accentColor: tlHexColor(fb.colorHex),
+            emoji: fb.emoji,
+            type: RoutineFilter.all));
       }
     }
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.skinCare) {
       final p = s.skinPlanForDay(dayIdx);
-      if (p.morning.isNotEmpty && !firestoreTaskTimes.contains('07:30_Morning Skin Care')) {
-        scheduled.add(DisplayBlock(time:'07:30', title:'Morning Skin Care',
-            subtitle: p.morning.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'🌿', type:RoutineFilter.skinCare,
+      if (p.morning.isNotEmpty &&
+          !firestoreTaskTimes.contains('07:30_Morning Skin Care')) {
+        scheduled.add(DisplayBlock(
+            time: '07:30',
+            title: 'Morning Skin Care',
+            subtitle: p.morning.map((x) => x.name).join(' · '),
+            accentColor: kMint,
+            emoji: '🌿',
+            type: RoutineFilter.skinCare,
             subtasks: p.morning.map((x) => x.name).toList()));
       }
-      if (p.afternoon.isNotEmpty && !firestoreTaskTimes.contains('13:00_Afternoon Skin Care')) {
-        scheduled.add(DisplayBlock(time:'13:00', title:'Afternoon Skin Care',
-            subtitle: p.afternoon.map((x)=>x.name).join(' · '), accentColor:kMint, emoji:'💧', type:RoutineFilter.skinCare,
+      if (p.afternoon.isNotEmpty &&
+          !firestoreTaskTimes.contains('13:00_Afternoon Skin Care')) {
+        scheduled.add(DisplayBlock(
+            time: '13:00',
+            title: 'Afternoon Skin Care',
+            subtitle: p.afternoon.map((x) => x.name).join(' · '),
+            accentColor: kMint,
+            emoji: '💧',
+            type: RoutineFilter.skinCare,
             subtasks: p.afternoon.map((x) => x.name).toList()));
       }
-      if (p.night.isNotEmpty && !firestoreTaskTimes.contains('22:00_Night Skin Care')) {
-        scheduled.add(DisplayBlock(time:'22:00', title:'Night Skin Care',
-            subtitle: p.night.map((x)=>x.name).join(' · '), accentColor:kPurple, emoji:'🌙', type:RoutineFilter.skinCare,
+      if (p.night.isNotEmpty &&
+          !firestoreTaskTimes.contains('22:00_Night Skin Care')) {
+        scheduled.add(DisplayBlock(
+            time: '22:00',
+            title: 'Night Skin Care',
+            subtitle: p.night.map((x) => x.name).join(' · '),
+            accentColor: kPurple,
+            emoji: '🌙',
+            type: RoutineFilter.skinCare,
             subtasks: p.night.map((x) => x.name).toList()));
       }
     }
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.classes) {
       for (final c in s.classesForDay(date.weekday)) {
-        if (firestoreTaskTimes.contains('${c.startTime}_${c.subject}')) continue;
-        
-        scheduled.add(DisplayBlock(time:c.startTime, title:c.subject,
-            subtitle:'${c.room} · ${c.professor}',
-            accentColor:tlHexColor(c.colorHex), emoji:'🎓', type:RoutineFilter.classes));
+        if (firestoreTaskTimes.contains('${c.startTime}_${c.subject}')) {
+          continue;
+        }
+
+        scheduled.add(DisplayBlock(
+            time: c.startTime,
+            title: c.subject,
+            subtitle: '${c.room} · ${c.professor}',
+            accentColor: tlHexColor(c.colorHex),
+            emoji: '🎓',
+            type: RoutineFilter.classes));
       }
     }
 
@@ -213,10 +251,17 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       for (final m in s.mealPlanForDay(dayIdx).all) {
         // Normalize time to HH:MM 24h for consistent display and sorting
         final normalizedTime = tlNormalizeTime(m.time);
-        if (firestoreTaskTimes.contains('${normalizedTime}_${m.name}')) continue;
-        
-        scheduled.add(DisplayBlock(time: normalizedTime, title:tlMealLabel(normalizedTime),
-            subtitle:m.name, accentColor:kRose, emoji:m.emoji, type:RoutineFilter.eating));
+        if (firestoreTaskTimes.contains('${normalizedTime}_${m.name}')) {
+          continue;
+        }
+
+        scheduled.add(DisplayBlock(
+            time: normalizedTime,
+            title: tlMealLabel(normalizedTime),
+            subtitle: m.name,
+            accentColor: kRose,
+            emoji: m.emoji,
+            type: RoutineFilter.eating));
       }
     }
 
@@ -224,32 +269,33 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     if (_filter == RoutineFilter.all) {
       final targetDate = DateTime(date.year, date.month, date.day);
       for (final g in s.longTermGoals) {
-        final start = DateTime(g.startDate.year, g.startDate.month, g.startDate.day);
+        final start =
+            DateTime(g.startDate.year, g.startDate.month, g.startDate.day);
         final end = DateTime(g.endDate.year, g.endDate.month, g.endDate.day);
-        
+
         // If the date is within the goal's duration
         if (!targetDate.isBefore(start) && !targetDate.isAfter(end)) {
-           final timeStr = g.dailyTaskTime ?? '00:00';
-           if (firestoreTaskTimes.contains('${timeStr}_${g.title}')) continue;
-           
-           scheduled.add(DisplayBlock(
-             time: timeStr,
-             title: g.title,
-             subtitle: 'Long-Term Goal',
-             accentColor: tlHexColor(g.colorHex),
-             emoji: g.emoji,
-             type: RoutineFilter.all,
-           ));
+          final timeStr = g.dailyTaskTime ?? '00:00';
+          if (firestoreTaskTimes.contains('${timeStr}_${g.title}')) continue;
+
+          scheduled.add(DisplayBlock(
+            time: timeStr,
+            title: g.title,
+            subtitle: 'Long-Term Goal',
+            accentColor: tlHexColor(g.colorHex),
+            emoji: g.emoji,
+            type: RoutineFilter.all,
+          ));
         }
       }
     }
 
-    scheduled.sort((a,b) => a.time.compareTo(b.time));
+    scheduled.sort((a, b) => a.time.compareTo(b.time));
 
     // 2) Create the full 24-hour structure.
     for (int hour = 0; hour < 24; hour++) {
       final timeStr = '${hour.toString().padLeft(2, '0')}:00';
-      
+
       // Find all scheduled tasks for this exact hour
       final tasksForHour = scheduled.where((b) {
         final bHour = int.tryParse(b.time.split(':')[0]) ?? 0;
@@ -259,8 +305,12 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       if (tasksForHour.isEmpty) {
         // If hour is completely empty, add our empty placeholder
         blocks.add(DisplayBlock(
-          time: timeStr, title: '', subtitle: '',
-          accentColor: Colors.transparent, emoji: '', type: RoutineFilter.all,
+          time: timeStr,
+          title: '',
+          subtitle: '',
+          accentColor: Colors.transparent,
+          emoji: '',
+          type: RoutineFilter.all,
           isEmptyPlaceholder: true,
         ));
       } else {
@@ -272,14 +322,23 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     // We don't sort here anymore, the list is already constructed in 00:00 - 23:59 order
 
     final now = DateTime.now();
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
       final nowMin = now.hour * 60 + now.minute;
       for (int i = 0; i < blocks.length - 1; i++) {
-        if (nowMin >= tlParseMin(blocks[i].time) && nowMin < tlParseMin(blocks[i+1].time)) {
+        if (nowMin >= tlParseMin(blocks[i].time) &&
+            nowMin < tlParseMin(blocks[i + 1].time)) {
           final b = blocks[i];
-          blocks[i] = DisplayBlock(time:b.time, title:b.title, subtitle:b.subtitle,
-              accentColor:b.accentColor, emoji:b.emoji, type:b.type,
-              subtasks:b.subtasks, isNow:true);
+          blocks[i] = DisplayBlock(
+              time: b.time,
+              title: b.title,
+              subtitle: b.subtitle,
+              accentColor: b.accentColor,
+              emoji: b.emoji,
+              type: b.type,
+              subtasks: b.subtasks,
+              isNow: true);
           break;
         }
       }
@@ -298,15 +357,18 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         setState(() => _filter = RoutineFilter.skinCare);
       })));
     } else if (f == RoutineFilter.eating) {
-      Navigator.push(context, slideRoute(EatingSetupScreen(
-          onComplete: () => setState(() => _filter = RoutineFilter.eating))));
+      Navigator.push(
+          context,
+          slideRoute(EatingSetupScreen(
+              onComplete: () =>
+                  setState(() => _filter = RoutineFilter.eating))));
     } else if (f == RoutineFilter.classes) {
       Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {
-        ref.read(routineProvider.notifier).setClasses(kDefaultClasses); // sets classesSetUp true, demo purposes
         setState(() => _filter = RoutineFilter.classes);
       })));
     } else if (f == RoutineFilter.fixedSchedule) {
-      Navigator.push(context, slideRoute(FixedScheduleSetupScreen(onComplete: () {
+      Navigator.push(context,
+          slideRoute(FixedScheduleSetupScreen(onComplete: () {
         setState(() => _filter = RoutineFilter.fixedSchedule);
       })));
     }
@@ -320,26 +382,45 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       builder: (_) => RoutineSettingsSheet(
         setupDone: {
           RoutineFilter.skinCare: s.skinCareSetUp,
-          RoutineFilter.classes:  s.classesSetUp,
-          RoutineFilter.eating:   s.eatingSetUp,
+          RoutineFilter.classes: s.classesSetUp,
+          RoutineFilter.eating: s.eatingSetUp,
         },
-        onSetup: (f) { Navigator.pop(context); _doSetup(f); },
+        onSetup: (f) {
+          Navigator.pop(context);
+          _doSetup(f);
+        },
       ),
     );
   }
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();
-    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
-    final isTomorrow = date.year == now.year && date.month == now.month && date.day == now.day + 1;
-    
+    final isToday =
+        date.year == now.year && date.month == now.month && date.day == now.day;
+    final isTomorrow = date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day + 1;
+
     const daysStr = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-    const mos = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    
+    const mos = [
+      'JAN',
+      'FEB',
+      'MAR',
+      'APR',
+      'MAY',
+      'JUN',
+      'JUL',
+      'AUG',
+      'SEP',
+      'OCT',
+      'NOV',
+      'DEC'
+    ];
+
     final dayStr = daysStr[date.weekday - 1];
     final moStr = mos[date.month - 1];
     final dateStr = '$dayStr, $moStr ${date.day}, ${date.year}';
-    
+
     if (isToday) return 'TODAY: $dateStr';
     if (isTomorrow) return 'TOMORROW: $dateStr';
     return dateStr.toUpperCase();
@@ -357,18 +438,35 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         return "This Year's Flow";
       case TimelineZoomLevel.day:
         final now = DateTime.now();
-        final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
-        final isTomorrow = date.year == now.year && date.month == now.month && date.day == now.day + 1;
-        
+        final isToday = date.year == now.year &&
+            date.month == now.month &&
+            date.day == now.day;
+        final isTomorrow = date.year == now.year &&
+            date.month == now.month &&
+            date.day == now.day + 1;
+
         if (isToday) {
           return "Today's Flow";
         }
         if (isTomorrow) {
           return "Tomorrow's Flow";
         }
-        
+
         const daysStr = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const mos = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const mos = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec'
+        ];
         return '${daysStr[date.weekday - 1]}, ${mos[date.month - 1]} ${date.day} Flow';
     }
   }
@@ -405,7 +503,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
   Widget _buildDayHeaderSliver(DateTime date) {
     final now = DateTime.now();
-    final isToday = date.year == now.year && date.month == now.month && date.day == now.day;
+    final isToday =
+        date.year == now.year && date.month == now.month && date.day == now.day;
     // Today's header is shown in the main section header, skip it
     if (isToday) return const SliverToBoxAdapter(child: SizedBox.shrink());
 
@@ -436,9 +535,9 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     }
 
     final days = _buildAllBlocks(s, tasksByDay: tasksByDay);
-    
-    final displayDate = (_activeDate != null && days.containsKey(_activeDate)) 
-        ? _activeDate! 
+
+    final displayDate = (_activeDate != null && days.containsKey(_activeDate))
+        ? _activeDate!
         : (days.isNotEmpty ? days.keys.first : DateTime.now());
 
     return LiquidBg(
@@ -446,171 +545,245 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Stack(children: [
-          SafeArea(bottom: false, child: Column(children: [
-            // ─── Header: Info (Left) & Glass Action Island (Right) ───────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+          SafeArea(
+              bottom: false,
+              child: Column(children: [
+                // ─── Header: Info (Left) & Glass Action Island (Right) ───────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(
-                        child: Text(_formatDate(displayDate).toUpperCase(),
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                                color: kInk.withValues(alpha: 0.8), letterSpacing: 1.2)),
-                      ),
-                      const SizedBox(width: 8),
                       Row(
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          _GlassToggle(
-                            active: _aiToggle,
-                            baseColor: const Color(0xFF86EFAC),
-                            onChanged: (v) => setState(() {
-                              _aiToggle = v;
-                              _aiOpen = v;
-                            }),
-                            knobIcon: Icons.hub_rounded,
-                            label: 'AI',
-                          ),
-                          const SizedBox(width: 10),
-                          _GlassToggle(
-                            active: _taskToggle,
-                            baseColor: const Color(0xFFD8B4FE),
-                            onChanged: (v) => setState(() => _taskToggle = v),
-                            knobIcon: Icons.playlist_add_rounded,
-                            label: null,
+                          Expanded(
+                            child: Text(_formatDate(displayDate).toUpperCase(),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: kInk.withValues(alpha: 0.8),
+                                    letterSpacing: 1.2)),
                           ),
                           const SizedBox(width: 8),
-                          _SettingsPill(onTap: () => _openSettings(s)),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _GlassToggle(
+                                active: _aiToggle,
+                                baseColor: const Color(0xFF86EFAC),
+                                onChanged: (v) => setState(() {
+                                  _aiToggle = v;
+                                  _aiOpen = v;
+                                }),
+                                knobIcon: Icons.hub_rounded,
+                                label: 'AI',
+                              ),
+                              const SizedBox(width: 10),
+                              _GlassToggle(
+                                active: _taskToggle,
+                                baseColor: const Color(0xFFD8B4FE),
+                                onChanged: (v) =>
+                                    setState(() => _taskToggle = v),
+                                knobIcon: Icons.playlist_add_rounded,
+                                label: null,
+                              ),
+                              const SizedBox(width: 8),
+                              _SettingsPill(onTap: () => _openSettings(s)),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(_formatFlow(displayDate),
+                                style: const TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    color: kInk,
+                                    letterSpacing: -1.0),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1),
+                          ),
+                          const SizedBox(width: 12),
+                          GlassFilterDropdown(
+                            selected: _filter,
+                            routineState: s,
+                            onSelected: (f) => _onFilter(f, s),
+                          ),
                         ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Flexible(
-                        child: Text(_formatFlow(displayDate),
-                            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900,
-                                color: kInk, letterSpacing: -1.0),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1),
-                      ),
-                      const SizedBox(width: 12),
-                      GlassFilterDropdown(
-                        selected: _filter,
-                        routineState: s,
-                        onSelected: (f) => _onFilter(f, s),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // ─── Infinite Timeline Scroll ─────────────────────────────────
-            Expanded(
-              child: GestureDetector(
-                onScaleUpdate: (details) {
-                  if (details.scale < 0.75) {
-                    _zoomOut();
-                  } else if (details.scale > 1.3) {
-                    _zoomIn();
-                  }
-                },
-                onScaleEnd: (_) => setState(() => _isZooming = false),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 350),
-                  transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: ScaleTransition(scale: animation, child: child)),
-                  child: _zoomLevel == TimelineZoomLevel.week
-                      ? TimelineWeekView(activeDate: displayDate, routineState: s, filter: _filter)
-                      : _zoomLevel == TimelineZoomLevel.month
-                          ? TimelineMonthView(activeDate: displayDate, routineState: s, filter: _filter)
-                          : _zoomLevel == TimelineZoomLevel.year
-                              ? TimelineYearView(activeDate: displayDate, routineState: s, filter: _filter)
-                              // Default Day View
-                              : NotificationListener<ScrollNotification>(
-                                  onNotification: (notif) {
-                                    _updateActiveDayFromScroll();
-                                    return false;
-                                  },
-                                  child: CustomScrollView(
-                                      physics: const BouncingScrollPhysics(),
-                                      slivers: [
-                                        for (final entry in days.entries) ...[
-                                          // Day anchor (used for scroll detection)
-                                          SliverToBoxAdapter(
-                                             // Add key to SizedBox so it provides a RenderBox instead of RenderSliver
-                                             child: SizedBox(key: _getKeyFor(entry.key), height: 1),
-                                          ),
-                                          // Day header — skip for today (already shown in main header)
-                                          _buildDayHeaderSliver(entry.key),
-                                          // Only show empty state for filters when there's actually nothing scheduled
-                                          // (Filtering still drops blocks if they don't match, so if scheduled is empty we show 24 nulls)
-                                          if (entry.value.every((b) => b.isEmptyPlaceholder) && _filter != RoutineFilter.all)
-                                             SliverToBoxAdapter(
-                                               child: Padding(
-                                                 padding: const EdgeInsets.only(top: 20, bottom: 60),
-                                                 child: TimelineEmptyState(filter: _filter, onSetup: () => _doSetup(_filter)),
-                                               ),
-                                             )
-                                          else
-                                             SliverPadding(
-                                               padding: const EdgeInsets.only(bottom: 24),
-                                               sliver: SliverList(
-                                                 delegate: SliverChildBuilderDelegate(
-                                                   (_, i) => TimelineRow(
-                                                     block: entry.value[i],
-                                                     index: i,
-                                                     showHourLabel: i == 0 || entry.value[i].time.split(':')[0] != entry.value[i-1].time.split(':')[0],
-                                                     isLast: i == entry.value.length - 1,
-                                                     onStart: (taskId) => ref.read(taskServiceProvider).startTask(taskId),
-                                                     onComplete: (taskId) => ref.read(taskServiceProvider).completeTask(taskId),
-                                                   ),
-                                                   childCount: entry.value.length,
-                                                 ),
-                                               ),
-                                             ),
-                                        ],
-                                        const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
-                                      ],
-                                    ),
-                                ),
                 ),
-              ),
-            ),
-          ])),
+
+                // ─── Infinite Timeline Scroll ─────────────────────────────────
+                Expanded(
+                  child: GestureDetector(
+                    onScaleUpdate: (details) {
+                      if (details.scale < 0.75) {
+                        _zoomOut();
+                      } else if (details.scale > 1.3) {
+                        _zoomIn();
+                      }
+                    },
+                    onScaleEnd: (_) => setState(() => _isZooming = false),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 350),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child:
+                              ScaleTransition(scale: animation, child: child)),
+                      child: _zoomLevel == TimelineZoomLevel.week
+                          ? TimelineWeekView(
+                              activeDate: displayDate,
+                              routineState: s,
+                              filter: _filter)
+                          : _zoomLevel == TimelineZoomLevel.month
+                              ? TimelineMonthView(
+                                  activeDate: displayDate,
+                                  routineState: s,
+                                  filter: _filter)
+                              : _zoomLevel == TimelineZoomLevel.year
+                                  ? TimelineYearView(
+                                      activeDate: displayDate,
+                                      routineState: s,
+                                      filter: _filter)
+                                  // Default Day View
+                                  : NotificationListener<ScrollNotification>(
+                                      onNotification: (notif) {
+                                        _updateActiveDayFromScroll();
+                                        return false;
+                                      },
+                                      child: CustomScrollView(
+                                        physics: const BouncingScrollPhysics(),
+                                        slivers: [
+                                          for (final entry in days.entries) ...[
+                                            // Day anchor (used for scroll detection)
+                                            SliverToBoxAdapter(
+                                              // Add key to SizedBox so it provides a RenderBox instead of RenderSliver
+                                              child: SizedBox(
+                                                  key: _getKeyFor(entry.key),
+                                                  height: 1),
+                                            ),
+                                            // Day header — skip for today (already shown in main header)
+                                            _buildDayHeaderSliver(entry.key),
+                                            // Only show empty state for filters when there's actually nothing scheduled
+                                            // (Filtering still drops blocks if they don't match, so if scheduled is empty we show 24 nulls)
+                                            if (entry.value.every((b) =>
+                                                    b.isEmptyPlaceholder) &&
+                                                _filter != RoutineFilter.all)
+                                              SliverToBoxAdapter(
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                          top: 20, bottom: 60),
+                                                  child: TimelineEmptyState(
+                                                      filter: _filter,
+                                                      onSetup: () =>
+                                                          _doSetup(_filter)),
+                                                ),
+                                              )
+                                            else
+                                              SliverPadding(
+                                                padding: const EdgeInsets.only(
+                                                    bottom: 24),
+                                                sliver: SliverList(
+                                                  delegate:
+                                                      SliverChildBuilderDelegate(
+                                                    (_, i) => TimelineRow(
+                                                      block: entry.value[i],
+                                                      index: i,
+                                                      showHourLabel: i == 0 ||
+                                                          entry.value[i].time
+                                                                  .split(
+                                                                      ':')[0] !=
+                                                              entry.value[i - 1]
+                                                                  .time
+                                                                  .split(
+                                                                      ':')[0],
+                                                      isLast: i ==
+                                                          entry.value.length -
+                                                              1,
+                                                      onStart: (taskId) => ref
+                                                          .read(
+                                                              taskServiceProvider)
+                                                          .startTask(taskId),
+                                                      onComplete: (taskId) => ref
+                                                          .read(
+                                                              taskServiceProvider)
+                                                          .completeTask(taskId),
+                                                    ),
+                                                    childCount:
+                                                        entry.value.length,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                          const SliverPadding(
+                                              padding:
+                                                  EdgeInsets.only(bottom: 120)),
+                                        ],
+                                      ),
+                                    ),
+                    ),
+                  ),
+                ),
+              ])),
 
           // ─── AI dim overlay ───────────────────────────────────────────
-          if (_aiOpen) Positioned.fill(
-            bottom: 340,
-            child: GestureDetector(
-              onTap: () => setState(() => _aiOpen = false),
-              child: Container(color: Colors.black.withValues(alpha: 0.18)),
+          if (_aiOpen)
+            Positioned.fill(
+              bottom: 340,
+              child: GestureDetector(
+                onTap: () => setState(() => _aiOpen = false),
+                child: Container(color: Colors.black.withValues(alpha: 0.18)),
+              ),
             ),
-          ),
 
           // ─── AI Panel ────────────────────────────────────────────────
-          if (_aiOpen) Positioned(left: 0, right: 0, bottom: 0, child: AiRoutinePanel(
-            routineState: s,
-            todayTasks: (ref.read(customTasksProvider)[_todayKey] ?? []),
-            onAddTask: (t) {
-              final map = Map<String, List<CustomTask>>.from(ref.read(customTasksProvider));
-              map[_todayKey] = [...(map[_todayKey] ?? []), t];
-              ref.read(customTasksProvider.notifier).state = map;
-            },
-            onRemoveTask: (id) {
-              final map = Map<String, List<CustomTask>>.from(ref.read(customTasksProvider));
-              map[_todayKey] = (map[_todayKey] ?? []).where((t) => t.id != id).toList();
-              ref.read(customTasksProvider.notifier).state = map;
-            },
-          )),
+          if (_aiOpen)
+            Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: AiRoutinePanel(
+                  routineState: s,
+                  todayTasks: (ref.read(customTasksProvider)[_todayKey] ?? []),
+                  onAddTask: (t) async {
+                    final plannedStart = _dateTimeForCustomTask(t);
+                    await ref.read(taskServiceProvider).createTask(TaskModel(
+                          id: generateId(),
+                          type: TaskType.custom,
+                          title: t.title,
+                          emoji: t.emoji,
+                          color:
+                              '#${(t.color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}',
+                          plannedStart: plannedStart,
+                          plannedEnd:
+                              plannedStart.add(const Duration(minutes: 30)),
+                          createdAt: DateTime.now(),
+                          updatedAt: DateTime.now(),
+                        ));
+                    final map = Map<String, List<CustomTask>>.from(
+                        ref.read(customTasksProvider));
+                    map[_todayKey] = [...(map[_todayKey] ?? []), t];
+                    ref.read(customTasksProvider.notifier).state = map;
+                  },
+                  onRemoveTask: (id) {
+                    final map = Map<String, List<CustomTask>>.from(
+                        ref.read(customTasksProvider));
+                    map[_todayKey] = (map[_todayKey] ?? [])
+                        .where((t) => t.id != id)
+                        .toList();
+                    ref.read(customTasksProvider.notifier).state = map;
+                  },
+                )),
 
           // ─── Setup Popup Overlays ──────────────────────────────────
           if (!s.skinCareSetUp && _filter == RoutineFilter.skinCare)
@@ -618,26 +791,36 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
               child: _buildSetupPopup(
                 emoji: '🌿',
                 title: 'No skin care today',
-                subtitle: 'Set up your skin care routine\nand it will appear here automatically',
+                subtitle:
+                    'Set up your skin care routine\nand it will appear here automatically',
                 buttonText: 'Set up Skin Care',
                 filter: RoutineFilter.skinCare,
-                buttonColors: [const Color(0xFFC4F6BB), const Color(0xFFA1F094)],
+                buttonColors: [
+                  const Color(0xFFC4F6BB),
+                  const Color(0xFFA1F094)
+                ],
                 shadowColor: const Color(0xFFA1F094).withValues(alpha: 0.4),
-                glassColor: const Color(0xFF051105).withValues(alpha: 0.20), // Slight deep green tint
+                glassColor: const Color(0xFF051105)
+                    .withValues(alpha: 0.20), // Slight deep green tint
               ),
             ),
-          
+
           if (!s.classesSetUp && _filter == RoutineFilter.classes)
             Positioned.fill(
               child: _buildSetupPopup(
                 emoji: '🎓',
                 title: 'No classes today',
-                subtitle: 'Set up your class schedule\nand it will appear here automatically',
+                subtitle:
+                    'Set up your class schedule\nand it will appear here automatically',
                 buttonText: 'Set up Classes',
                 filter: RoutineFilter.classes,
-                buttonColors: [const Color(0xFF90C2F9), const Color(0xFF60B8FF)],
+                buttonColors: [
+                  const Color(0xFF90C2F9),
+                  const Color(0xFF60B8FF)
+                ],
                 shadowColor: const Color(0xFF60B8FF).withValues(alpha: 0.4),
-                glassColor: const Color(0xFF050811).withValues(alpha: 0.20), // Slight deep blue tint
+                glassColor: const Color(0xFF050811)
+                    .withValues(alpha: 0.20), // Slight deep blue tint
               ),
             ),
 
@@ -646,18 +829,38 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
               child: _buildSetupPopup(
                 emoji: '🍽️',
                 title: 'No meals today',
-                subtitle: 'Set up your eating routine\nand it will appear here automatically',
+                subtitle:
+                    'Set up your eating routine\nand it will appear here automatically',
                 buttonText: 'Set up Eating Routine',
                 filter: RoutineFilter.eating,
-                buttonColors: [const Color(0xFFFFD480), const Color(0xFFFFB830)],
+                buttonColors: [
+                  const Color(0xFFFFD480),
+                  const Color(0xFFFFB830)
+                ],
                 shadowColor: const Color(0xFFFFB830).withValues(alpha: 0.4),
-                glassColor: const Color(0xFF110800).withValues(alpha: 0.20), // Slight deep amber/brown tint
+                glassColor: const Color(0xFF110800)
+                    .withValues(alpha: 0.20), // Slight deep amber/brown tint
               ),
             ),
         ]),
       ),
     );
   }
+
+  DateTime _dateTimeForCustomTask(CustomTask task) {
+    final parts = task.time.split(':');
+    final hour = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 9 : 9;
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    return DateTime(
+      task.date.year,
+      task.date.month,
+      task.date.day,
+      hour.clamp(0, 23),
+      minute.clamp(0, 59),
+    );
+  }
+
+  void _absorbSetupPopupTap() {}
 
   Widget _buildSetupPopup({
     required String emoji,
@@ -676,14 +879,15 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         color: Colors.transparent, // Floating popup, no dimming
         child: Center(
           child: GestureDetector(
-            onTap: () {}, // Absorb taps on the card itself
+            onTap: _absorbSetupPopupTap,
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 32),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(32),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1), // Softer glass shadow
+                    color: Colors.black
+                        .withValues(alpha: 0.1), // Softer glass shadow
                     blurRadius: 40,
                     offset: const Offset(0, 20),
                   ),
@@ -696,29 +900,36 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                   // 1. The Blur Layer
                   Positioned.fill(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(30), // Match reference
+                      borderRadius:
+                          BorderRadius.circular(30), // Match reference
                       child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28), // Smooth creamy glass blur
+                        filter: ImageFilter.blur(
+                            sigmaX: 28, sigmaY: 28), // Smooth creamy glass blur
                         child: Container(
-                          color: glassColor, // Deep tinted ultra-transparent base
+                          color:
+                              glassColor, // Deep tinted ultra-transparent base
                         ),
                       ),
                     ),
                   ),
                   // 2. The Content Layer
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 36),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.25), // Soft white rim
+                        color: Colors.white
+                            .withValues(alpha: 0.25), // Soft white rim
                         width: 1.0,
                       ),
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          Colors.white.withValues(alpha: 0.15), // Faint frost reflection at the edge
+                          Colors.white.withValues(
+                              alpha:
+                                  0.15), // Faint frost reflection at the edge
                           Colors.white.withValues(alpha: 0.0),
                         ],
                       ),
@@ -726,7 +937,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(emoji, style: const TextStyle(fontSize: 48, height: 1.0)),
+                        Text(emoji,
+                            style: const TextStyle(fontSize: 48, height: 1.0)),
                         const SizedBox(height: 16),
                         Text(
                           title,
@@ -744,7 +956,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                           style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.7), // Slightly dimmed white text
+                            color: Colors.white.withValues(
+                                alpha: 0.7), // Slightly dimmed white text
                             height: 1.4,
                           ),
                           textAlign: TextAlign.center,
@@ -759,7 +972,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                               borderRadius: BorderRadius.circular(26),
                               boxShadow: [
                                 BoxShadow(
-                                  color: shadowColor, // Glowing specific color shadow
+                                  color:
+                                      shadowColor, // Glowing specific color shadow
                                   blurRadius: 15,
                                   offset: const Offset(0, 6),
                                 ),
@@ -787,15 +1001,21 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                                 child: Stack(
                                   children: [
                                     Positioned(
-                                      top: 0, left: 16, right: 16,
+                                      top: 0,
+                                      left: 16,
+                                      right: 16,
                                       child: Container(
                                         height: 12,
                                         decoration: BoxDecoration(
-                                          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                                          borderRadius:
+                                              const BorderRadius.vertical(
+                                                  bottom: Radius.circular(12)),
                                           gradient: LinearGradient(
                                             colors: [
-                                              Colors.white.withValues(alpha: 0.9),
-                                              Colors.white.withValues(alpha: 0.0),
+                                              Colors.white
+                                                  .withValues(alpha: 0.9),
+                                              Colors.white
+                                                  .withValues(alpha: 0.0),
                                             ],
                                             begin: Alignment.topCenter,
                                             end: Alignment.bottomCenter,
@@ -1049,7 +1269,8 @@ class _GlassToggleState extends State<_GlassToggle>
                         alignment: Alignment.topCenter,
                         child: Container(
                           height: _trackH * 0.45,
-                          margin: const EdgeInsets.only(top: 2, left: 6, right: 6),
+                          margin:
+                              const EdgeInsets.only(top: 2, left: 6, right: 6),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(20),
                             gradient: LinearGradient(
@@ -1096,8 +1317,7 @@ class _GlassToggleState extends State<_GlassToggle>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(widget.knobIcon,
-                                    size: 10,
-                                    color: const Color(0xFF475569)),
+                                    size: 10, color: const Color(0xFF475569)),
                                 Text(
                                   widget.label!,
                                   style: const TextStyle(
@@ -1110,8 +1330,7 @@ class _GlassToggleState extends State<_GlassToggle>
                               ],
                             )
                           : Icon(widget.knobIcon,
-                              size: 16,
-                              color: const Color(0xFF475569)),
+                              size: 16, color: const Color(0xFF475569)),
                     ),
                   ),
                 ),
@@ -1123,8 +1342,6 @@ class _GlassToggleState extends State<_GlassToggle>
     );
   }
 }
-
-
 
 // All timeline helper functions (hexColor, fmtMin, parseMin, mealLabel, normalizeTime)
 // are now exported from timeline_section.dart as tl-prefixed functions.

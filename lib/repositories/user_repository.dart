@@ -1,4 +1,6 @@
 import '../services/firestore_service.dart';
+import '../models/goal_model.dart';
+import '../models/habit_model.dart';
 import '../models/user_model.dart';
 
 class OnboardingDataSnapshot {
@@ -54,8 +56,8 @@ class UserRepository {
     String? completedAt,
   }) {
     return {
-      'selectedCategories':
-          List<String>.from(onboardingMap['selectedCategories'] as List? ?? const []),
+      'selectedCategories': List<String>.from(
+          onboardingMap['selectedCategories'] as List? ?? const []),
       'badHabits':
           List<String>.from(onboardingMap['badHabits'] as List? ?? const []),
       'goodHabits':
@@ -131,8 +133,8 @@ class UserRepository {
     return {
       'status': 'stub',
       'source': 'onboarding',
-      'selectedCategories':
-          List<String>.from(onboardingMap['selectedCategories'] as List? ?? const []),
+      'selectedCategories': List<String>.from(
+          onboardingMap['selectedCategories'] as List? ?? const []),
       'goals': List<String>.from(onboardingMap['goals'] as List? ?? const []),
       'coachStyle': onboardingMap['coachStyle'] as String? ?? 'Supportive',
       'coachName': onboardingMap['coachName'] as String? ?? '',
@@ -251,6 +253,188 @@ class UserRepository {
         completedAt: completedAt,
       ),
     );
+
+    await _materializeOnboardingSelections(
+      onboardingMap,
+      completedAt: DateTime.parse(completedAt),
+    );
+  }
+
+  Future<void> _materializeOnboardingSelections(
+    Map<String, dynamic> onboardingMap, {
+    required DateTime completedAt,
+  }) async {
+    final goodHabits =
+        List<String>.from(onboardingMap['goodHabits'] as List? ?? const []);
+    final badHabits =
+        List<String>.from(onboardingMap['badHabits'] as List? ?? const []);
+    final goals =
+        List<String>.from(onboardingMap['goals'] as List? ?? const []);
+    final scheduleItems = List<Map<String, dynamic>>.from(
+      (onboardingMap['scheduleItems'] as List? ?? const []).map(
+        (item) => Map<String, dynamic>.from(item as Map),
+      ),
+    );
+
+    for (final name
+        in goodHabits.map(_cleanLabel).where((name) => name.isNotEmpty)) {
+      final id = 'onboarding_good_${_slug(name)}';
+      if (await _service.getUserSubdocument('habits', id) != null) continue;
+      await _service.saveUserSubdocument(
+        'habits',
+        id,
+        HabitModel(
+          id: id,
+          name: name,
+          kind: HabitKind.good,
+          unit: 'count',
+          trackerType: _trackerTypeFor(name),
+          dailyGoal: 1,
+          identityTags: [name],
+          emoji: _emojiForHabit(name, HabitKind.good),
+          color: '#22C55E',
+          createdAt: completedAt,
+          updatedAt: completedAt,
+        ).toFirestore(),
+      );
+    }
+
+    for (final name
+        in badHabits.map(_cleanLabel).where((name) => name.isNotEmpty)) {
+      final id = 'onboarding_bad_${_slug(name)}';
+      if (await _service.getUserSubdocument('habits', id) != null) continue;
+      await _service.saveUserSubdocument(
+        'habits',
+        id,
+        HabitModel(
+          id: id,
+          name: name,
+          kind: HabitKind.bad,
+          unit: 'count',
+          trackerType: _trackerTypeFor(name),
+          goalType: BadHabitGoalType.awarenessOnly,
+          identityTags: [name],
+          emoji: _emojiForHabit(name, HabitKind.bad),
+          color: '#EF4444',
+          createdAt: completedAt,
+          updatedAt: completedAt,
+        ).toFirestore(),
+      );
+    }
+
+    for (final title
+        in goals.map(_cleanLabel).where((goal) => goal.isNotEmpty)) {
+      final id = 'onboarding_goal_${_slug(title)}';
+      if (await _service.getUserSubdocument('goals', id) != null) continue;
+      await _service.saveUserSubdocument(
+        'goals',
+        id,
+        GoalModel(
+          id: id,
+          title: title,
+          identityTags: [title],
+          colorHex: '#22C55E',
+          iconName: 'flag_rounded',
+          source: 'onboarding',
+          createdAt: completedAt,
+          updatedAt: completedAt,
+        ).toFirestore(),
+      );
+    }
+
+    final fixedBlocks = scheduleItems
+        .where((item) =>
+            item['isAdd'] != true &&
+            _cleanLabel(item['title'] as String? ?? '').isNotEmpty &&
+            ((item['duration'] as num?)?.toDouble() ?? 0) > 0)
+        .map((item) {
+      final title = _cleanLabel(item['title'] as String? ?? '');
+      final startHours =
+          ((item['start'] as num?)?.toDouble() ?? 0).clamp(0, 24);
+      final durationHours =
+          ((item['duration'] as num?)?.toDouble() ?? 0).clamp(0.25, 24);
+      final startMinute = (startHours * 60).round().clamp(0, 1439).toInt();
+      final endMinute = ((startHours + durationHours) * 60)
+          .round()
+          .clamp(startMinute + 1, 1440)
+          .toInt();
+
+      return {
+        'id': _slug(title),
+        'title': title,
+        'emoji': _emojiForScheduleTitle(title),
+        'startMinute': startMinute,
+        'endMinute': endMinute,
+        'colorHex': _colorHexFromArgb(item['color']),
+      };
+    }).toList();
+
+    if (fixedBlocks.isNotEmpty) {
+      final existingRoutine = await _service.getRoutine();
+      await _service.saveRoutine({
+        ...?existingRoutine,
+        'fixedBlocks': fixedBlocks,
+        'fixedScheduleSetUp': true,
+      });
+    }
+  }
+
+  String _cleanLabel(String value) => value.replaceAll('\n', ' ').trim();
+
+  String _slug(String value) {
+    final slug = _cleanLabel(value)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return slug.isEmpty ? 'item' : slug;
+  }
+
+  String _trackerTypeFor(String name) {
+    final key = name.toLowerCase();
+    if (key.contains('gym') ||
+        key.contains('exercise') ||
+        key.contains('workout')) {
+      return 'exercise';
+    }
+    if (key.contains('read')) return 'reading';
+    if (key.contains('scroll')) return 'screen_time';
+    if (key.contains('food')) return 'nutrition';
+    if (key.contains('procrast')) return 'procrastination';
+    if (key.contains('cigarette') || key.contains('smok')) return 'smoking';
+    return 'generic';
+  }
+
+  String _emojiForHabit(String name, HabitKind kind) {
+    final key = name.toLowerCase();
+    if (key.contains('gym') || key.contains('workout')) return '💪';
+    if (key.contains('read')) return '📚';
+    if (key.contains('cigarette') || key.contains('smok')) return '🚭';
+    if (key.contains('scroll')) return '📱';
+    if (key.contains('food')) return '🍟';
+    if (key.contains('procrast')) return '⏳';
+    return kind == HabitKind.good ? '✅' : '⚠️';
+  }
+
+  String _emojiForScheduleTitle(String title) {
+    final key = title.toLowerCase();
+    if (key.contains('sleep')) return '🛏️';
+    if (key.contains('class') || key.contains('study')) return '🎓';
+    if (key.contains('work')) return '💼';
+    if (key.contains('gym') || key.contains('workout')) return '💪';
+    if (key.contains('meal') ||
+        key.contains('dinner') ||
+        key.contains('food')) {
+      return '🍽️';
+    }
+    return '📌';
+  }
+
+  String _colorHexFromArgb(Object? value) {
+    if (value is num) {
+      final rgb = value.toInt() & 0xFFFFFF;
+      return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+    }
+    return '#CBD5E1';
   }
 
   /// Load onboarding data from the user profile.
@@ -261,7 +445,8 @@ class UserRepository {
       return OnboardingDataSnapshot(
         onboarding: data,
         step: (data['onboardingStep'] as num?)?.toInt() ?? 0,
-        hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
+        hasCompletedOnboarding:
+            data['hasCompletedOnboarding'] as bool? ?? false,
         completedAt: data['completedAt'] as String?,
       );
     }
