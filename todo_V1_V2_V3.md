@@ -492,7 +492,7 @@ Firebase console: scheduled events and summaries appear even if the mobile app i
 Logs: scheduled jobs identify which users were processed.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 6.2 — Add Android Screen-Time Importer
 **Why:** Screen-time and unlock data are part of the product promise and should come after the event system is stable.
@@ -516,7 +516,7 @@ Firebase console: `screen_time_logs` rows are created.
 Logs: importer emits events when sync runs.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 6.3 — Add App Check, Remote Config, and Production Safety Settings
 **Why:** The app should not reach production without basic abuse and configuration controls.
@@ -537,7 +537,7 @@ Firebase console: App Check requests appear after setup.
 Logs: feature flags can be read and used at runtime.
 
 **Estimate:** 4h
-- 
+- Done
 
 ---
 
