@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,7 @@ import 'config/firebase_options.dart';
 import 'core/router/app_router.dart';
 import 'core/providers.dart';
 import 'services/global_error_handler.dart';
+import 'services/remote_config_service.dart';
 
 void main() async {
   // ① Hook error handlers first — before anything else — so no error slips
@@ -24,12 +27,26 @@ void main() async {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
+  final remoteConfigService = RemoteConfigService();
+  var appRemoteConfig = AppRemoteConfig.defaults();
+
   try {
     // ② Initialize Firebase.
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+
+    await FirebaseAppCheck.instance.activate(
+      providerAndroid: kReleaseMode
+          ? const AndroidPlayIntegrityProvider()
+          : const AndroidDebugProvider(),
+    );
+    debugPrint(
+        '[AppCheck] activated provider=${kReleaseMode ? "play_integrity" : "debug"}');
+
+    FirebaseFirestore.instance.settings =
+        const Settings(persistenceEnabled: true);
+    appRemoteConfig = await remoteConfigService.initialize();
 
     // ③ Firebase is healthy — enable the Crashlytics pipe.
     GlobalErrorHandler.setCrashlyticsEnabled();
@@ -37,7 +54,15 @@ void main() async {
     debugPrint('🔴 [main] Firebase init failed: $e');
   }
 
-  runApp(const ProviderScope(child: OptivusApp()));
+  runApp(
+    ProviderScope(
+      overrides: [
+        remoteConfigServiceProvider.overrideWithValue(remoteConfigService),
+        appRemoteConfigProvider.overrideWithValue(appRemoteConfig),
+      ],
+      child: const OptivusApp(),
+    ),
+  );
 }
 
 class OptivusApp extends ConsumerWidget {
@@ -48,9 +73,10 @@ class OptivusApp extends ConsumerWidget {
     // Eagerly initialize the EventOrchestrator so it starts
     // listening to the event bus as soon as the app launches.
     ref.read(eventOrchestratorProvider);
-    
+
     // Check if we need to close the previous day
     ref.read(routineServiceProvider).runDayCloseIfNeeded();
+    ref.read(appRemoteConfigProvider);
 
     return MaterialApp.router(
       title: 'Optivus',
@@ -64,4 +90,3 @@ class OptivusApp extends ConsumerWidget {
     );
   }
 }
-

@@ -15,12 +15,26 @@ import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
 import 'package:optivus2/services/routine_service.dart';
 import 'package:optivus2/services/coach_service.dart';
+import 'package:optivus2/services/remote_config_service.dart';
 import 'package:optivus2/services/screen_time_bridge.dart';
 import 'package:optivus2/services/screen_time_importer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 export 'providers/bootstrap_provider.dart';
+
+/// Active Remote Config wrapper. Overridden from `main.dart` after Firebase
+/// startup so consumers can read the initialized service synchronously.
+final remoteConfigServiceProvider = Provider<RemoteConfigService>(
+  (_) => RemoteConfigService(),
+);
+
+/// Typed feature flags and remote defaults. Overridden from `main.dart` with
+/// the values available at startup; services can watch/read this without
+/// reaching into Firebase directly.
+final appRemoteConfigProvider = Provider<AppRemoteConfig>(
+  (_) => AppRemoteConfig.defaults(),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CENTRAL DI — Single source of truth for service & repository providers
@@ -135,10 +149,11 @@ final allStreaksProvider = StreamProvider<List<Streak>>((ref) {
 });
 
 /// Real-time stream of today's habit logs.
-final todayHabitLogsProvider = StreamProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((ref) {
+final todayHabitLogsProvider =
+    StreamProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value([]);
-  
+
   final now = DateTime.now();
   final startOfDay = DateTime(now.year, now.month, now.day);
   final endOfDay = startOfDay.add(const Duration(days: 1));
@@ -147,7 +162,8 @@ final todayHabitLogsProvider = StreamProvider<List<QueryDocumentSnapshot<Map<Str
       .collection('users')
       .doc(uid)
       .collection('habit_logs')
-      .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+      .where('occurredAt',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
       .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
       .snapshots()
       .map((snap) => snap.docs);
@@ -160,8 +176,8 @@ final todaySummaryProvider = StreamProvider<DaySummary?>((ref) {
 
   final now = DateTime.now();
   final todayStr = '${now.year.toString().padLeft(4, '0')}-'
-                   '${now.month.toString().padLeft(2, '0')}-'
-                   '${now.day.toString().padLeft(2, '0')}';
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
 
   return FirebaseFirestore.instance
       .collection('users')
