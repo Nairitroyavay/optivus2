@@ -302,7 +302,7 @@ Firebase console: values seen in Home match stored task/habit/streak data.
 Logs: no hardcoded demo counts should remain.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 3.2 — Finish Notification Scheduling for V1 Core
 **Why:** Tasks without reminders are not enough for the V1 promise.
@@ -325,7 +325,7 @@ Firebase console: scheduled notification docs appear under the user.
 Logs: notification scheduling happens from orchestrator listeners, not scattered UI code.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 3.3 — Add a V1 Basic Coach Fallback Instead of Full AI Chat
 **Why:** PRD says full AI coach is phase 2. V1 should use rule-based fallback, not a half-finished live coach.
@@ -345,7 +345,7 @@ Firebase console: coach messages are stored.
 Logs: no freeform Gemini call is required for basic V1 coach behavior.
 
 **Estimate:** 4h
-- 
+- Done
 
 ---
 
@@ -395,7 +395,7 @@ Firebase console: every coach message has a corresponding speak-log row.
 Logs: you can tell whether a message was sent or suppressed.
 
 **Estimate:** 2h
-- 
+- Done
 
 ### Task 4.3 — Move Gemini Usage Behind Server-Side Coach Generation Path
 **Why:** If V2 enables LLM wording, it must follow the rule engine and audit flow.
@@ -416,7 +416,7 @@ Firebase console: each generated message has both a message row and an audit row
 Logs: Cloud Function is called after rule selection, not before.
 
 **Estimate:** 4h
-- 
+- Done
 
 ---
 
@@ -440,7 +440,7 @@ Firebase console: `identity_profile/main` is updated after day close or major ev
 Logs: `identity_progress_changed` fires when score changes.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 5.2 — Add Notification Budget and Suppression Tracking
 **Why:** The docs explicitly require notification fatigue control.
@@ -463,7 +463,7 @@ Firebase console: budget fields update and suppression events appear.
 Logs: suppressed notifications include the reason.
 
 **Estimate:** 4h
-- 
+- Done
 
 ---
 
