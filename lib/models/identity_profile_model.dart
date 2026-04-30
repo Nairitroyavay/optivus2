@@ -13,7 +13,8 @@ class IdentityProfileModel {
     this.schemaVersion = 1,
   });
 
-  factory IdentityProfileModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory IdentityProfileModel.fromFirestore(
+      DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     return IdentityProfileModel(
       identities: List<String>.from(data['identities'] as List? ?? []),

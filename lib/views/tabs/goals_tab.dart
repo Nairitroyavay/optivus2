@@ -10,10 +10,49 @@ class GoalsTab extends ConsumerWidget {
 
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  Color _parseColor(String? colorHex) {
+    if (colorHex != null && colorHex.length == 7) {
+      try {
+        return Color(
+          int.parse(colorHex.substring(1, 7), radix: 16) + 0xFF000000,
+        );
+      } catch (_) {}
+    }
+    return kMint;
+  }
+
+  IconData _iconForGoal(String? iconName) {
+    switch (iconName) {
+      case 'menu_book_rounded':
+        return Icons.menu_book_rounded;
+      case 'directions_run_rounded':
+        return Icons.directions_run_rounded;
+      case 'local_fire_department_rounded':
+        return Icons.local_fire_department_rounded;
+      default:
+        return Icons.flag_rounded;
+    }
+  }
+
+  String _updatedLabel(DateTime? date) {
+    if (date == null) return 'Not computed yet';
+    return 'Updated ${_formatDate(date)}';
   }
 
   @override
@@ -24,6 +63,8 @@ class GoalsTab extends ConsumerWidget {
     final goals = goalsAsync.valueOrNull ?? [];
     final identity = identityAsync.valueOrNull;
     final progressPct = identity?.progressPct ?? 0;
+    final identities = identity?.identities ?? const <String>[];
+    final completedGoals = goals.where((goal) => goal.isCompleted).length;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -61,6 +102,92 @@ class GoalsTab extends ConsumerWidget {
                   ),
                 ),
               ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                  child: LiquidCard(
+                    frosted: true,
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '$completedGoals of ${goals.length} goals moving',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: kInk,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '$progressPct%',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                color: kInk,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: (progressPct / 100).clamp(0.0, 1.0),
+                            minHeight: 10,
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.45),
+                            valueColor:
+                                const AlwaysStoppedAnimation<Color>(kMint),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          identity == null
+                              ? 'Identity profile updates after onboarding, day close, or a major progress event.'
+                              : _updatedLabel(identity.lastComputedAt),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: kSub,
+                          ),
+                        ),
+                        if (identities.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: identities.take(6).map((identityLabel) {
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.45),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  identityLabel,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: kInk,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               if (goalsAsync.isLoading && goals.isEmpty)
                 const SliverToBoxAdapter(
                   child: Center(child: CircularProgressIndicator()),
@@ -71,8 +198,9 @@ class GoalsTab extends ConsumerWidget {
                     padding: EdgeInsets.all(24.0),
                     child: Center(
                       child: Text(
-                        "No active goals found.",
-                        style: TextStyle(color: kSub, fontWeight: FontWeight.w600),
+                        'No goal documents yet. Complete onboarding or a major progress event to seed them.',
+                        style:
+                            TextStyle(color: kSub, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -87,52 +215,142 @@ class GoalsTab extends ConsumerWidget {
                         final targetStr = goal.targetDate != null
                             ? _formatDate(goal.targetDate!)
                             : 'No Deadline';
-
-                        Color color = kMint;
-                        if (goal.colorHex != null && goal.colorHex!.length == 7) {
-                          try {
-                            color = Color(int.parse(goal.colorHex!.substring(1, 7), radix: 16) + 0xFF000000);
-                          } catch (_) {}
-                        }
-
-                        IconData iconData = Icons.flag_rounded;
-                        if (goal.iconName == 'menu_book_rounded') iconData = Icons.menu_book_rounded;
-                        if (goal.iconName == 'directions_run_rounded') iconData = Icons.directions_run_rounded;
+                        final color = _parseColor(goal.colorHex);
+                        final iconData = _iconForGoal(goal.iconName);
+                        final progress = goal.progressPct.clamp(0, 100);
 
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: LiquidCard(
                             frosted: true,
                             padding: const EdgeInsets.all(20),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(iconData, color: color),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        goal.title,
-                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: kInk),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: color.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(12),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
+                                      child: Icon(iconData, color: color),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            goal.title,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 16,
+                                              color: kInk,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            goal.description ??
+                                                'Progress comes from your recent tasks, habits, and streaks.',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 13,
+                                              color: kSub,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          '$progress%',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 18,
+                                            color: kInk,
+                                          ),
+                                        ),
+                                        if (goal.isCompleted)
+                                          const Icon(
+                                            Icons.check_circle_rounded,
+                                            color: kMint,
+                                            size: 20,
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: LinearProgressIndicator(
+                                    value: (progress / 100).clamp(0.0, 1.0),
+                                    minHeight: 8,
+                                    backgroundColor:
+                                        color.withValues(alpha: 0.12),
+                                    valueColor:
+                                        AlwaysStoppedAnimation<Color>(color),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
                                         'Target: $targetStr',
-                                        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: kSub),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                          color: kSub,
+                                        ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    Text(
+                                      _updatedLabel(goal.lastComputedAt),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                        color: kSub,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Icon(Icons.chevron_right_rounded, color: kSub.withValues(alpha: 0.5)),
+                                if (goal.identityTags.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children:
+                                        goal.identityTags.take(4).map((tag) {
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: color.withValues(alpha: 0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          tag,
+                                          style: TextStyle(
+                                            color: color,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

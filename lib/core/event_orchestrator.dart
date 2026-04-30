@@ -117,8 +117,8 @@ class EventOrchestrator {
           decision = 'dropped_budget';
         } else {
           // Check cooldown — was this topic spoken too recently?
-          final cutoff = DateTime.now()
-              .subtract(Duration(seconds: rule.cooldownSeconds));
+          final cutoff =
+              DateTime.now().subtract(Duration(seconds: rule.cooldownSeconds));
           final recentLogs = await FirebaseFirestore.instance
               .collection('users')
               .doc(uid)
@@ -218,7 +218,8 @@ class EventOrchestrator {
             final task = TaskModel.fromMap(event.payload);
             await _notificationService.scheduleTaskReminder(task, uid);
           } catch (e) {
-            debugPrint('[EventOrchestrator] Failed to schedule task reminder: $e');
+            debugPrint(
+                '[EventOrchestrator] Failed to schedule task reminder: $e');
           }
         }
         break;
@@ -230,7 +231,8 @@ class EventOrchestrator {
             final task = TaskModel.fromMap(event.payload);
             await _notificationService.cancelTaskEndReminder(task, uid);
           } catch (e) {
-            debugPrint('[EventOrchestrator] Failed to cancel task-end reminder: $e');
+            debugPrint(
+                '[EventOrchestrator] Failed to cancel task-end reminder: $e');
           }
         }
         break;
@@ -243,7 +245,8 @@ class EventOrchestrator {
             final task = TaskModel.fromMap(event.payload);
             await _notificationService.scheduleTaskEndReminder(task, uid);
           } catch (e) {
-            debugPrint('[EventOrchestrator] Failed to schedule task-end reminder: $e');
+            debugPrint(
+                '[EventOrchestrator] Failed to schedule task-end reminder: $e');
           }
         }
         break;
@@ -255,7 +258,8 @@ class EventOrchestrator {
             final task = TaskModel.fromMap(event.payload);
             await _notificationService.cancelTaskEndReminder(task, uid);
           } catch (e) {
-            debugPrint('[EventOrchestrator] Failed to cancel task-end reminder: $e');
+            debugPrint(
+                '[EventOrchestrator] Failed to cancel task-end reminder: $e');
           }
         }
         break;
@@ -274,7 +278,7 @@ class EventOrchestrator {
             '[EventOrchestrator] badHabitSlipLogged — streak updated at day-close.');
         if (uid != null) {
           try {
-            final habitId   = event.payload['habitId']   as String? ?? '';
+            final habitId = event.payload['habitId'] as String? ?? '';
             final habitName = event.payload['habitName'] as String? ?? 'habit';
             if (habitId.isNotEmpty) {
               await _notificationService.scheduleSlipRecovery(
@@ -284,7 +288,8 @@ class EventOrchestrator {
               );
             }
           } catch (e) {
-            debugPrint('[EventOrchestrator] Failed to schedule slip-recovery notification: $e');
+            debugPrint(
+                '[EventOrchestrator] Failed to schedule slip-recovery notification: $e');
           }
         }
         break;
@@ -305,8 +310,8 @@ class EventOrchestrator {
             'milestone=${event.payload['milestone']}');
         if (uid != null) {
           try {
-            final habitId  = event.payload['habitId']  as String? ?? '';
-            final milestone = event.payload['milestone'] as int?   ?? 0;
+            final habitId = event.payload['habitId'] as String? ?? '';
+            final milestone = event.payload['milestone'] as int? ?? 0;
             if (habitId.isNotEmpty && milestone > 0) {
               await _notificationService.scheduleStreakMilestone(
                 uid: uid,
@@ -315,7 +320,8 @@ class EventOrchestrator {
               );
             }
           } catch (e) {
-            debugPrint('[EventOrchestrator] Failed to schedule streak milestone notification: $e');
+            debugPrint(
+                '[EventOrchestrator] Failed to schedule streak milestone notification: $e');
           }
         }
         break;
@@ -337,20 +343,6 @@ class EventOrchestrator {
         debugPrint('[EventOrchestrator] dayClosed for $date — '
             'rollup already completed by RoutineService.');
         // TODO: Call _notificationService to deliver the day summary.
-        if (uid != null) {
-          try {
-            final newScore = await _stateAggregatorService.updateIdentityProfile(uid);
-            if (newScore != null) {
-              _eventService.emit(
-                eventName: EventNames.identityProgressChanged,
-                payload: {'score': newScore},
-              );
-              debugPrint('[EventOrchestrator] identity_progress_changed fired. Score: $newScore');
-            }
-          } catch (e) {
-            debugPrint('[EventOrchestrator] Failed to update identity profile: $e');
-          }
-        }
         break;
 
       case EventNames.dayStarted:
@@ -381,9 +373,62 @@ class EventOrchestrator {
       default:
         break;
     }
+
+    if (uid != null && _shouldRefreshIdentityProgress(event.eventName)) {
+      await _refreshIdentityProgress(
+        uid: uid,
+        triggerEventName: event.eventName,
+        triggerEventId: event.eventId,
+      );
+    }
   }
 
   // ── Utilities ─────────────────────────────────────────────────────────────
+
+  bool _shouldRefreshIdentityProgress(String eventName) {
+    switch (eventName) {
+      case EventNames.onboardingCompleted:
+      case EventNames.taskCompleted:
+      case EventNames.taskAbandoned:
+      case EventNames.goodHabitLogged:
+      case EventNames.badHabitSlipLogged:
+      case EventNames.streakExtended:
+      case EventNames.streakBroken:
+      case EventNames.streakMilestoneReached:
+      case EventNames.dayClosed:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  Future<void> _refreshIdentityProgress({
+    required String uid,
+    required String triggerEventName,
+    required String triggerEventId,
+  }) async {
+    try {
+      final newScore = await _stateAggregatorService.updateIdentityProfile(uid);
+      if (newScore == null) return;
+
+      await _eventService.emit(
+        eventName: EventNames.identityProgressChanged,
+        payload: {
+          'score': newScore,
+          'triggerEventId': triggerEventId,
+          'triggerEventName': triggerEventName,
+        },
+        source: 'orchestrator',
+      );
+
+      debugPrint(
+        '[EventOrchestrator] identity_progress_changed fired — '
+        'score=$newScore trigger=$triggerEventName',
+      );
+    } catch (e) {
+      debugPrint('[EventOrchestrator] Failed to update identity profile: $e');
+    }
+  }
 
   /// Returns today's date as a `YYYY-MM-DD` string in local time.
   static String _todayString() {
