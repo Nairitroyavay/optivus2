@@ -60,6 +60,9 @@ class Rule {
   /// Logical grouping key for cooldown tracking (e.g. `'missed_task'`).
   final String cooldownTopic;
 
+  /// Whether this rule is critical and bypasses budget/quiet mode checks.
+  final bool isCritical;
+
   // ── Output ────────────────────────────────────────────────────────────────
 
   /// Intent label forwarded to the AI model (e.g. `'check_in_missed_task'`).
@@ -94,6 +97,7 @@ class Rule {
     required this.priority,
     this.cooldownSeconds = 0,
     this.cooldownTopic = '',
+    this.isCritical = false,
     this.aiIntent = '',
     this.promptTemplate = '',
     this.exampleOutputs = const [],

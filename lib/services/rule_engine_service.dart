@@ -46,7 +46,8 @@ class RuleEngineService {
       'That makes 4 today. What has today been like for you?',
       'Four cigarettes in today. Want to look at what is feeding it?',
     ],
-    fallbackMessage: 'That makes 4 today. Want to talk through what is going on?',
+    fallbackMessage:
+        'That makes 4 today. Want to talk through what is going on?',
     followupPolicy: 'none',
     tags: ['addiction', 'smoking', 'slip'],
   );
@@ -72,7 +73,8 @@ class RuleEngineService {
       'No gym today. Was it just one of those days?',
       'Missed the session today. Want to reschedule it or call it rest?',
     ],
-    fallbackMessage: "Missed today's gym. Want to reschedule or take it as rest?",
+    fallbackMessage:
+        "Missed today's gym. Want to reschedule or take it as rest?",
     followupPolicy: 'none',
     tags: ['routine', 'gym', 'missed'],
   );
@@ -125,7 +127,8 @@ class RuleEngineService {
       'You dropped a task but kept momentum elsewhere. Need to adjust the plan?',
       'Missed a task. Was it too much for today?',
     ],
-    fallbackMessage: 'Missed a task today. Let me know if you want to reschedule.',
+    fallbackMessage:
+        'Missed a task today. Let me know if you want to reschedule.',
     followupPolicy: 'none',
     tags: ['task', 'abandon'],
   );
@@ -150,7 +153,8 @@ class RuleEngineService {
       "Two tasks dropped today. Is the plan too packed, or is something else going on?",
       "That's a couple of misses. Should we simplify today's list?",
     ],
-    fallbackMessage: "Two tasks dropped today. Want to trim the list and focus?",
+    fallbackMessage:
+        "Two tasks dropped today. Want to trim the list and focus?",
     followupPolicy: 'active',
     tags: ['task', 'abandon', 'pattern'],
   );
@@ -174,7 +178,8 @@ class RuleEngineService {
       "That's a couple slips today. What's the trigger right now?",
       'Multiple slips today. Let\'s pause — what do you need to break this loop?',
     ],
-    fallbackMessage: "That's a few slips today. Take a deep breath. We can stop it here.",
+    fallbackMessage:
+        "That's a few slips today. Take a deep breath. We can stop it here.",
     followupPolicy: 'active',
     tags: ['habit', 'slip', 'intervention'],
   );
@@ -191,6 +196,7 @@ class RuleEngineService {
     priority: 1,
     cooldownSeconds: 1800,
     cooldownTopic: 'multiple_slips',
+    isCritical: true,
     aiIntent: 'crisis_intervention_slips',
     promptTemplate:
         'The user has slipped three or more times today. This is a critical moment. '
@@ -327,7 +333,8 @@ class RuleEngineService {
       "You've been gone a while — and that's OK. What's one thing we can do today to get momentum back?",
       "A week away. Life happens. What's changed, and how can I help you start again?",
     ],
-    fallbackMessage: "Welcome back after the break. Let's start with just one win today.",
+    fallbackMessage:
+        "Welcome back after the break. Let's start with just one win today.",
     followupPolicy: 'active',
     tags: ['engagement', 'ghost_return', 'long_absence'],
   );
@@ -336,7 +343,8 @@ class RuleEngineService {
 
   static const Rule ruleEndOfDayStrong = Rule(
     id: 'rule_end_of_day_strong',
-    description: 'User closed the day with mission score ≥ 70 and ≥1 task done.',
+    description:
+        'User closed the day with mission score ≥ 70 and ≥1 task done.',
     event: 'routine_day_summarized',
     conditions: [
       RuleCondition(field: 'missionScore', op: 'gte', value: 70),
@@ -387,7 +395,8 @@ class RuleEngineService {
 
   static const Rule ruleEndOfDaySummary = Rule(
     id: 'rule_end_of_day_summary',
-    description: 'User completed their day (generic, no strong/rough qualifier).',
+    description:
+        'User completed their day (generic, no strong/rough qualifier).',
     event: 'routine_day_summarized',
     conditions: [],
     priority: 4,
@@ -439,8 +448,7 @@ class RuleEngineService {
   /// Emits structured `[RuleEngine]` log lines for every candidate tested so
   /// the decision trail is fully auditable.
   Rule? evaluate(ContextSnapshot snapshot, EventModel recentEvent) {
-    debugPrint(
-        '[RuleEngine] Evaluating ${rules.length} rules '
+    debugPrint('[RuleEngine] Evaluating ${rules.length} rules '
         'for event=${recentEvent.eventName}');
     debugPrint('[RuleEngine] Snapshot: ${snapshot.debugSummary}');
 
@@ -466,8 +474,7 @@ class RuleEngineService {
       String? failReason;
       for (final cond in rule.conditions) {
         if (!_matchesCondition(cond, snapshot, recentEvent)) {
-          failReason =
-              '${cond.field} ${cond.op} ${cond.value} FAILED '
+          failReason = '${cond.field} ${cond.op} ${cond.value} FAILED '
               '(actual=${_resolveField(cond.field, snapshot, recentEvent)})';
           break;
         }
@@ -484,7 +491,8 @@ class RuleEngineService {
     }
 
     if (eligible.isEmpty) {
-      debugPrint('[RuleEngine] NO RULE FIRED for event=${recentEvent.eventName}');
+      debugPrint(
+          '[RuleEngine] NO RULE FIRED for event=${recentEvent.eventName}');
       return null;
     }
 
@@ -536,8 +544,12 @@ class RuleEngineService {
       case 'nin':
         return expected is List && !expected.contains(actual);
       case 'contains':
-        if (actual is Iterable) return actual.contains(expected);
-        if (actual is String && expected is String) return actual.contains(expected);
+        if (actual is Iterable) {
+          return actual.contains(expected);
+        }
+        if (actual is String && expected is String) {
+          return actual.contains(expected);
+        }
         return false;
       case 'exists':
         return actual != null;

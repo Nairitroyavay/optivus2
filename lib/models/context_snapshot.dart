@@ -34,8 +34,20 @@ class ContextSnapshot {
   /// Timestamp of the last coach message sent to this user.
   final DateTime? lastCoachMessageAt;
 
+  /// Daily limit on notifications and coach messages.
+  final int dailyNotificationBudget;
+
+  /// Count of notifications successfully sent or scheduled today.
+  final int notificationsSentToday;
+
+  /// Whether the user has suppressed notifications for the day.
+  final bool quietDayMode;
+
   /// Remaining proactive messages allowed today (budget resets at midnight).
-  final int notificationBudgetRemaining;
+  int get notificationBudgetRemaining {
+    final remaining = dailyNotificationBudget - notificationsSentToday;
+    return remaining < 0 ? 0 : remaining;
+  }
 
   /// Calendar days elapsed since `profile/main.lastActiveDate`.
   /// 0 = active today, 1 = missed yesterday, 7+ = ghost territory.
@@ -51,7 +63,9 @@ class ContextSnapshot {
     this.missionScore = 0,
     this.userState = 'on_track',
     this.lastCoachMessageAt,
-    this.notificationBudgetRemaining = 3,
+    this.dailyNotificationBudget = 3,
+    this.notificationsSentToday = 0,
+    this.quietDayMode = false,
     this.daysSinceLastActive = 0,
   });
 
@@ -68,8 +82,9 @@ class ContextSnapshot {
       missionScore: map['missionScore'] as int? ?? 0,
       userState: map['userState'] as String? ?? 'on_track',
       lastCoachMessageAt: _asDateTime(map['lastCoachMessageAt']),
-      notificationBudgetRemaining:
-          map['notificationBudgetRemaining'] as int? ?? 3,
+      dailyNotificationBudget: map['dailyNotificationBudget'] as int? ?? 3,
+      notificationsSentToday: map['notificationsSentToday'] as int? ?? 0,
+      quietDayMode: map['quietDayMode'] as bool? ?? false,
       daysSinceLastActive: map['daysSinceLastActive'] as int? ?? 0,
     );
   }
@@ -88,7 +103,9 @@ class ContextSnapshot {
       'userState': userState,
       if (lastCoachMessageAt != null)
         'lastCoachMessageAt': lastCoachMessageAt!.toIso8601String(),
-      'notificationBudgetRemaining': notificationBudgetRemaining,
+      'dailyNotificationBudget': dailyNotificationBudget,
+      'notificationsSentToday': notificationsSentToday,
+      'quietDayMode': quietDayMode,
       'daysSinceLastActive': daysSinceLastActive,
     };
   }
@@ -105,7 +122,9 @@ class ContextSnapshot {
     int? missionScore,
     String? userState,
     DateTime? lastCoachMessageAt,
-    int? notificationBudgetRemaining,
+    int? dailyNotificationBudget,
+    int? notificationsSentToday,
+    bool? quietDayMode,
     int? daysSinceLastActive,
   }) {
     return ContextSnapshot(
@@ -119,8 +138,11 @@ class ContextSnapshot {
       missionScore: missionScore ?? this.missionScore,
       userState: userState ?? this.userState,
       lastCoachMessageAt: lastCoachMessageAt ?? this.lastCoachMessageAt,
-      notificationBudgetRemaining:
-          notificationBudgetRemaining ?? this.notificationBudgetRemaining,
+      dailyNotificationBudget:
+          dailyNotificationBudget ?? this.dailyNotificationBudget,
+      notificationsSentToday:
+          notificationsSentToday ?? this.notificationsSentToday,
+      quietDayMode: quietDayMode ?? this.quietDayMode,
       daysSinceLastActive: daysSinceLastActive ?? this.daysSinceLastActive,
     );
   }
@@ -128,14 +150,14 @@ class ContextSnapshot {
   // ── Debug helpers ────────────────────────────────────────────────────────
 
   /// One-line summary used by the rule engine's evaluation log.
-  String get debugSummary =>
-      'state=$userState '
+  String get debugSummary => 'state=$userState '
       'tasks(done=$tasksCompletedToday,abandoned=$tasksAbandonedToday) '
       'habits(good=$goodHabitsLoggedToday,slips=$badHabitSlipsToday) '
       'streak(longest=$longestActiveStreak,active=$activeStreakCount) '
       'mission=$missionScore '
       'ghost=${daysSinceLastActive}d '
-      'budget=$notificationBudgetRemaining';
+      'budget=$notificationsSentToday/$dailyNotificationBudget '
+      'quiet=$quietDayMode';
 
   // ── Private helpers ──────────────────────────────────────────────────────
 

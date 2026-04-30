@@ -19,6 +19,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/event_names.dart';
+import '../models/context_snapshot.dart';
 import '../models/event_model.dart';
 import '../models/task_model.dart';
 import '../services/coach_service.dart';
@@ -100,118 +101,108 @@ class EventOrchestrator {
 
     final uid = _auth.currentUser?.uid;
     if (uid != null) {
+      ContextSnapshot? snapshot;
+      try {
+        await _notificationService.ensureNotificationSettings(uid);
+        snapshot = await _stateAggregatorService.buildSnapshot(uid);
+      } catch (e) {
+        debugPrint('[EventOrchestrator] Failed to build snapshot: $e');
+      }
+
       // ── Coach decision pipeline ──────────────────────────────────────────
       // For every event, the pipeline evaluates rules, checks cooldown and
       // budget, and either speaks (saves a coach message + speak-log row
       // atomically) or logs a suppression decision to coach_speak_log.
-      try {
-        final snapshot = await _stateAggregatorService.buildSnapshot(uid);
-        final rule = _ruleEngineService.evaluate(snapshot, event);
+      if (snapshot != null) {
+        try {
+          final rule = _ruleEngineService.evaluate(snapshot, event);
+          String decision = 'spoke';
 
-        // ── Determine decision ────────────────────────────────────────────
-        String decision = 'spoke';
+          if (rule == null) {
+            decision = 'dropped_no_rule';
+          } else {
+            final isCooldown = await _isCoachCooldown(
+              uid: uid,
+              cooldownTopic: rule.cooldownTopic,
+              cooldownSeconds: rule.cooldownSeconds,
+            );
 
-        if (rule == null) {
-          decision = 'dropped_no_rule';
-        } else if (snapshot.notificationBudgetRemaining <= 0) {
-          decision = 'dropped_budget';
-        } else {
-          // Check cooldown — was this topic spoken too recently?
-          final cutoff =
-              DateTime.now().subtract(Duration(seconds: rule.cooldownSeconds));
-          final recentLogs = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(uid)
-              .collection('coach_speak_log')
-              .where('decision', isEqualTo: 'spoke')
-              .orderBy('createdAt', descending: true)
-              .limit(20)
-              .get();
-
-          bool isCooldown = false;
-          for (var doc in recentLogs.docs) {
-            final data = doc.data();
-            final docRuleId = data['ruleId'] as String?;
-            final createdAt = data['createdAt'] as Timestamp?;
-            if (docRuleId != null && createdAt != null) {
-              try {
-                final pastRule = RuleEngineService.rules
-                    .firstWhere((r) => r.id == docRuleId);
-                if (pastRule.cooldownTopic == rule.cooldownTopic &&
-                    createdAt.toDate().isAfter(cutoff)) {
-                  isCooldown = true;
-                  break;
-                }
-              } catch (_) {
-                // Ignore if rule no longer exists in current code
-              }
+            if (isCooldown) {
+              decision = 'dropped_cooldown';
             }
           }
-          if (isCooldown) {
-            decision = 'dropped_cooldown';
-          }
-        }
 
-        // ── Execute decision ──────────────────────────────────────────────
-        if (decision == 'spoke' && rule != null) {
-          // Rule has decided to speak — now call the Cloud Function with
-          // enriched context.  The LLM generates text; it does NOT decide
-          // whether to speak.  That decision was already made above.
-          debugPrint('[Coach] Rule selected: ${rule.id} — '
-              'building context payload before Cloud Function call.');
-
-          final contextPayload = await _coachService.buildContextPayload(
-            uid: uid,
-            snapshot: snapshot,
-            rule: rule,
-          );
-
-          debugPrint('[Coach] Context payload built — '
-              'calling Cloud Function (aiGenerate) for text generation.');
-
-          String coachMessage;
-          try {
-            coachMessage = await _geminiService.generateWithContext(
-              rulePrompt: rule.promptTemplate,
-              contextPayload: contextPayload,
+          if (decision == 'spoke' && rule != null) {
+            final budgetDecision =
+                await _notificationService.reserveNotificationSlot(
+              uid: uid,
+              intentDescription: 'coach_message_${rule.id}',
+              category: 'coach_message',
+              triggerEventId: event.eventId,
+              isCritical: rule.isCritical,
             );
-          } catch (e) {
-            debugPrint('[Coach] Cloud Function failed: $e — '
-                'using fallback message.');
-            coachMessage = rule.fallbackMessage;
+
+            if (!budgetDecision.allowed) {
+              decision = budgetDecision.reason == 'quiet_day_mode'
+                  ? 'dropped_quiet_day'
+                  : 'dropped_budget';
+            }
           }
 
-          // saveProactiveCoachMessage writes the coach message AND the
-          // "spoke" speak-log row in a single atomic WriteBatch.
-          await CoachService.saveProactiveCoachMessage(
-            uid: uid,
-            rule: rule,
-            triggerEvent: event,
-            message: coachMessage,
-          );
+          if (decision == 'spoke' && rule != null) {
+            // Rule has decided to speak and budget has been reserved before the LLM call.
+            debugPrint('[Coach] Rule selected: ${rule.id} — '
+                'building context payload before Cloud Function call.');
 
-          debugPrint('[Coach] SENT message — '
-              'event=${event.eventName} ruleId=${rule.id}');
-        } else {
-          // Suppressed — log the drop decision separately.
-          await CoachService.logDecision(
-            uid: uid,
-            triggerEventId: event.eventId,
-            ruleId: rule?.id,
-            decision: decision,
-          );
+            final contextPayload = await _coachService.buildContextPayload(
+              uid: uid,
+              snapshot: snapshot,
+              rule: rule,
+            );
 
-          debugPrint('[Coach] SUPPRESSED — '
-              'event=${event.eventName} decision=$decision '
-              'ruleId=${rule?.id ?? "none"}');
+            debugPrint('[Coach] Context payload built — '
+                'calling Cloud Function (aiGenerate) for text generation.');
+
+            String coachMessage;
+            try {
+              coachMessage = await _geminiService.generateWithContext(
+                rulePrompt: rule.promptTemplate,
+                contextPayload: contextPayload,
+              );
+            } catch (e) {
+              debugPrint('[Coach] Cloud Function failed: $e — '
+                  'using fallback message.');
+              coachMessage = rule.fallbackMessage;
+            }
+
+            await CoachService.saveProactiveCoachMessage(
+              uid: uid,
+              rule: rule,
+              triggerEvent: event,
+              message: coachMessage,
+            );
+
+            debugPrint('[Coach] SENT message — '
+                'event=${event.eventName} ruleId=${rule.id}');
+          } else {
+            await CoachService.logDecision(
+              uid: uid,
+              triggerEventId: event.eventId,
+              ruleId: rule?.id,
+              decision: decision,
+            );
+
+            debugPrint('[Coach] SUPPRESSED — '
+                'event=${event.eventName} decision=$decision '
+                'ruleId=${rule?.id ?? "none"}');
+          }
+        } catch (e) {
+          debugPrint('[EventOrchestrator] Coach pipeline failed: $e');
         }
-      } catch (e) {
-        debugPrint('[EventOrchestrator] Coach pipeline failed: $e');
       }
     }
 
     switch (event.eventName) {
-      // ── Task engine ───────────────────────────────────────────────────
       case EventNames.taskScheduled:
         if (uid != null) {
           try {
@@ -428,6 +419,42 @@ class EventOrchestrator {
     } catch (e) {
       debugPrint('[EventOrchestrator] Failed to update identity profile: $e');
     }
+  }
+
+  Future<bool> _isCoachCooldown({
+    required String uid,
+    required String cooldownTopic,
+    required int cooldownSeconds,
+  }) async {
+    final cutoff = DateTime.now().subtract(Duration(seconds: cooldownSeconds));
+    final recentLogs = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('coach_speak_log')
+        .where('decision', isEqualTo: 'spoke')
+        .orderBy('createdAt', descending: true)
+        .limit(20)
+        .get();
+
+    for (final doc in recentLogs.docs) {
+      final data = doc.data();
+      final docRuleId = data['ruleId'] as String?;
+      final createdAt = data['createdAt'] as Timestamp?;
+      if (docRuleId == null || createdAt == null) continue;
+
+      try {
+        final pastRule =
+            RuleEngineService.rules.firstWhere((rule) => rule.id == docRuleId);
+        if (pastRule.cooldownTopic == cooldownTopic &&
+            createdAt.toDate().isAfter(cutoff)) {
+          return true;
+        }
+      } catch (_) {
+        // Ignore logs for rules that no longer exist in this build.
+      }
+    }
+
+    return false;
   }
 
   /// Returns today's date as a `YYYY-MM-DD` string in local time.

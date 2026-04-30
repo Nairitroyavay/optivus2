@@ -114,7 +114,9 @@ class StateAggregatorService {
 
     // ── profile/main ─────────────────────────────────────────────────────────
     DateTime? lastCoachMessageAt;
-    int notificationBudgetRemaining = 3;
+    int dailyNotificationBudget = 3;
+    int notificationsSentToday = 0;
+    bool quietDayMode = false;
     int daysSinceLastActive = 0;
 
     if (profileSnap.exists) {
@@ -127,8 +129,13 @@ class StateAggregatorService {
         lastCoachMessageAt = DateTime.tryParse(rawCoachTs);
       }
 
-      notificationBudgetRemaining =
-          d['notificationBudgetRemaining'] as int? ?? 3;
+      dailyNotificationBudget =
+          _asNonNegativeInt(d['dailyNotificationBudget'], fallback: 3);
+      final notificationBudgetDate = d['notificationBudgetDate'] as String?;
+      notificationsSentToday = notificationBudgetDate == todayStr
+          ? _asNonNegativeInt(d['notificationsSentToday'])
+          : 0;
+      quietDayMode = d['quietDayMode'] as bool? ?? false;
 
       final rawActive = d['lastActiveDate'];
       DateTime? lastActive;
@@ -145,7 +152,8 @@ class StateAggregatorService {
       }
 
       debugPrint('[StateAggregator] profile/main → '
-          'budget=$notificationBudgetRemaining '
+          'budget=$notificationsSentToday/$dailyNotificationBudget '
+          'quiet=$quietDayMode '
           'daysSinceLastActive=$daysSinceLastActive');
     }
 
@@ -171,7 +179,9 @@ class StateAggregatorService {
       missionScore: missionScore,
       userState: userState,
       lastCoachMessageAt: lastCoachMessageAt,
-      notificationBudgetRemaining: notificationBudgetRemaining,
+      dailyNotificationBudget: dailyNotificationBudget,
+      notificationsSentToday: notificationsSentToday,
+      quietDayMode: quietDayMode,
       daysSinceLastActive: daysSinceLastActive,
     );
 
@@ -202,6 +212,15 @@ class StateAggregatorService {
   static String _dateString(DateTime dt) => '${dt.year}-'
       '${dt.month.toString().padLeft(2, '0')}-'
       '${dt.day.toString().padLeft(2, '0')}';
+
+  static int _asNonNegativeInt(Object? value, {int fallback = 0}) {
+    if (value is int) return value < 0 ? 0 : value;
+    if (value is num) {
+      final rounded = value.round();
+      return rounded < 0 ? 0 : rounded;
+    }
+    return fallback;
+  }
 
   Future<int?> updateIdentityProfile(String uid) async {
     debugPrint('[StateAggregator] Computing identity profile for $uid');
