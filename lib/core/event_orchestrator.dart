@@ -14,6 +14,7 @@
 
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -96,10 +97,62 @@ class EventOrchestrator {
 
     final uid = _auth.currentUser?.uid;
     if (uid != null) {
+      // ── Coach decision pipeline ──────────────────────────────────────────
+      // For every event, the pipeline evaluates rules, checks cooldown and
+      // budget, and either speaks (saves a coach message + speak-log row
+      // atomically) or logs a suppression decision to coach_speak_log.
       try {
         final snapshot = await _stateAggregatorService.buildSnapshot(uid);
         final rule = _ruleEngineService.evaluate(snapshot, event);
-        if (rule != null) {
+
+        // ── Determine decision ────────────────────────────────────────────
+        String decision = 'spoke';
+
+        if (rule == null) {
+          decision = 'dropped_no_rule';
+        } else if (snapshot.notificationBudgetRemaining <= 0) {
+          decision = 'dropped_budget';
+        } else {
+          // Check cooldown — was this topic spoken too recently?
+          final cutoff = DateTime.now()
+              .subtract(Duration(seconds: rule.cooldownSeconds));
+          final recentLogs = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .collection('coach_speak_log')
+              .where('decision', isEqualTo: 'spoke')
+              .orderBy('createdAt', descending: true)
+              .limit(20)
+              .get();
+
+          bool isCooldown = false;
+          for (var doc in recentLogs.docs) {
+            final data = doc.data();
+            final docRuleId = data['ruleId'] as String?;
+            final createdAt = data['createdAt'] as Timestamp?;
+            if (docRuleId != null && createdAt != null) {
+              try {
+                final pastRule = RuleEngineService.rules
+                    .firstWhere((r) => r.id == docRuleId);
+                if (pastRule.cooldownTopic == rule.cooldownTopic &&
+                    createdAt.toDate().isAfter(cutoff)) {
+                  isCooldown = true;
+                  break;
+                }
+              } catch (_) {
+                // Ignore if rule no longer exists in current code
+              }
+            }
+          }
+          if (isCooldown) {
+            decision = 'dropped_cooldown';
+          }
+        }
+
+        // ── Execute decision ──────────────────────────────────────────────
+        if (decision == 'spoke' && rule != null) {
+          // saveProactiveCoachMessage writes the coach message AND the
+          // "spoke" speak-log row in a single atomic WriteBatch.
           final coachMessage =
               await _geminiService.generateOnce(rule.promptTemplate);
           await CoachService.saveProactiveCoachMessage(
@@ -108,9 +161,24 @@ class EventOrchestrator {
             triggerEvent: event,
             message: coachMessage,
           );
+
+          debugPrint('[Coach] SENT message — '
+              'event=${event.eventName} ruleId=${rule.id}');
+        } else {
+          // Suppressed — log the drop decision separately.
+          await CoachService.logDecision(
+            uid: uid,
+            triggerEventId: event.eventId,
+            ruleId: rule?.id,
+            decision: decision,
+          );
+
+          debugPrint('[Coach] SUPPRESSED — '
+              'event=${event.eventName} decision=$decision '
+              'ruleId=${rule?.id ?? "none"}');
         }
       } catch (e) {
-        debugPrint('[EventOrchestrator] Rule engine pipeline failed: $e');
+        debugPrint('[EventOrchestrator] Coach pipeline failed: $e');
       }
     }
 

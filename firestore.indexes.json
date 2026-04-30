@@ -76,6 +76,14 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "scheduledFor", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "coach_speak_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "decision", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

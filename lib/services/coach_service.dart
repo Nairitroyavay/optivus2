@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/streak_service.dart';
 import 'package:optivus2/services/habit_service.dart';
@@ -69,7 +70,12 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
     return GeminiService().startChat(systemPrompt, initialHistory: initialHistory);
   }
 
-  static Future<void> saveProactiveCoachMessage({
+  /// Saves a proactive coach message to Firestore and writes the
+  /// corresponding `spoke` decision to `coach_speak_log` — all in a
+  /// single atomic [WriteBatch].
+  ///
+  /// Returns the generated `messageId`.
+  static Future<String> saveProactiveCoachMessage({
     required String uid,
     required Rule rule,
     required EventModel triggerEvent,
@@ -79,6 +85,7 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
     final db = firestore ?? FirebaseFirestore.instance;
     final now = DateTime.now();
     final messageId = generateId();
+    final logId = generateId();
 
     final coachMessage = <String, dynamic>{
       'messageId': messageId,
@@ -100,6 +107,7 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
     final batch = db.batch();
     final userRef = db.collection('users').doc(uid);
 
+    // ── Coach message writes ─────────────────────────────────────────────
     batch.set(
       userRef.collection('coach_messages').doc(messageId),
       coachMessage,
@@ -119,6 +127,66 @@ You are embedded in their daily timeline app. Keep responses engaging, supportiv
       },
     );
 
+    // ── Speak log: "spoke" decision (atomic with the message) ────────────
+    batch.set(
+      userRef.collection('coach_speak_log').doc(logId),
+      {
+        'logId': logId,
+        'triggerEventId': triggerEvent.eventId,
+        'ruleId': rule.id,
+        'decision': 'spoke',
+        'messageId': messageId,
+        'createdAt': Timestamp.fromDate(now),
+        'schemaVersion': 1,
+      },
+    );
+
     await batch.commit();
+
+    debugPrint('[CoachService] SPOKE — '
+        'messageId=$messageId ruleId=${rule.id} '
+        'trigger=${triggerEvent.eventId} logId=$logId');
+
+    return messageId;
+  }
+
+  /// Logs a **suppressed** coach decision to `coach_speak_log`.
+  ///
+  /// "Spoke" decisions are logged atomically inside [saveProactiveCoachMessage]
+  /// instead, so callers should only use this for drop decisions:
+  /// `dropped_cooldown`, `dropped_no_rule`, `dropped_budget`.
+  ///
+  /// Every field is always written (nullable fields are set to `null`
+  /// rather than omitted) to guarantee a consistent schema.
+  static Future<void> logDecision({
+    required String uid,
+    required String triggerEventId,
+    String? ruleId,
+    required String decision,
+    String? messageId,
+    FirebaseFirestore? firestore,
+  }) async {
+    final db = firestore ?? FirebaseFirestore.instance;
+    final logId = generateId();
+    final now = DateTime.now();
+
+    await db
+        .collection('users')
+        .doc(uid)
+        .collection('coach_speak_log')
+        .doc(logId)
+        .set({
+      'logId': logId,
+      'triggerEventId': triggerEventId,
+      'ruleId': ruleId,       // null when no rule matched
+      'decision': decision,
+      'messageId': messageId, // null for all drop decisions
+      'createdAt': Timestamp.fromDate(now),
+      'schemaVersion': 1,
+    });
+
+    debugPrint('[CoachService] DECISION — '
+        'decision=$decision ruleId=$ruleId '
+        'trigger=$triggerEventId logId=$logId');
   }
 }

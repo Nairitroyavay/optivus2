@@ -377,7 +377,7 @@ Firebase console: snapshot reads come from documented collections.
 Logs: rule evaluation can explain which rule fired and why.
 
 **Estimate:** 4h
-- 
+- Done
 
 ### Task 4.2 — Introduce Coach Decision Audit Logging
 **Why:** Once AI-like decisions start, you need observability.
@@ -416,7 +416,7 @@ Firebase console: each generated message has both a message row and an audit row
 Logs: Cloud Function is called after rule selection, not before.
 
 **Estimate:** 4h
-- Done
+- 
 
 ---
 
