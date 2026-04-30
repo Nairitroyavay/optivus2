@@ -5,6 +5,12 @@
 // etc.). This keeps cross-cutting concerns out of individual services.
 //
 // Wired up via Riverpod in providers.dart and eagerly initialized on startup.
+//
+// ── Day-close ordering ────────────────────────────────────────────────────
+// RoutineService runs the full day-close sequence (habit log rollup →
+// streak computation → dailySummaries write → events).  The orchestrator
+// must NOT re-trigger runDayCloseRollup when it receives dayClosed —
+// that would cause streak events to fire a second time.
 
 import 'dart:async';
 
@@ -56,7 +62,6 @@ class EventOrchestrator {
   /// Subscribes to the event bus and begins dispatching side-effects.
   void init() {
     // Services are referenced here to suppress unused-field warnings.
-    // They will be called from the switch cases once implemented.
     assert(() {
       debugPrint('[EventOrchestrator] Initialized with '
           '${_streakService.runtimeType}, ${_notificationService.runtimeType}');
@@ -121,7 +126,6 @@ class EventOrchestrator {
         break;
 
       case EventNames.taskCompleted:
-        // TODO: Call _streakService to check if a streak should be extended.
         // TODO: Call _notificationService to send a "task done" confirmation.
         break;
 
@@ -136,35 +140,51 @@ class EventOrchestrator {
 
       // ── Habit tracking ────────────────────────────────────────────────
       // Intra-day log events are recorded by HabitService.  Streak changes
-      // are computed atomically at day-close via runDayCloseRollup rather
-      // than incrementally, so we only log here for observability.
+      // are computed atomically at day-close via RoutineService, so we only
+      // log here for observability.
       case EventNames.goodHabitLogged:
-        debugPrint('[EventOrchestrator] goodHabitLogged — streak updated at day-close.');
+        debugPrint(
+            '[EventOrchestrator] goodHabitLogged — streak updated at day-close.');
         break;
 
       case EventNames.badHabitSlipLogged:
-        debugPrint('[EventOrchestrator] badHabitSlipLogged — streak updated at day-close.');
+        debugPrint(
+            '[EventOrchestrator] badHabitSlipLogged — streak updated at day-close.');
         break;
 
       // ── Streaks ───────────────────────────────────────────────────────
+      // These are emitted by StreakService inside runDayCloseRollup and
+      // arrive here for downstream reactions (notifications, UI badges).
+      case EventNames.streakExtended:
+        debugPrint('[EventOrchestrator] streakExtended — '
+            'habitId=${event.payload['habitId']}, '
+            'count=${event.payload['currentCount']}');
+        // TODO: Call _notificationService with a congratulatory nudge.
+        break;
+
       case EventNames.streakMilestoneReached:
+        debugPrint('[EventOrchestrator] streakMilestoneReached — '
+            'habitId=${event.payload['habitId']}, '
+            'milestone=${event.payload['milestone']}');
         // TODO: Call _notificationService to celebrate the milestone.
         break;
 
       case EventNames.streakBroken:
+        debugPrint('[EventOrchestrator] streakBroken — '
+            'habitId=${event.payload['habitId']}, '
+            'previous=${event.payload['previousCount']}');
         // TODO: Call _notificationService with an encouraging nudge.
         break;
 
       // ── Day lifecycle ─────────────────────────────────────────────────
+      // RoutineService has already completed the full rollup sequence
+      // (habit logs → streaks → dailySummaries) before emitting this event.
+      // Do NOT call runDayCloseRollup here — that would re-trigger streak
+      // evaluation and duplicate all streak events.
       case EventNames.dayClosed:
-        // Primary trigger for the streak rollup.  The date is carried in the
-        // event payload; fall back to today if somehow absent.
-        final date = event.payload['date'] as String? ??
-            _todayString();
-        debugPrint('[EventOrchestrator] dayClosed → runDayCloseRollup($date)');
-        _streakService.runDayCloseRollup(date).catchError((Object e) {
-          debugPrint('[EventOrchestrator] runDayCloseRollup error: $e');
-        });
+        final date = event.payload['date'] as String? ?? _todayString();
+        debugPrint('[EventOrchestrator] dayClosed for $date — '
+            'rollup already completed by RoutineService.');
         // TODO: Call _notificationService to deliver the day summary.
         break;
 
@@ -175,6 +195,12 @@ class EventOrchestrator {
       // ── Routine ───────────────────────────────────────────────────────
       case EventNames.routineBlockCompleted:
         // TODO: Check if all blocks for the day are done → emit dayClosed?
+        break;
+
+      case EventNames.routineDaySummarized:
+        final date = event.payload['date'] as String? ?? _todayString();
+        debugPrint('[EventOrchestrator] routineDaySummarized for $date.');
+        // TODO: Log or notify that routine summary is available.
         break;
 
       // ── Engagement ────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 // lib/models/day_summary_model.dart
 //
 // Day summary per DB Schema §1A.5.
-// Stored at: users/{uid}/days/{YYYY-MM-DD}/summary
-// Written once by the day-close Cloud Function / RoutineService.
+// Stored at: /users/{uid}/dailySummaries/{date}
+// Written once per calendar day by RoutineService.runDayCloseIfNeeded.
+// Populated with real metrics returned by StreakService.runDayCloseRollup.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -16,7 +17,7 @@ class DaySummary {
   final int routinesCompleted;
   final int routinesMissed;
   final int streaksActive;
-  final List<String> streaksMilestonesHit;
+  final List<String> streaksMilestonesHit; // "<habitId>:<milestone>" entries
   final int screenTimeMinutes;
   final int addictionsLoggedCount;
   final int stressMarkersCount;

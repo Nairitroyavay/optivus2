@@ -3,10 +3,14 @@
 // Manages per-habit streak state in Firestore.
 // Path: /users/{uid}/streaks/{habitId}
 //
-// The primary entry point is runDayCloseRollup(date), which is triggered by
-// the EventOrchestrator when a dayClosed event fires.  For each active habit
-// it reads that day's logs, determines whether the goal was met, and updates
-// the streak document accordingly.
+// The primary entry point is runDayCloseRollup(date), which is called
+// directly by RoutineService as step 1 of the day-close sequence.
+// For each active habit it reads that day's logs from the canonical
+// /users/{uid}/habit_logs collection, determines whether the goal was met,
+// and updates the streak document accordingly.
+//
+// Returns a DayRollupResult so RoutineService can populate DaySummary
+// with real metrics rather than zeros.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -17,6 +21,26 @@ import '../core/errors/app_errors.dart';
 import '../models/habit_model.dart';
 import '../models/streak_model.dart';
 import 'event_service.dart';
+
+// ── Return type ──────────────────────────────────────────────────────────────
+
+/// Aggregated metrics from a single day-close rollup run.
+/// Consumed by RoutineService to populate DaySummary.
+class DayRollupResult {
+  final int habitsCompleted;
+  final int habitsBadLogged;
+  final int streaksActive;
+  final List<String> streaksMilestonesHit;
+
+  const DayRollupResult({
+    this.habitsCompleted = 0,
+    this.habitsBadLogged = 0,
+    this.streaksActive = 0,
+    this.streaksMilestonesHit = const [],
+  });
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
 
 class StreakService {
   final FirebaseFirestore _firestore;
@@ -42,34 +66,65 @@ class StreakService {
   CollectionReference<Map<String, dynamic>> get _habitsRef =>
       _firestore.collection('users').doc(_uid).collection('habits');
 
+  /// Canonical flat collection written by HabitService dual-write.
+  CollectionReference<Map<String, dynamic>> get _habitLogsRef =>
+      _firestore.collection('users').doc(_uid).collection('habit_logs');
+
   CollectionReference<Map<String, dynamic>> get _streaksRef =>
       _firestore.collection('users').doc(_uid).collection('streaks');
 
-  /// Parses log items for [habitId] on [date] and returns the summed quantity.
-  Future<num> _sumLogsForDate(String habitId, String date) async {
-    final snap = await _habitsRef
-        .doc(habitId)
-        .collection('logs')
-        .doc(date)
-        .collection('items')
+  // ── Log readers (canonical collection) ───────────────────────────────────
+
+  /// Parses logs for [habitId] on [date] where logType == 'good' and returns
+  /// the summed quantity.  Uses the canonical habit_logs collection.
+  Future<num> _sumGoodLogsForDate(String habitId, String date) async {
+    final (startOfDay, endOfDay) = _dayBounds(date);
+
+    final snap = await _habitLogsRef
+        .where('habitId', isEqualTo: habitId)
+        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
         .get();
+
     num total = 0;
     for (final doc in snap.docs) {
-      total += (doc.data()['quantity'] as num?) ?? 1;
+      final data = doc.data();
+      if (data['logType'] == 'good') {
+        total += (data['quantity'] as num?) ?? 1;
+      }
     }
     return total;
   }
 
-  /// Returns the slip count for [habitId] on [date].
+  /// Returns the slip count for [habitId] on [date].  Filters by
+  /// logType == 'slip' to avoid counting non-slip entries.
   Future<int> _slipCountForDate(String habitId, String date) async {
-    final snap = await _habitsRef
-        .doc(habitId)
-        .collection('logs')
-        .doc(date)
-        .collection('items')
-        .count()
+    final (startOfDay, endOfDay) = _dayBounds(date);
+
+    final snap = await _habitLogsRef
+        .where('habitId', isEqualTo: habitId)
+        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
         .get();
-    return snap.count ?? 0;
+
+    int count = 0;
+    for (final doc in snap.docs) {
+      if (doc.data()['logType'] == 'slip') {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /// Parses start/end DateTime bounds for a YYYY-MM-DD string.
+  (DateTime, DateTime) _dayBounds(String date) {
+    final parts = date.split('-');
+    final startOfDay = DateTime(
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+      int.parse(parts[2]),
+    );
+    return (startOfDay, startOfDay.add(const Duration(days: 1)));
   }
 
   // ── Goal evaluation ──────────────────────────────────────────────────────
@@ -97,11 +152,17 @@ class StreakService {
 
   // ── Day-close rollup ─────────────────────────────────────────────────────
 
-  /// Iterates all active habits, evaluates goal completion for [date], and
-  /// writes updated streak docs to `/users/{uid}/streaks/{habitId}`.
+  /// Iterates all active habits, evaluates goal completion for [date],
+  /// writes updated streak docs to `/users/{uid}/streaks/{habitId}`, and
+  /// emits `streak_extended`, `streak_broken`, and `streak_milestone_reached`
+  /// as appropriate.
   ///
   /// [date] must be in `YYYY-MM-DD` format.
-  Future<void> runDayCloseRollup(String date) async {
+  ///
+  /// Returns a [DayRollupResult] with aggregated metrics for the day
+  /// summary.  Habit logs must already be written to the canonical
+  /// `/users/{uid}/habit_logs` collection before this is called.
+  Future<DayRollupResult> runDayCloseRollup(String date) async {
     debugPrint('[StreakService] runDayCloseRollup($date) — starting');
 
     // 1. Load all active habits.
@@ -111,24 +172,56 @@ class StreakService {
 
     if (habitsSnap.docs.isEmpty) {
       debugPrint('[StreakService] No active habits — nothing to roll up.');
-      return;
+      return const DayRollupResult();
     }
+
+    // Accumulate summary metrics across all habits.
+    int habitsCompleted = 0;
+    int habitsBadLogged = 0;
+    int streaksActive = 0;
+    final List<String> milestonesHit = [];
 
     for (final habitDoc in habitsSnap.docs) {
       final habit = HabitModel.fromFirestore(habitDoc);
-      await _rollupHabit(habit, date);
+      final result = await _rollupHabit(habit, date);
+
+      if (result.goalMet) {
+        if (habit.kind == HabitKind.good) {
+          habitsCompleted++;
+        }
+        streaksActive++;
+      }
+      if (habit.kind == HabitKind.bad && result.logged > 0) {
+        habitsBadLogged += result.logged.toInt();
+      }
+      if (result.milestoneReached != null) {
+        milestonesHit.add('${habit.id}:${result.milestoneReached}');
+      }
     }
 
-    debugPrint('[StreakService] runDayCloseRollup($date) — complete');
+    debugPrint('[StreakService] runDayCloseRollup($date) — complete. '
+        'completed=$habitsCompleted active=$streaksActive');
+
+    return DayRollupResult(
+      habitsCompleted: habitsCompleted,
+      habitsBadLogged: habitsBadLogged,
+      streaksActive: streaksActive,
+      streaksMilestonesHit: milestonesHit,
+    );
   }
 
-  /// Computes the new streak state for a single [habit] on [date] and
-  /// persists the result.
-  Future<void> _rollupHabit(HabitModel habit, String date) async {
+  // ── Single-habit rollup ───────────────────────────────────────────────────
+
+  /// Computes the new streak state for a single [habit] on [date], persists
+  /// the result, and emits the appropriate streak events.
+  Future<({bool goalMet, num logged, int? milestoneReached})> _rollupHabit(
+    HabitModel habit,
+    String date,
+  ) async {
     try {
-      // 2. Read today's logs.
+      // 2. Read logs from canonical collection (habit_logs).
       final num logged = habit.kind == HabitKind.good
-          ? await _sumLogsForDate(habit.id, date)
+          ? await _sumGoodLogsForDate(habit.id, date)
           : (await _slipCountForDate(habit.id, date)).toDouble();
 
       final bool hit = _goalMet(habit, logged);
@@ -144,12 +237,14 @@ class StreakService {
       // 4. Compute next streak state.
       final Streak next = _computeNextStreak(current, date, hit);
 
-      // 5. Persist + emit side-effect events.
+      // 5. Persist + emit side-effect events atomically.
       final batch = _firestore.batch();
       batch.set(streakDocRef, next.toFirestore(), SetOptions(merge: true));
 
+      int? milestoneReached;
+
       if (hit && next.currentCount > current.currentCount) {
-        // Streak extended — emit event.
+        // Streak extended — emit event inside the batch.
         await _eventService.emit(
           eventName: EventNames.streakExtended,
           payload: {
@@ -164,6 +259,7 @@ class StreakService {
         // Milestone check: 7, 14, 21, 30, 60, 90, 180, 365-day milestones.
         const milestones = [7, 14, 21, 30, 60, 90, 180, 365];
         if (milestones.contains(next.currentCount)) {
+          milestoneReached = next.currentCount;
           await _eventService.emit(
             eventName: EventNames.streakMilestoneReached,
             payload: {
@@ -175,7 +271,7 @@ class StreakService {
           );
         }
       } else if (!hit && current.state == StreakState.active) {
-        // Streak broken — emit event.
+        // Streak broken — emit event inside the batch.
         await _eventService.emit(
           eventName: EventNames.streakBroken,
           payload: {
@@ -187,16 +283,20 @@ class StreakService {
         );
       }
 
+      // Commit streak doc + event docs in a single batch.
       await batch.commit();
 
       debugPrint(
-        '[StreakService] ${habit.id}: hit=$hit '
+        '[StreakService] ${habit.id}: hit=$hit logged=$logged '
         'current=${next.currentCount} longest=${next.longestCount} '
         'state=${next.state.name}',
       );
+
+      return (goalMet: hit, logged: logged, milestoneReached: milestoneReached);
     } catch (e, st) {
       // Never let a single habit failure abort the entire rollup.
       debugPrint('[StreakService] Error rolling up ${habit.id}: $e\n$st');
+      return (goalMet: false, logged: 0.0, milestoneReached: null);
     }
   }
 

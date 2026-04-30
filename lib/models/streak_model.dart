@@ -1,8 +1,8 @@
 // lib/models/streak_model.dart
 //
 // Streak record per ServiceContracts §4.3 and DB Schema §1A.5.
-// One streak doc per habit — lives at users/{uid}/streaks/{habitId}.
-// Written by day-close rollup, read by UI.
+// One streak doc per habit — lives at /users/{uid}/streaks/{habitId}.
+// Written by StreakService.runDayCloseRollup, read by UI.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
