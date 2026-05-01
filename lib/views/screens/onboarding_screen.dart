@@ -17,6 +17,7 @@ import 'package:optivus2/views/onboarding/onboarding_page_6.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_7.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_8.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_9.dart';
+import 'package:optivus2/views/onboarding/onboarding_page_10.dart';
 
 // Shared layout constants so pages know how much to inset
 const double kIndicatorOverlayH = 44.0; // top glass overlay height
@@ -72,10 +73,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Future<void> _hydrateOnboarding() async {
-    final savedStep = await ref.read(onboardingProvider.notifier).loadFromFirestore();
+    final savedStep =
+        await ref.read(onboardingProvider.notifier).loadFromFirestore();
     if (!mounted || _hasHydratedPageController) return;
 
-    final targetPage = savedStep.clamp(0, 9).toInt();
+    final targetPage = savedStep.clamp(0, 10).toInt();
     _hasHydratedPageController = true;
     if (_pageController.hasClients) {
       _pageController.jumpToPage(targetPage);
@@ -90,8 +92,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _onNext() async {
-    // Pages 1–8: save first, then navigate
-    if (_currentPage >= 1 && _currentPage <= 8) {
+    // Pages 1-9: save first, then navigate
+    if (_currentPage >= 1 && _currentPage <= 9) {
       final ok = await _saveCurrentPage();
       if (!ok) {
         if (mounted) {
@@ -111,7 +113,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOutCubic,
       );
-    } else if (_currentPage < 9) {
+    } else if (_currentPage < 10) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOutCubic,
@@ -140,7 +142,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           'coachName': completedState.coachName,
           'accountabilityType': completedState.accountabilityType,
           'scheduleItems': completedState.scheduleItems,
-          'onboardingStep': 9,
+          'aboutYou': completedState.aboutYou.toMap(),
+          'onboardingStep': 10,
           'hasCompletedOnboarding': true,
           'status': 'completed',
           'completedAt': completedState.completedAt,
@@ -154,7 +157,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           'coachName': completedState.coachName,
           'accountabilityType': completedState.accountabilityType,
           'scheduleItems': completedState.scheduleItems,
-          'onboardingStep': 9,
+          'aboutYou': completedState.aboutYou.toMap(),
+          'biometrics': completedState.aboutYou.bodyBasics.toMap(),
+          'lifestyle': completedState.aboutYou.lifestyle.toMap(),
+          'sensitiveContext': completedState.aboutYou.sensitiveContext.toMap(),
+          'onboardingStep': 10,
           'hasCompletedOnboarding': true,
           'source': 'onboarding',
           'completedAt': completedState.completedAt,
@@ -167,14 +174,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           'coachStyle': completedState.coachStyle,
           'coachName': completedState.coachName,
           'accountabilityType': completedState.accountabilityType,
-          'onboardingStep': 9,
+          'biometrics': completedState.aboutYou.bodyBasics.toMap(),
+          'lifestyle': completedState.aboutYou.lifestyle.toMap(),
+          'sensitiveContext': completedState.aboutYou.sensitiveContext.toMap(),
+          'onboardingStep': 10,
           'hasCompletedOnboarding': true,
           'completedAt': completedState.completedAt,
         };
         await ref.read(eventServiceProvider).emit(
           eventName: EventNames.onboardingCompleted,
           payload: {
-            'onboardingStep': 9,
+            'onboardingStep': 10,
             'hasCompletedOnboarding': true,
             'completedAt': completedState.completedAt,
             'selectedCategories': completedState.selectedCategories,
@@ -185,6 +195,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             'coachName': completedState.coachName,
             'accountabilityType': completedState.accountabilityType,
             'scheduleItems': completedState.scheduleItems,
+            'aboutYou': completedState.aboutYou.toMap(),
             'onboarding': onboardingStateDoc,
             'onboardingState': onboardingStateDoc,
             'profileMain': profileMainDoc,
@@ -207,7 +218,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   String get _buttonLabel {
     if (_currentPage == 0) return 'Get Started';
-    if (_currentPage == 9) return 'Enter Optivus';
+    if (_currentPage == 10) return 'Enter Optivus';
     return 'Next';
   }
 
@@ -244,14 +255,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   ),
                 )
               else
-              // ── Full-screen PageView (under everything) ──────────────
+                // ── Full-screen PageView (under everything) ──────────────
                 Positioned.fill(
                   child: PageView(
                     controller: _pageController,
                     physics: const BouncingScrollPhysics(),
                     onPageChanged: (i) {
                       setState(() => _currentPage = i);
-                      ref.read(onboardingProvider.notifier).updateCurrentStep(i);
+                      ref
+                          .read(onboardingProvider.notifier)
+                          .updateCurrentStep(i);
                       ref
                           .read(onboardingProvider.notifier)
                           .saveToFirestoreDebounced(i);
@@ -267,6 +280,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       OnboardingPage7(),
                       OnboardingPage8(),
                       OnboardingPage9(),
+                      OnboardingPage10(),
                     ],
                   ),
                 ),
@@ -304,7 +318,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                 final dx = d.localPosition.dx - _dragStartX;
                                 final pageDelta = dx / _indicatorStep;
                                 final newPage = (_dragStartPage + pageDelta)
-                                    .clamp(0.0, 9.0);
+                                    .clamp(0.0, 10.0);
                                 final crossed = newPage.round();
                                 if (crossed != _lastHapticPage) {
                                   HapticFeedback.selectionClick();
@@ -329,12 +343,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                   snap = vx > 0
                                       ? (_pageOffset.value + 0.5)
                                           .ceil()
-                                          .clamp(0, 9)
+                                          .clamp(0, 10)
                                       : (_pageOffset.value - 0.5)
                                           .floor()
-                                          .clamp(0, 9);
+                                          .clamp(0, 10);
                                 } else {
-                                  snap = _pageOffset.value.round().clamp(0, 9);
+                                  snap = _pageOffset.value.round().clamp(0, 10);
                                 }
                                 _pageController.animateToPage(
                                   snap,
@@ -351,7 +365,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                   builder: (context, page, _) =>
                                       _LiquidGlassIndicator(
                                     page: page,
-                                    count: 10,
+                                    count: 11,
                                     onDotTap: (i) =>
                                         _pageController.animateToPage(
                                       i,
@@ -422,7 +436,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                           .withValues(alpha: 0.85),
                                     ),
                                   )
-                                : _currentPage == 9
+                                : _currentPage == 10
                                     ? GestureDetector(
                                         onTap: () =>
                                             _pageController.previousPage(

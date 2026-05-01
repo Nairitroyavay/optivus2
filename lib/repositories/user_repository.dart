@@ -55,6 +55,7 @@ class UserRepository {
     Map<String, dynamic> onboardingMap, {
     String? completedAt,
   }) {
+    final aboutYou = _sanitizeAboutYou(onboardingMap['aboutYou']);
     return {
       'selectedCategories': List<String>.from(
           onboardingMap['selectedCategories'] as List? ?? const []),
@@ -72,7 +73,59 @@ class UserRepository {
           (item) => Map<String, dynamic>.from(item as Map),
         ),
       ),
+      'aboutYou': aboutYou,
       'completedAt': completedAt,
+    };
+  }
+
+  Map<String, dynamic> _sanitizeAboutYou(Object? raw) {
+    final map =
+        raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    final body = map['bodyBasics'] is Map
+        ? Map<String, dynamic>.from(map['bodyBasics'] as Map)
+        : <String, dynamic>{};
+    final lifestyle = map['lifestyle'] is Map
+        ? Map<String, dynamic>.from(map['lifestyle'] as Map)
+        : <String, dynamic>{};
+    final sensitive = map['sensitiveContext'] is Map
+        ? Map<String, dynamic>.from(map['sensitiveContext'] as Map)
+        : <String, dynamic>{};
+
+    final heightCm = (body['heightCm'] as num?)?.toInt();
+    final weightKg = (body['weightKg'] as num?)?.toDouble();
+    if (heightCm != null && (heightCm < 90 || heightCm > 250)) {
+      throw ArgumentError('Height must be between 90 cm and 250 cm.');
+    }
+    if (weightKg != null && (weightKg < 25 || weightKg > 300)) {
+      throw ArgumentError('Weight must be between 25 kg and 300 kg.');
+    }
+
+    return {
+      'bodyBasics': {
+        'ageRange': body['ageRange'] as String?,
+        'heightCm': heightCm,
+        'weightKg': weightKg,
+        'gender': body['gender'] as String?,
+        'wakeTime': body['wakeTime'] as String?,
+        'sleepTime': body['sleepTime'] as String?,
+        'timezone': body['timezone'] as String?,
+      },
+      'lifestyle': {
+        'schoolWorkType': lifestyle['schoolWorkType'] as String?,
+        'exerciseLevel': lifestyle['exerciseLevel'] as String?,
+        'waterIntake': lifestyle['waterIntake'] as String?,
+        'dietPreference': lifestyle['dietPreference'] as String?,
+        'stressLevel': lifestyle['stressLevel'] as String?,
+        'sleepQuality': lifestyle['sleepQuality'] as String?,
+      },
+      'sensitiveContext': {
+        'eatingDisorderFlag': sensitive['eatingDisorderFlag'] as bool?,
+        'crisisSelfHarmFlag': sensitive['crisisSelfHarmFlag'] as bool?,
+        'medicalDisclaimerAcknowledged':
+            sensitive['medicalDisclaimerAcknowledged'] as bool? ?? false,
+        'coachBoundaryPreference':
+            sensitive['coachBoundaryPreference'] as String?,
+      },
     };
   }
 
@@ -114,8 +167,12 @@ class UserRepository {
     required String updatedAt,
     String? completedAt,
   }) {
+    final aboutYou = _sanitizeAboutYou(onboardingMap['aboutYou']);
     return {
       ..._sanitizeOnboardingMap(onboardingMap, completedAt: completedAt),
+      'biometrics': aboutYou['bodyBasics'],
+      'lifestyle': aboutYou['lifestyle'],
+      'sensitiveContext': aboutYou['sensitiveContext'],
       'onboardingStep': step,
       'hasCompletedOnboarding': hasCompletedOnboarding,
       'source': 'onboarding',
@@ -130,6 +187,7 @@ class UserRepository {
     required String updatedAt,
     String? completedAt,
   }) {
+    final aboutYou = _sanitizeAboutYou(onboardingMap['aboutYou']);
     return {
       'status': 'stub',
       'source': 'onboarding',
@@ -140,11 +198,22 @@ class UserRepository {
       'coachName': onboardingMap['coachName'] as String? ?? '',
       'accountabilityType':
           onboardingMap['accountabilityType'] as String? ?? 'Strict',
+      'biometrics': aboutYou['bodyBasics'],
+      'lifestyle': aboutYou['lifestyle'],
+      'sensitiveContext': aboutYou['sensitiveContext'],
       'onboardingStep': step,
       'hasCompletedOnboarding': hasCompletedOnboarding,
       'completedAt': completedAt,
       'updatedAt': updatedAt,
     };
+  }
+
+  String? _timezoneFromAboutYou(Map<String, dynamic> onboardingMap) {
+    final aboutYou = _sanitizeAboutYou(onboardingMap['aboutYou']);
+    final bodyBasics = aboutYou['bodyBasics'];
+    if (bodyBasics is! Map) return null;
+    final timezone = bodyBasics['timezone'] as String?;
+    return timezone == null || timezone.trim().isEmpty ? null : timezone;
   }
 
   /// Save onboarding data merged into the user profile document.
@@ -160,9 +229,11 @@ class UserRepository {
       updatedAt: now,
     );
 
+    final timezone = _timezoneFromAboutYou(onboardingMap);
     await _service.saveUserProfile({
       'onboarding': rootOnboarding,
       'onboardingStep': step,
+      if (timezone != null) 'timezone': timezone,
       'updatedAt': now,
     }, merge: true);
 
@@ -205,16 +276,18 @@ class UserRepository {
     final completedAt = DateTime.now().toIso8601String();
     final rootOnboarding = _buildRootOnboardingPayload(
       onboardingMap,
-      step: 9,
+      step: 10,
       hasCompletedOnboarding: true,
       updatedAt: completedAt,
       completedAt: completedAt,
     );
 
+    final timezone = _timezoneFromAboutYou(onboardingMap);
     await _service.saveUserProfile({
       'onboarding': rootOnboarding,
       'hasCompletedOnboarding': true,
-      'onboardingStep': 9, // The final step
+      'onboardingStep': 10, // The final step
+      if (timezone != null) 'timezone': timezone,
       'updatedAt': completedAt,
     }, merge: true);
 
@@ -223,7 +296,7 @@ class UserRepository {
       'state',
       _buildOnboardingStateDoc(
         onboardingMap,
-        step: 9,
+        step: 10,
         hasCompletedOnboarding: true,
         updatedAt: completedAt,
         completedAt: completedAt,
@@ -235,7 +308,7 @@ class UserRepository {
       'main',
       _buildProfileMainDoc(
         onboardingMap,
-        step: 9,
+        step: 10,
         hasCompletedOnboarding: true,
         updatedAt: completedAt,
         completedAt: completedAt,
@@ -247,7 +320,7 @@ class UserRepository {
       'main',
       _buildIdentityProfileStub(
         onboardingMap,
-        step: 9,
+        step: 10,
         hasCompletedOnboarding: true,
         updatedAt: completedAt,
         completedAt: completedAt,

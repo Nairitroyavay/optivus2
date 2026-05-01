@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/user_model.dart';
 
 class OnboardingState {
   final List<String> selectedCategories;
@@ -13,6 +14,7 @@ class OnboardingState {
   final String coachName;
   final String accountabilityType;
   final List<Map<String, dynamic>> scheduleItems;
+  final AboutYouProfile aboutYou;
   final int currentStep;
   final String? completedAt;
   final bool isHydrated;
@@ -27,6 +29,7 @@ class OnboardingState {
     this.coachName = '',
     this.accountabilityType = 'Strict',
     this.scheduleItems = const [],
+    this.aboutYou = const AboutYouProfile(),
     this.currentStep = 0,
     this.completedAt,
     this.isHydrated = false,
@@ -42,6 +45,7 @@ class OnboardingState {
     String? coachName,
     String? accountabilityType,
     List<Map<String, dynamic>>? scheduleItems,
+    AboutYouProfile? aboutYou,
     int? currentStep,
     String? completedAt,
     bool clearCompletedAt = false,
@@ -57,6 +61,7 @@ class OnboardingState {
       coachName: coachName ?? this.coachName,
       accountabilityType: accountabilityType ?? this.accountabilityType,
       scheduleItems: scheduleItems ?? this.scheduleItems,
+      aboutYou: aboutYou ?? this.aboutYou,
       currentStep: currentStep ?? this.currentStep,
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
       isHydrated: isHydrated ?? this.isHydrated,
@@ -84,6 +89,10 @@ class OnboardingState {
           (item) => Map<String, dynamic>.from(item as Map),
         ),
       ),
+      aboutYou: map['aboutYou'] is Map
+          ? AboutYouProfile.fromMap(
+              Map<String, dynamic>.from(map['aboutYou'] as Map))
+          : const AboutYouProfile(),
       currentStep:
           (map['onboardingStep'] as num?)?.toInt() ?? fallbackStep ?? 0,
       completedAt: map['completedAt'] as String?,
@@ -102,6 +111,7 @@ class OnboardingState {
       'coachName': coachName,
       'accountabilityType': accountabilityType,
       'scheduleItems': scheduleItems,
+      'aboutYou': aboutYou.toMap(),
       'onboardingStep': currentStep,
       'completedAt': completedAt,
     };
@@ -123,19 +133,38 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void saveToFirestoreDebounced(int step) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 2), () {
-      saveToFirestore(step: step); // Fire-and-forget; errors are handled inside.
+      saveToFirestore(
+          step: step); // Fire-and-forget; errors are handled inside.
     });
   }
 
-  void updateCategories(List<String> cats) => state = state.copyWith(selectedCategories: cats);
-  void updateBadHabits(List<String> habits) => state = state.copyWith(badHabits: habits);
-  void updateGoodHabits(List<String> habits) => state = state.copyWith(goodHabits: habits);
+  void updateCategories(List<String> cats) =>
+      state = state.copyWith(selectedCategories: cats);
+  void updateBadHabits(List<String> habits) =>
+      state = state.copyWith(badHabits: habits);
+  void updateGoodHabits(List<String> habits) =>
+      state = state.copyWith(goodHabits: habits);
   void updateGoals(List<String> goals) => state = state.copyWith(goals: goals);
-  void updateCoachStyle(String style) => state = state.copyWith(coachStyle: style);
+  void updateCoachStyle(String style) =>
+      state = state.copyWith(coachStyle: style);
   void updateCoachName(String name) => state = state.copyWith(coachName: name);
-  void updateAccountability(String type) => state = state.copyWith(accountabilityType: type);
-  void updateScheduleItems(List<Map<String, dynamic>> items) => state = state.copyWith(scheduleItems: items);
+  void updateAccountability(String type) =>
+      state = state.copyWith(accountabilityType: type);
+  void updateScheduleItems(List<Map<String, dynamic>> items) =>
+      state = state.copyWith(scheduleItems: items);
   void updateCurrentStep(int step) => state = state.copyWith(currentStep: step);
+  void updateAboutYou(AboutYouProfile aboutYou) =>
+      state = state.copyWith(aboutYou: aboutYou);
+  void updateBodyBasics(BodyBasics bodyBasics) => state = state.copyWith(
+        aboutYou: state.aboutYou.copyWith(bodyBasics: bodyBasics),
+      );
+  void updateLifestyle(LifestyleProfile lifestyle) => state = state.copyWith(
+        aboutYou: state.aboutYou.copyWith(lifestyle: lifestyle),
+      );
+  void updateSensitiveContext(SensitiveContext sensitiveContext) =>
+      state = state.copyWith(
+        aboutYou: state.aboutYou.copyWith(sensitiveContext: sensitiveContext),
+      );
 
   Future<int> loadFromFirestore() async {
     if (!_userRepo.isLoggedIn) {
@@ -168,6 +197,11 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     if (!_userRepo.isLoggedIn) return false;
 
     try {
+      final validationError = state.aboutYou.validate();
+      if (validationError != null) {
+        debugPrint('Invalid onboarding About You data: $validationError');
+        return false;
+      }
       state = state.copyWith(
         currentStep: step,
         clearCompletedAt: true,
@@ -184,9 +218,14 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     if (!_userRepo.isLoggedIn) return false;
 
     try {
+      final validationError = state.aboutYou.validate();
+      if (validationError != null) {
+        debugPrint('Invalid onboarding About You data: $validationError');
+        return false;
+      }
       final completedAt = DateTime.now().toIso8601String();
       state = state.copyWith(
-        currentStep: 9,
+        currentStep: 10,
         completedAt: completedAt,
       );
       await _userRepo.completeOnboarding(state.toMap());

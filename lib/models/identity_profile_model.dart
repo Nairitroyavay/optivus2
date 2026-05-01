@@ -4,12 +4,18 @@ class IdentityProfileModel {
   final List<String> identities;
   final int progressPct;
   final DateTime lastComputedAt;
+  final Map<String, dynamic> biometrics;
+  final Map<String, dynamic> lifestyle;
+  final Map<String, dynamic> sensitiveContext;
   final int schemaVersion;
 
   const IdentityProfileModel({
     this.identities = const [],
     this.progressPct = 0,
     required this.lastComputedAt,
+    this.biometrics = const {},
+    this.lifestyle = const {},
+    this.sensitiveContext = const {},
     this.schemaVersion = 1,
   });
 
@@ -24,6 +30,15 @@ class IdentityProfileModel {
               ? (data['lastComputedAt'] as Timestamp).toDate()
               : DateTime.now())
           : DateTime.now(),
+      biometrics: data['biometrics'] is Map
+          ? Map<String, dynamic>.from(data['biometrics'] as Map)
+          : const {},
+      lifestyle: data['lifestyle'] is Map
+          ? Map<String, dynamic>.from(data['lifestyle'] as Map)
+          : const {},
+      sensitiveContext: data['sensitiveContext'] is Map
+          ? Map<String, dynamic>.from(data['sensitiveContext'] as Map)
+          : const {},
       schemaVersion: data['schemaVersion'] as int? ?? 1,
     );
   }
@@ -37,6 +52,15 @@ class IdentityProfileModel {
               ? (map['lastComputedAt'] as Timestamp).toDate()
               : DateTime.now())
           : DateTime.now(),
+      biometrics: map['biometrics'] is Map
+          ? Map<String, dynamic>.from(map['biometrics'] as Map)
+          : const {},
+      lifestyle: map['lifestyle'] is Map
+          ? Map<String, dynamic>.from(map['lifestyle'] as Map)
+          : const {},
+      sensitiveContext: map['sensitiveContext'] is Map
+          ? Map<String, dynamic>.from(map['sensitiveContext'] as Map)
+          : const {},
       schemaVersion: map['schemaVersion'] as int? ?? 1,
     );
   }
@@ -46,6 +70,9 @@ class IdentityProfileModel {
       'identities': identities,
       'progressPct': progressPct,
       'lastComputedAt': Timestamp.fromDate(lastComputedAt),
+      'biometrics': biometrics,
+      'lifestyle': lifestyle,
+      'sensitiveContext': sensitiveContext,
       'schemaVersion': schemaVersion,
     };
   }

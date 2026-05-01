@@ -510,12 +510,16 @@ AI, nutrition, routine timing, safety, and notification tone need real user cont
 
 4h
 
+#### Status
+
+Completed on 2026-05-01.
+
 #### Done Criteria
 
-- [ ] Page 5 has three sub-pages.
-- [ ] Data persists.
-- [ ] Validation works.
-- [ ] Firestore paths match.
+- [x] Page 5 has three sub-pages.
+- [x] Data persists.
+- [x] Validation works.
+- [x] Firestore paths match.
 
 ### Task 1.3 - Fix onboarding fixed schedule as unlimited daily templates
 

@@ -50,6 +50,240 @@ class NotificationSettings {
   }
 }
 
+class BodyBasics {
+  final String? ageRange;
+  final int? heightCm;
+  final double? weightKg;
+  final String? gender;
+  final String? wakeTime;
+  final String? sleepTime;
+  final String? timezone;
+
+  const BodyBasics({
+    this.ageRange,
+    this.heightCm,
+    this.weightKg,
+    this.gender,
+    this.wakeTime,
+    this.sleepTime,
+    this.timezone,
+  });
+
+  factory BodyBasics.fromMap(Map<String, dynamic> map) {
+    return BodyBasics(
+      ageRange: map['ageRange'] as String?,
+      heightCm: (map['heightCm'] as num?)?.toInt(),
+      weightKg: (map['weightKg'] as num?)?.toDouble(),
+      gender: map['gender'] as String?,
+      wakeTime: map['wakeTime'] as String?,
+      sleepTime: map['sleepTime'] as String?,
+      timezone: map['timezone'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'ageRange': ageRange,
+        'heightCm': heightCm,
+        'weightKg': weightKg,
+        'gender': gender,
+        'wakeTime': wakeTime,
+        'sleepTime': sleepTime,
+        'timezone': timezone,
+      };
+
+  BodyBasics copyWith({
+    String? ageRange,
+    int? heightCm,
+    double? weightKg,
+    String? gender,
+    String? wakeTime,
+    String? sleepTime,
+    String? timezone,
+    bool clearGender = false,
+    bool clearHeight = false,
+    bool clearWeight = false,
+  }) {
+    return BodyBasics(
+      ageRange: ageRange ?? this.ageRange,
+      heightCm: clearHeight ? null : (heightCm ?? this.heightCm),
+      weightKg: clearWeight ? null : (weightKg ?? this.weightKg),
+      gender: clearGender ? null : (gender ?? this.gender),
+      wakeTime: wakeTime ?? this.wakeTime,
+      sleepTime: sleepTime ?? this.sleepTime,
+      timezone: timezone ?? this.timezone,
+    );
+  }
+
+  String? validate() {
+    if (heightCm != null && (heightCm! < 90 || heightCm! > 250)) {
+      return 'Height must be between 90 cm and 250 cm.';
+    }
+    if (weightKg != null && (weightKg! < 25 || weightKg! > 300)) {
+      return 'Weight must be between 25 kg and 300 kg.';
+    }
+    return null;
+  }
+}
+
+class LifestyleProfile {
+  final String? schoolWorkType;
+  final String? exerciseLevel;
+  final String? waterIntake;
+  final String? dietPreference;
+  final String? stressLevel;
+  final String? sleepQuality;
+
+  const LifestyleProfile({
+    this.schoolWorkType,
+    this.exerciseLevel,
+    this.waterIntake,
+    this.dietPreference,
+    this.stressLevel,
+    this.sleepQuality,
+  });
+
+  factory LifestyleProfile.fromMap(Map<String, dynamic> map) {
+    return LifestyleProfile(
+      schoolWorkType: map['schoolWorkType'] as String?,
+      exerciseLevel: map['exerciseLevel'] as String?,
+      waterIntake: map['waterIntake'] as String?,
+      dietPreference: map['dietPreference'] as String?,
+      stressLevel: map['stressLevel'] as String?,
+      sleepQuality: map['sleepQuality'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'schoolWorkType': schoolWorkType,
+        'exerciseLevel': exerciseLevel,
+        'waterIntake': waterIntake,
+        'dietPreference': dietPreference,
+        'stressLevel': stressLevel,
+        'sleepQuality': sleepQuality,
+      };
+
+  LifestyleProfile copyWith({
+    String? schoolWorkType,
+    String? exerciseLevel,
+    String? waterIntake,
+    String? dietPreference,
+    String? stressLevel,
+    String? sleepQuality,
+  }) {
+    return LifestyleProfile(
+      schoolWorkType: schoolWorkType ?? this.schoolWorkType,
+      exerciseLevel: exerciseLevel ?? this.exerciseLevel,
+      waterIntake: waterIntake ?? this.waterIntake,
+      dietPreference: dietPreference ?? this.dietPreference,
+      stressLevel: stressLevel ?? this.stressLevel,
+      sleepQuality: sleepQuality ?? this.sleepQuality,
+    );
+  }
+}
+
+class SensitiveContext {
+  final bool? eatingDisorderFlag;
+  final bool? crisisSelfHarmFlag;
+  final bool medicalDisclaimerAcknowledged;
+  final String? coachBoundaryPreference;
+
+  const SensitiveContext({
+    this.eatingDisorderFlag,
+    this.crisisSelfHarmFlag,
+    this.medicalDisclaimerAcknowledged = false,
+    this.coachBoundaryPreference,
+  });
+
+  factory SensitiveContext.fromMap(Map<String, dynamic> map) {
+    return SensitiveContext(
+      eatingDisorderFlag: map['eatingDisorderFlag'] as bool?,
+      crisisSelfHarmFlag: map['crisisSelfHarmFlag'] as bool?,
+      medicalDisclaimerAcknowledged:
+          map['medicalDisclaimerAcknowledged'] as bool? ?? false,
+      coachBoundaryPreference: map['coachBoundaryPreference'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'eatingDisorderFlag': eatingDisorderFlag,
+        'crisisSelfHarmFlag': crisisSelfHarmFlag,
+        'medicalDisclaimerAcknowledged': medicalDisclaimerAcknowledged,
+        'coachBoundaryPreference': coachBoundaryPreference,
+      };
+
+  SensitiveContext copyWith({
+    bool? eatingDisorderFlag,
+    bool? crisisSelfHarmFlag,
+    bool? medicalDisclaimerAcknowledged,
+    String? coachBoundaryPreference,
+    bool clearEatingDisorderFlag = false,
+    bool clearCrisisSelfHarmFlag = false,
+    bool clearCoachBoundaryPreference = false,
+  }) {
+    return SensitiveContext(
+      eatingDisorderFlag: clearEatingDisorderFlag
+          ? null
+          : (eatingDisorderFlag ?? this.eatingDisorderFlag),
+      crisisSelfHarmFlag: clearCrisisSelfHarmFlag
+          ? null
+          : (crisisSelfHarmFlag ?? this.crisisSelfHarmFlag),
+      medicalDisclaimerAcknowledged:
+          medicalDisclaimerAcknowledged ?? this.medicalDisclaimerAcknowledged,
+      coachBoundaryPreference: clearCoachBoundaryPreference
+          ? null
+          : (coachBoundaryPreference ?? this.coachBoundaryPreference),
+    );
+  }
+}
+
+class AboutYouProfile {
+  final BodyBasics bodyBasics;
+  final LifestyleProfile lifestyle;
+  final SensitiveContext sensitiveContext;
+
+  const AboutYouProfile({
+    this.bodyBasics = const BodyBasics(),
+    this.lifestyle = const LifestyleProfile(),
+    this.sensitiveContext = const SensitiveContext(),
+  });
+
+  factory AboutYouProfile.fromMap(Map<String, dynamic> map) {
+    return AboutYouProfile(
+      bodyBasics: map['bodyBasics'] is Map
+          ? BodyBasics.fromMap(Map<String, dynamic>.from(map['bodyBasics']))
+          : const BodyBasics(),
+      lifestyle: map['lifestyle'] is Map
+          ? LifestyleProfile.fromMap(
+              Map<String, dynamic>.from(map['lifestyle']))
+          : const LifestyleProfile(),
+      sensitiveContext: map['sensitiveContext'] is Map
+          ? SensitiveContext.fromMap(
+              Map<String, dynamic>.from(map['sensitiveContext']))
+          : const SensitiveContext(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'bodyBasics': bodyBasics.toMap(),
+        'lifestyle': lifestyle.toMap(),
+        'sensitiveContext': sensitiveContext.toMap(),
+      };
+
+  AboutYouProfile copyWith({
+    BodyBasics? bodyBasics,
+    LifestyleProfile? lifestyle,
+    SensitiveContext? sensitiveContext,
+  }) {
+    return AboutYouProfile(
+      bodyBasics: bodyBasics ?? this.bodyBasics,
+      lifestyle: lifestyle ?? this.lifestyle,
+      sensitiveContext: sensitiveContext ?? this.sensitiveContext,
+    );
+  }
+
+  String? validate() => bodyBasics.validate();
+}
+
 class UserModel {
   final String id;
 
