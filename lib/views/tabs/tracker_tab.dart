@@ -50,10 +50,9 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: LiquidBg(
-        child: SafeArea(
-          child: habitsAsync.when(
-            loading: () => const Center(
+      body: SafeArea(
+        child: habitsAsync.when(
+          loading: () => const Center(
               child: CircularProgressIndicator(color: kAmber),
             ),
             error: (err, _) => Center(
@@ -189,7 +188,6 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
             },
           ),
         ),
-      ),
     );
   }
 

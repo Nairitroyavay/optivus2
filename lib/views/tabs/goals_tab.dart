@@ -68,10 +68,9 @@ class GoalsTab extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: LiquidBg(
-        child: SafeArea(
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
@@ -363,7 +362,6 @@ class GoalsTab extends ConsumerWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
