@@ -247,6 +247,8 @@ Use this file as copy-paste instructions for Antigravity. Do not treat Optivus a
 
 ### Task P0.1 - Add fixed schedule and routine import requirements to scope
 
+**Status:** Completed on 2026-05-01.
+
 #### Why
 
 The current fixed schedule behaves like a small one-time setup. The product requires unlimited reusable daily schedules and easier AI-assisted routine creation.
@@ -275,16 +277,25 @@ The current fixed schedule behaves like a small one-time setup. The product requ
 - Search the TODO file for each requirement.
 - Confirm every requirement appears again in Phase 0, Phase 1, Phase 3, Phase 7, Phase 8, and Phase 11.
 
+#### Verification completed
+
+- Phase 0: Task 0.1 requires feature matrix rows for fixed schedule repeat, Routine Add, Routine AI, skin care AI, supplement AI, class upload, and eating AI.
+- Phase 1: Tasks 1.3 and 1.4 require unlimited onboarding fixed schedule templates and first-day materialization.
+- Phase 3: Tasks 3.2, 3.3, and 3.4 require reusable template materialization, Routine Add/AI buttons, and all manual/AI/upload routine setup modes.
+- Phase 7: Tasks 7.1, 7.2, and 7.3 require notifications/settings/alarms for template-generated and selected-date routine tasks.
+- Phase 8: Tasks 8.3 and 8.4 require Routine AI suggestions and backend AI routine import/generation.
+- Phase 11: Tasks 11.1, 11.2, and 11.3 require tests, migration seeds, and final completeness audit for all urgent routine fixes.
+
 #### Estimate
 
 30m
 
 #### Done Criteria
 
-- [ ] Unlimited fixed schedule is explicitly scoped.
-- [ ] Daily repeat templates are explicitly scoped.
-- [ ] Routine Add and AI buttons are explicitly scoped.
-- [ ] Skin care, supplement, class, and eating setup modes are explicitly scoped.
+- [x] Unlimited fixed schedule is explicitly scoped.
+- [x] Daily repeat templates are explicitly scoped.
+- [x] Routine Add and AI buttons are explicitly scoped.
+- [x] Skin care, supplement, class, and eating setup modes are explicitly scoped.
 
 ## Phase 0 - Audit Guardrails
 
@@ -1563,6 +1574,7 @@ Notifications need durable records and lifecycle events, not only local scheduli
   - `recordSuppressed`
   - `recordMissed`
 - Support template-generated notifications with dedupe by routine template id, date, time.
+- Template-generated notifications must support fixed schedule, skin care, supplements, classes, eating, selected-date one-off tasks, and custom repeating tasks.
 - Events:
   - notification lifecycle events.
 
@@ -1612,6 +1624,7 @@ Users need control over notification budget, quiet hours, and categories.
   - Home bell opens notification center.
   - Profile opens notification settings.
   - category toggles.
+  - routine category controls include fixed schedule, skin care, supplements, classes, eating, and custom tasks.
   - quiet hours.
   - daily cap.
   - rolling 60-minute cap display.
@@ -2464,4 +2477,3 @@ Before marking Optivus V1 production-ready, verify:
 This is the required output file:
 
 `todo_V1_(fixed)_All_Features.md`
-
