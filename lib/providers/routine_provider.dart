@@ -9,12 +9,144 @@ import 'package:optivus2/services/task_service.dart';
 // MODELS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A fixed block on the 24-hour schedule (from onboarding "Set Your Fixed Schedule")
+String _cleanRoutineString(Object? value) => value?.toString().trim() ?? '';
+
+String _normalizeRoutineTime(Object? value, {required String fallback}) {
+  final match =
+      RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(_cleanRoutineString(value));
+  if (match == null) return fallback;
+  final hour = int.tryParse(match.group(1)!);
+  final minute = int.tryParse(match.group(2)!);
+  if (hour == null || minute == null) return fallback;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+  return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+}
+
+int _routineMinutesFromTime(String value) {
+  final normalized = _normalizeRoutineTime(value, fallback: '00:00');
+  final parts = normalized.split(':');
+  return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+}
+
+String _routineTimeFromMinutes(int minutes) {
+  final normalized = minutes.clamp(0, 1439);
+  final hour = normalized ~/ 60;
+  final minute = normalized % 60;
+  return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+}
+
+String _routineTimeLabel(int minutes) {
+  final normalized = minutes.clamp(0, 1439);
+  final hour = normalized ~/ 60;
+  final minute = normalized % 60;
+  final suffix = hour < 12 ? 'AM' : 'PM';
+  final hour12 = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+  return '${hour12.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')} $suffix';
+}
+
+String _emojiForRoutineTitle(String title) {
+  final key = title.toLowerCase();
+  if (key.contains('sleep')) return '🛏️';
+  if (key.contains('class') || key.contains('study')) return '🎓';
+  if (key.contains('work')) return '💼';
+  if (key.contains('gym') || key.contains('workout')) return '💪';
+  if (key.contains('meal') || key.contains('dinner') || key.contains('food')) {
+    return '🍽️';
+  }
+  return '📌';
+}
+
+/// A fixed block template on the 24-hour schedule (from onboarding "Set Your Fixed Schedule")
+class FixedScheduleTemplate {
+  final String templateId;
+  final String title;
+  final String routineType;
+  final String startTime; // "HH:mm" in 24h format
+  final String endTime; // "HH:mm" in 24h format
+  final String repeatRule;
+  final String category;
+  final String notes;
+  final bool isActive;
+  final String createdAt;
+  final String updatedAt;
+
+  const FixedScheduleTemplate({
+    required this.templateId,
+    required this.title,
+    this.routineType = 'fixed_schedule',
+    required this.startTime,
+    required this.endTime,
+    this.repeatRule = 'daily',
+    this.category = '',
+    this.notes = '',
+    this.isActive = true,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  FixedScheduleTemplate copyWith({
+    String? title,
+    String? startTime,
+    String? endTime,
+    String? category,
+    String? notes,
+    bool? isActive,
+    String? updatedAt,
+  }) =>
+      FixedScheduleTemplate(
+        templateId: templateId,
+        title: title ?? this.title,
+        routineType: routineType,
+        startTime: startTime ?? this.startTime,
+        endTime: endTime ?? this.endTime,
+        repeatRule: repeatRule,
+        category: category ?? this.category,
+        notes: notes ?? this.notes,
+        isActive: isActive ?? this.isActive,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'templateId': templateId,
+        'title': title,
+        'routineType': routineType,
+        'startTime': startTime,
+        'endTime': endTime,
+        'repeatRule': repeatRule,
+        'category': category,
+        'notes': notes,
+        'isActive': isActive,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+      };
+
+  factory FixedScheduleTemplate.fromMap(Map<String, dynamic> m) =>
+      FixedScheduleTemplate(
+        templateId: _cleanRoutineString(m['templateId']),
+        title: _cleanRoutineString(m['title']),
+        routineType: 'fixed_schedule',
+        startTime: _normalizeRoutineTime(m['startTime'], fallback: '09:00'),
+        endTime: _normalizeRoutineTime(m['endTime'], fallback: '10:00'),
+        repeatRule: m['repeatRule'] ?? 'daily',
+        category: _cleanRoutineString(m['category']),
+        notes: _cleanRoutineString(m['notes']),
+        isActive: m['isActive'] ?? true,
+        createdAt: _cleanRoutineString(m['createdAt']).isNotEmpty
+            ? _cleanRoutineString(m['createdAt'])
+            : DateTime.now().toIso8601String(),
+        updatedAt: _cleanRoutineString(m['updatedAt']).isNotEmpty
+            ? _cleanRoutineString(m['updatedAt'])
+            : DateTime.now().toIso8601String(),
+      );
+}
+
+/// Legacy UI adapter for screens that still edit/display minute-based blocks.
 class FixedBlock {
   final String id;
   final String title;
   final String emoji;
-  final int startMinute; // minutes from midnight, 0–1439
+  final int startMinute;
   final int endMinute;
   final String colorHex;
 
@@ -27,25 +159,8 @@ class FixedBlock {
     required this.colorHex,
   });
 
-  String get startLabel => _fmt(startMinute);
-  String get endLabel => _fmt(endMinute);
-
-  static String _fmt(int m) {
-    final h = m ~/ 60;
-    final min = m % 60;
-    final ampm = h < 12 ? 'AM' : 'PM';
-    final h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
-    return '${h12.toString().padLeft(2, '0')}:${min.toString().padLeft(2, '0')} $ampm';
-  }
-
-  FixedBlock copyWith({int? startMinute, int? endMinute}) => FixedBlock(
-        id: id,
-        title: title,
-        emoji: emoji,
-        startMinute: startMinute ?? this.startMinute,
-        endMinute: endMinute ?? this.endMinute,
-        colorHex: colorHex,
-      );
+  String get startLabel => _routineTimeLabel(startMinute);
+  String get endLabel => _routineTimeLabel(endMinute);
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -56,13 +171,41 @@ class FixedBlock {
         'colorHex': colorHex,
       };
 
+  FixedScheduleTemplate toTemplate() {
+    final now = DateTime.now().toIso8601String();
+    return FixedScheduleTemplate(
+      templateId: id,
+      title: title,
+      startTime: _routineTimeFromMinutes(startMinute),
+      endTime: _routineTimeFromMinutes(endMinute),
+      category: '',
+      notes: '',
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  factory FixedBlock.fromTemplate(FixedScheduleTemplate template) => FixedBlock(
+        id: template.templateId,
+        title: template.title,
+        emoji: _emojiForRoutineTitle(template.title),
+        startMinute: _routineMinutesFromTime(template.startTime),
+        endMinute: _routineMinutesFromTime(template.endTime),
+        colorHex: '#CBD5E1',
+      );
+
   factory FixedBlock.fromMap(Map<String, dynamic> m) => FixedBlock(
-        id: m['id'] ?? '',
-        title: m['title'] ?? '',
-        emoji: m['emoji'] ?? '',
-        startMinute: m['startMinute'] ?? 0,
-        endMinute: m['endMinute'] ?? 0,
-        colorHex: m['colorHex'] ?? '#FFFFFF',
+        id: _cleanRoutineString(m['id']),
+        title: _cleanRoutineString(m['title']),
+        emoji: _cleanRoutineString(m['emoji']).isNotEmpty
+            ? _cleanRoutineString(m['emoji'])
+            : _emojiForRoutineTitle(_cleanRoutineString(m['title'])),
+        startMinute: ((m['startMinute'] as num?)?.toInt() ?? 0).clamp(0, 1439),
+        endMinute: ((m['endMinute'] as num?)?.toInt() ?? 0).clamp(0, 1439),
+        colorHex: _cleanRoutineString(m['colorHex']).isNotEmpty
+            ? _cleanRoutineString(m['colorHex'])
+            : '#CBD5E1',
       );
 }
 
@@ -291,7 +434,7 @@ class LongTermGoal {
 
 class RoutineState {
   // Fixed 24h schedule blocks (from onboarding)
-  final List<FixedBlock> fixedBlocks;
+  final List<FixedScheduleTemplate> fixedScheduleTemplates;
   final bool fixedScheduleSetUp;
 
   // Skin care: 7 days (0=Mon … 6=Sun)
@@ -310,7 +453,7 @@ class RoutineState {
   final List<LongTermGoal> longTermGoals;
 
   const RoutineState({
-    this.fixedBlocks = const [],
+    this.fixedScheduleTemplates = const [],
     this.fixedScheduleSetUp = false,
     List<DaySkinPlan>? skinCarePlans,
     this.skinCareSetUp = false,
@@ -341,7 +484,7 @@ class RoutineState {
             ];
 
   RoutineState copyWith({
-    List<FixedBlock>? fixedBlocks,
+    List<FixedScheduleTemplate>? fixedScheduleTemplates,
     bool? fixedScheduleSetUp,
     List<DaySkinPlan>? skinCarePlans,
     bool? skinCareSetUp,
@@ -352,7 +495,8 @@ class RoutineState {
     List<LongTermGoal>? longTermGoals,
   }) =>
       RoutineState(
-        fixedBlocks: fixedBlocks ?? this.fixedBlocks,
+        fixedScheduleTemplates:
+            fixedScheduleTemplates ?? this.fixedScheduleTemplates,
         fixedScheduleSetUp: fixedScheduleSetUp ?? this.fixedScheduleSetUp,
         skinCarePlans: skinCarePlans ?? this.skinCarePlans,
         skinCareSetUp: skinCareSetUp ?? this.skinCareSetUp,
@@ -377,10 +521,16 @@ class RoutineState {
       classes.where((c) => c.weekday == weekday).toList()
         ..sort((a, b) => a.startTime.compareTo(b.startTime));
 
+  List<FixedBlock> get fixedBlocks =>
+      fixedScheduleTemplates.map(FixedBlock.fromTemplate).toList();
+
   // ── Firestore serialization ─────────────────────────────────────────────
 
   Map<String, dynamic> toMap() => {
-        'fixedBlocks': fixedBlocks.map((e) => e.toMap()).toList(),
+        'templates': {
+          'fixed_schedule':
+              fixedScheduleTemplates.map((e) => e.toMap()).toList(),
+        },
         'fixedScheduleSetUp': fixedScheduleSetUp,
         'skinCarePlans': skinCarePlans.map((e) => e.toMap()).toList(),
         'skinCareSetUp': skinCareSetUp,
@@ -391,27 +541,39 @@ class RoutineState {
         'longTermGoals': longTermGoals.map((e) => e.toMap()).toList(),
       };
 
-  factory RoutineState.fromMap(Map<String, dynamic> m) => RoutineState(
-        fixedBlocks: (m['fixedBlocks'] as List? ?? [])
+  factory RoutineState.fromMap(Map<String, dynamic> m) {
+    final templates = m['templates'] as Map<String, dynamic>? ?? {};
+    final fixedSchedule = templates['fixed_schedule'] ?? m['fixedSchedule'];
+    final fixedScheduleTemplates = fixedSchedule is List
+        ? fixedSchedule
+            .map((e) =>
+                FixedScheduleTemplate.fromMap(Map<String, dynamic>.from(e)))
+            .toList()
+        : (m['fixedBlocks'] as List? ?? [])
             .map((e) => FixedBlock.fromMap(Map<String, dynamic>.from(e)))
-            .toList(),
-        fixedScheduleSetUp: m['fixedScheduleSetUp'] ?? false,
-        skinCarePlans: (m['skinCarePlans'] as List?)
-            ?.map((e) => DaySkinPlan.fromMap(Map<String, dynamic>.from(e)))
-            .toList(),
-        skinCareSetUp: m['skinCareSetUp'] ?? false,
-        mealPlans: (m['mealPlans'] as List?)
-            ?.map((e) => DayMealPlan.fromMap(Map<String, dynamic>.from(e)))
-            .toList(),
-        eatingSetUp: m['eatingSetUp'] ?? false,
-        classes: (m['classes'] as List? ?? [])
-            .map((e) => ClassItem.fromMap(Map<String, dynamic>.from(e)))
-            .toList(),
-        classesSetUp: m['classesSetUp'] ?? false,
-        longTermGoals: (m['longTermGoals'] as List? ?? [])
-            .map((e) => LongTermGoal.fromMap(Map<String, dynamic>.from(e)))
-            .toList(),
-      );
+            .map((block) => block.toTemplate())
+            .toList();
+    return RoutineState(
+      fixedScheduleTemplates: fixedScheduleTemplates,
+      fixedScheduleSetUp:
+          m['fixedScheduleSetUp'] ?? fixedScheduleTemplates.isNotEmpty,
+      skinCarePlans: (m['skinCarePlans'] as List?)
+          ?.map((e) => DaySkinPlan.fromMap(Map<String, dynamic>.from(e)))
+          .toList(),
+      skinCareSetUp: m['skinCareSetUp'] ?? false,
+      mealPlans: (m['mealPlans'] as List?)
+          ?.map((e) => DayMealPlan.fromMap(Map<String, dynamic>.from(e)))
+          .toList(),
+      eatingSetUp: m['eatingSetUp'] ?? false,
+      classes: (m['classes'] as List? ?? [])
+          .map((e) => ClassItem.fromMap(Map<String, dynamic>.from(e)))
+          .toList(),
+      classesSetUp: m['classesSetUp'] ?? false,
+      longTermGoals: (m['longTermGoals'] as List? ?? [])
+          .map((e) => LongTermGoal.fromMap(Map<String, dynamic>.from(e)))
+          .toList(),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -482,18 +644,27 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
           '${date.year}_${date.month.toString().padLeft(2, '0')}_${date.day.toString().padLeft(2, '0')}';
       final dayIdx = (date.weekday - 1).clamp(0, 6);
 
-      // 1. Fixed Blocks
+      // 1. Fixed Blocks (from Templates)
       if (state.fixedScheduleSetUp) {
-        for (final fb in state.fixedBlocks) {
-          final plannedStart = date.add(Duration(minutes: fb.startMinute));
-          final plannedEnd = date.add(Duration(minutes: fb.endMinute));
+        for (final tmpl in state.fixedScheduleTemplates) {
+          if (!tmpl.isActive) continue;
+
+          final startMinutes = _routineMinutesFromTime(tmpl.startTime);
+          final endMinutes = _routineMinutesFromTime(tmpl.endTime);
+
+          final plannedStart = date.add(Duration(minutes: startMinutes));
+          DateTime plannedEnd = date.add(Duration(minutes: endMinutes));
+          if (plannedEnd.isBefore(plannedStart)) {
+            plannedEnd =
+                plannedEnd.add(const Duration(days: 1)); // crosses midnight
+          }
 
           tasks.add(TaskModel(
-            id: 'routine_${dateStr}_fixed_${fb.id}',
+            id: 'routine_${dateStr}_fixed_${tmpl.templateId}',
             type: TaskType.fixed,
-            title: fb.title,
-            emoji: fb.emoji,
-            color: fb.colorHex,
+            title: tmpl.title,
+            emoji: _emojiForRoutineTitle(tmpl.title),
+            color: '#CBD5E1', // Default grey, could be mapped by category
             plannedStart: plannedStart,
             plannedEnd: plannedEnd,
             createdAt: now,
@@ -665,21 +836,59 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   /// Force an immediate save (e.g. before app goes to background).
   Future<void> saveNow() => _repo.saveRoutine(state);
 
-  // ── Fixed schedule ───────────────────────────────────────────────────────
+  // ── Fixed schedule templates ───────────────────────────────────────────────
 
-  void setFixedBlocks(List<FixedBlock> blocks) {
+  void setFixedScheduleTemplates(List<FixedScheduleTemplate> templates) {
     state = state.copyWith(
-      fixedBlocks: blocks,
+      fixedScheduleTemplates: templates,
+      fixedScheduleSetUp: templates.isNotEmpty,
+    );
+    _saveDebounced();
+  }
+
+  void updateFixedScheduleTemplate(FixedScheduleTemplate updated) {
+    final list = state.fixedScheduleTemplates
+        .map((b) => b.templateId == updated.templateId ? updated : b)
+        .toList();
+    state = state.copyWith(fixedScheduleTemplates: list);
+    _saveDebounced();
+  }
+
+  void addFixedScheduleTemplate(FixedScheduleTemplate template) {
+    state = state.copyWith(
+      fixedScheduleTemplates: [...state.fixedScheduleTemplates, template],
       fixedScheduleSetUp: true,
     );
     _saveDebounced();
   }
 
-  void updateFixedBlock(FixedBlock updated) {
-    final list =
-        state.fixedBlocks.map((b) => b.id == updated.id ? updated : b).toList();
-    state = state.copyWith(fixedBlocks: list);
+  void removeFixedScheduleTemplate(String templateId) {
+    final templates = state.fixedScheduleTemplates
+        .where((t) => t.templateId != templateId)
+        .toList();
+    state = state.copyWith(
+      fixedScheduleTemplates: templates,
+      fixedScheduleSetUp: templates.isNotEmpty,
+    );
     _saveDebounced();
+  }
+
+  void reorderFixedScheduleTemplates(int oldIndex, int newIndex) {
+    final list = List<FixedScheduleTemplate>.from(state.fixedScheduleTemplates);
+    if (newIndex > oldIndex) newIndex -= 1;
+    final item = list.removeAt(oldIndex);
+    list.insert(newIndex, item);
+    state = state.copyWith(fixedScheduleTemplates: list);
+    _saveDebounced();
+  }
+
+  void setFixedBlocks(List<FixedBlock> blocks) {
+    setFixedScheduleTemplates(
+        blocks.map((block) => block.toTemplate()).toList());
+  }
+
+  void updateFixedBlock(FixedBlock updated) {
+    updateFixedScheduleTemplate(updated.toTemplate());
   }
 
   // ── Skin care ────────────────────────────────────────────────────────────

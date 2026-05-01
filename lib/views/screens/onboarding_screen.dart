@@ -3,8 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:optivus2/core/constants/event_names.dart';
-import 'package:optivus2/core/providers.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_0.dart';
@@ -131,94 +130,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         }
         return;
       }
-      try {
-        final completedState = ref.read(onboardingProvider);
-        final onboardingStateDoc = {
-          'selectedCategories': completedState.selectedCategories,
-          'badHabits': completedState.badHabits,
-          'goodHabits': completedState.goodHabits,
-          'goals': completedState.goals,
-          'coachStyle': completedState.coachStyle,
-          'coachName': completedState.coachName,
-          'accountabilityType': completedState.accountabilityType,
-          'scheduleItems': completedState.scheduleItems,
-          'aboutYou': completedState.aboutYou.toMap(),
-          'onboardingStep': 10,
-          'hasCompletedOnboarding': true,
-          'status': 'completed',
-          'completedAt': completedState.completedAt,
-        };
-        final profileMainDoc = {
-          'selectedCategories': completedState.selectedCategories,
-          'badHabits': completedState.badHabits,
-          'goodHabits': completedState.goodHabits,
-          'goals': completedState.goals,
-          'coachStyle': completedState.coachStyle,
-          'coachName': completedState.coachName,
-          'accountabilityType': completedState.accountabilityType,
-          'scheduleItems': completedState.scheduleItems,
-          'aboutYou': completedState.aboutYou.toMap(),
-          'biometrics': completedState.aboutYou.bodyBasics.toMap(),
-          'lifestyle': completedState.aboutYou.lifestyle.toMap(),
-          'sensitiveContext': completedState.aboutYou.sensitiveContext.toMap(),
-          'onboardingStep': 10,
-          'hasCompletedOnboarding': true,
-          'source': 'onboarding',
-          'completedAt': completedState.completedAt,
-        };
-        final identityProfileStub = {
-          'status': 'stub',
-          'source': 'onboarding',
-          'selectedCategories': completedState.selectedCategories,
-          'goals': completedState.goals,
-          'coachStyle': completedState.coachStyle,
-          'coachName': completedState.coachName,
-          'accountabilityType': completedState.accountabilityType,
-          'biometrics': completedState.aboutYou.bodyBasics.toMap(),
-          'lifestyle': completedState.aboutYou.lifestyle.toMap(),
-          'sensitiveContext': completedState.aboutYou.sensitiveContext.toMap(),
-          'onboardingStep': 10,
-          'hasCompletedOnboarding': true,
-          'completedAt': completedState.completedAt,
-        };
-        await ref.read(eventServiceProvider).emit(
-          eventName: EventNames.onboardingCompleted,
-          payload: {
-            'onboardingStep': 10,
-            'hasCompletedOnboarding': true,
-            'completedAt': completedState.completedAt,
-            'selectedCategories': completedState.selectedCategories,
-            'badHabits': completedState.badHabits,
-            'goodHabits': completedState.goodHabits,
-            'goals': completedState.goals,
-            'coachStyle': completedState.coachStyle,
-            'coachName': completedState.coachName,
-            'accountabilityType': completedState.accountabilityType,
-            'scheduleItems': completedState.scheduleItems,
-            'aboutYou': completedState.aboutYou.toMap(),
-            'onboarding': onboardingStateDoc,
-            'onboardingState': onboardingStateDoc,
-            'profileMain': profileMainDoc,
-            'identityProfileMain': identityProfileStub,
-          },
-        );
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text(
-                    'Profile saved, but final onboarding event failed. Please try again.')),
-          );
-        }
-        return;
-      }
       if (!mounted) return;
+      context.go('/home');
     }
   }
 
   String get _buttonLabel {
     if (_currentPage == 0) return 'Get Started';
-    if (_currentPage == 10) return 'Enter Optivus';
+    if (_currentPage == 10) return 'Start Today';
     return 'Next';
   }
 
@@ -379,12 +298,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                             ),
                           ),
                         ),
-                        // ── Right: Save button (only visible on pages 1–8) ──
+                        // ── Right: Save button (only visible on pages 1–9) ──
                         SizedBox(
                           width: 60,
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 250),
-                            child: (_currentPage >= 1 && _currentPage <= 8)
+                            child: (_currentPage >= 1 && _currentPage <= 9)
                                 ? _OnboardingSaveButton(
                                     key: ValueKey('save_$_currentPage'),
                                     globalKey: _saveButtonKey,
@@ -445,7 +364,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                           curve: Curves.easeInOutCubic,
                                         ),
                                         child: const Text(
-                                          'Edit Plan',
+                                          'Go back and edit',
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,

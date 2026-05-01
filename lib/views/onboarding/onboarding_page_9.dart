@@ -1,88 +1,119 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/views/screens/onboarding_screen.dart';
 
-class ScheduleItem {
-  final String id;
+class ScheduleBlock {
+  final String templateId;
   String title;
-  double start;
-  double duration;
-  IconData? icon;
-  Color? color;
-  bool hasTopTape;
-  bool hasBottomTape;
-  bool isMini;
-  bool isAdd;
+  TimeOfDay startTime;
+  TimeOfDay endTime;
+  String category;
+  String notes;
+  final String routineType;
+  final String repeatRule;
+  bool isActive;
+  final String createdAt;
+  String updatedAt;
 
-  ScheduleItem({
-    required this.id,
+  ScheduleBlock({
+    required this.templateId,
     required this.title,
-    required this.start,
-    this.duration = 0,
-    this.icon,
-    this.color,
-    this.hasTopTape = false,
-    this.hasBottomTape = false,
-    this.isMini = false,
-    this.isAdd = false,
-  });
+    required this.startTime,
+    required this.endTime,
+    this.category = '',
+    this.notes = '',
+    this.routineType = 'fixed_schedule',
+    this.repeatRule = 'daily',
+    this.isActive = true,
+    String? createdAt,
+    String? updatedAt,
+  })  : createdAt = createdAt ?? DateTime.now().toIso8601String(),
+        updatedAt = updatedAt ?? DateTime.now().toIso8601String();
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'title': title,
-      'start': start,
-      'duration': duration,
-      'icon': icon?.codePoint,
-      'color': color?.toARGB32(),
-      'hasTopTape': hasTopTape,
-      'hasBottomTape': hasBottomTape,
-      'isMini': isMini,
-      'isAdd': isAdd,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+        'templateId': templateId,
+        'title': title,
+        'routineType': routineType,
+        'startTime':
+            '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
+        'endTime':
+            '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}',
+        'repeatRule': repeatRule,
+        'category': category,
+        'notes': notes,
+        'isActive': isActive,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+      };
 
-  factory ScheduleItem.fromMap(Map<String, dynamic> map) {
-    return ScheduleItem(
-      id: map['id'] ?? '',
+  factory ScheduleBlock.fromMap(Map<String, dynamic> map) {
+    TimeOfDay parseTime(String t) {
+      try {
+        final p = t.split(':');
+        return TimeOfDay(hour: int.parse(p[0]), minute: int.parse(p[1]));
+      } catch (_) {
+        return const TimeOfDay(hour: 9, minute: 0);
+      }
+    }
+
+    return ScheduleBlock(
+      templateId: map['templateId'] ?? '',
       title: map['title'] ?? '',
-      start: (map['start'] ?? 0.0).toDouble(),
-      duration: (map['duration'] ?? 0.0).toDouble(),
-      icon: _getIconData(map['icon']),
-      color: map['color'] != null ? Color((map['color'] as num).toInt()) : null,
-      hasTopTape: map['hasTopTape'] ?? false,
-      hasBottomTape: map['hasBottomTape'] ?? false,
-      isMini: map['isMini'] ?? false,
-      isAdd: map['isAdd'] ?? false,
+      startTime: parseTime(map['startTime'] ?? '09:00'),
+      endTime: parseTime(map['endTime'] ?? '10:00'),
+      category: map['category'] ?? '',
+      notes: map['notes'] ?? '',
+      routineType: map['routineType'] ?? 'fixed_schedule',
+      repeatRule: map['repeatRule'] ?? 'daily',
+      isActive: map['isActive'] ?? true,
+      createdAt: map['createdAt'],
+      updatedAt: map['updatedAt'],
     );
   }
 
-  static IconData? _getIconData(dynamic code) {
-    if (code == null) return null;
-    final int codePoint = (code as num).toInt();
+  int get startMinutes => startTime.hour * 60 + startTime.minute;
+  int get endMinutes => endTime.hour * 60 + endTime.minute;
+  int get durationMinutes {
+    int mins = endMinutes - startMinutes;
+    if (mins <= 0) mins += 1440;
+    return mins;
+  }
 
-    // We must return constant IconData to allow tree-shaking in release builds.
-    // Dynamic IconData(codePoint) is not allowed.
-    if (codePoint == Icons.bed_rounded.codePoint) {
-      return Icons.bed_rounded;
-    }
-    if (codePoint == Icons.school_rounded.codePoint) {
-      return Icons.school_rounded;
-    }
-    if (codePoint == Icons.work_rounded.codePoint) {
-      return Icons.work_rounded;
-    }
-    if (codePoint == Icons.fitness_center_rounded.codePoint) {
-      return Icons.fitness_center_rounded;
-    }
-    if (codePoint == Icons.star_rounded.codePoint) {
-      return Icons.star_rounded;
+  /// Human-readable duration string (e.g. "1h 30m").
+  String get durationString {
+    final mins = durationMinutes;
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    if (h > 0 && m > 0) return '${h}h ${m}m';
+    if (h > 0) return '${h}h';
+    return '${m}m';
+  }
+
+  void setDurationMinutes(int minutes) {
+    final total = (startMinutes + minutes) % 1440;
+    endTime = TimeOfDay(hour: total ~/ 60, minute: total % 60);
+  }
+
+  bool overlapsWith(ScheduleBlock other) {
+    final s1 = startMinutes;
+    final e1 =
+        endMinutes <= s1 ? endMinutes + 1440 : endMinutes; // handle overnight
+    final s2 = other.startMinutes;
+    final e2 =
+        other.endMinutes <= s2 ? other.endMinutes + 1440 : other.endMinutes;
+
+    // Standard overlap check: s1 < e2 && s2 < e1
+    // Must also check the other's potential overnight wrap relative to us
+    bool standardOverlap(int startA, int endA, int startB, int endB) {
+      return startA < endB && startB < endA;
     }
 
-    // Fallback if not found
-    return Icons.star_rounded;
+    if (standardOverlap(s1, e1, s2, e2)) return true;
+    if (e1 > 1440 && standardOverlap(s1 - 1440, e1 - 1440, s2, e2)) return true;
+    if (e2 > 1440 && standardOverlap(s1, e1, s2 - 1440, e2 - 1440)) return true;
+
+    return false;
   }
 }
 
@@ -94,603 +125,360 @@ class OnboardingPage9 extends ConsumerStatefulWidget {
 }
 
 class _OnboardingPage9State extends ConsumerState<OnboardingPage9> {
-  final double kHourHeight = 44.0;
-  final double kLeftOffset = 64.0;
-
-  late List<ScheduleItem> items = [];
-
-  final List<Color> _cycleColors = [
-    const Color(0xFFF43F5E), // Rose
-    const Color(0xFF14B8A6), // Teal
-    const Color(0xFF8B5CF6), // Purple
-    const Color(0xFF3B82F6), // Blue
-  ];
-  int _colorIndex = 0;
+  late List<ScheduleBlock> _blocks = [];
+  bool _allowOverlap = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final savedItems = ref.read(onboardingProvider).scheduleItems;
-      if (savedItems.isNotEmpty) {
-        setState(() {
-          items = savedItems.map((m) => ScheduleItem.fromMap(m)).toList();
-        });
-      } else {
-        setState(() {
-          items = [
-            ScheduleItem(id: 'add_morning', title: '', start: 7.5, isAdd: true),
-            ScheduleItem(id: 'add_midday', title: '', start: 12.5, isAdd: true),
-            ScheduleItem(
-                id: 'add_evening', title: '', start: 18.0, isAdd: true),
-          ];
-        });
-        _updateProvider();
-      }
+      final savedItems = ref.read(onboardingProvider).fixedSchedule;
+      setState(() {
+        _blocks = savedItems.map((m) => ScheduleBlock.fromMap(m)).toList();
+      });
     });
   }
 
   void _updateProvider() {
     ref
         .read(onboardingProvider.notifier)
-        .updateScheduleItems(items.map((e) => e.toMap()).toList());
+        .updateFixedSchedule(_blocks.map((e) => e.toMap()).toList());
+    // Debounced save to Firestore so data persists across app restarts
+    ref.read(onboardingProvider.notifier).saveToFirestoreDebounced(9);
   }
 
-  String _formatTime(double hour) {
-    int h = hour.floor();
-    int m = ((hour - h) * 60).round();
-    String ampm = h >= 12 ? 'PM' : 'AM';
-    int displayH = h % 12;
-    if (displayH == 0) displayH = 12;
-    String minStr = m.toString().padLeft(2, '0');
-    return '$displayH:$minStr $ampm';
-  }
-
-  double _nextAvailableStart() {
-    final concreteItems = items.where((item) => !item.isAdd).toList();
-    if (concreteItems.isEmpty) return 7.5;
-
-    final latestEnd = concreteItems
-        .map((item) => item.start + item.duration)
-        .fold<double>(0, (latest, end) => end > latest ? end : latest);
-    final next = latestEnd + 0.5;
-    return next <= 22.5 ? next : 7.5;
-  }
-
-  Future<void> _addScheduleItem() async {
-    final item = ScheduleItem(
-      id: 'schedule_${DateTime.now().microsecondsSinceEpoch}',
-      title: '',
-      start: _nextAvailableStart(),
-      duration: 1.5,
-      isAdd: true,
-    );
-
-    setState(() => items.add(item));
-    await _showEditDialog(items.length - 1);
-
-    if (!mounted) return;
-    if (item.isAdd) {
-      setState(() => items.removeWhere((candidate) => candidate.id == item.id));
+  Future<void> _showEditDialog(int? index) async {
+    final isNew = index == null;
+    ScheduleBlock block;
+    if (isNew) {
+      block = ScheduleBlock(
+        templateId: 'sched_${DateTime.now().microsecondsSinceEpoch}',
+        title: '',
+        startTime: const TimeOfDay(hour: 9, minute: 0),
+        endTime: const TimeOfDay(hour: 10, minute: 0),
+      );
+    } else {
+      final existing = _blocks[index];
+      block = ScheduleBlock(
+        templateId: existing.templateId,
+        title: existing.title,
+        startTime: existing.startTime,
+        endTime: existing.endTime,
+        category: existing.category,
+        notes: existing.notes,
+        routineType: existing.routineType,
+        repeatRule: existing.repeatRule,
+        isActive: existing.isActive,
+        createdAt: existing.createdAt,
+        updatedAt: existing.updatedAt,
+      );
     }
-    _updateProvider();
-  }
 
-  void _onTopTapeDrag(int index, DragUpdateDetails details) {
-    setState(() {
-      double deltaHours = details.delta.dy / kHourHeight;
-      if (items[index].duration - deltaHours < 0.25) {
-        deltaHours = items[index].duration - 0.25; // absolute minimum 15 mins
-      }
-      if (items[index].start + deltaHours < 0) {
-        deltaHours = -items[index].start;
-      }
-      items[index].start += deltaHours;
-      items[index].duration -= deltaHours;
-    });
-    _updateProvider();
-  }
+    final titleCtrl = TextEditingController(text: block.title);
+    final categoryCtrl = TextEditingController(text: block.category);
+    final notesCtrl = TextEditingController(text: block.notes);
+    final durationCtrl =
+        TextEditingController(text: block.durationMinutes.toString());
+    String? errorMessage;
 
-  void _onBottomTapeDrag(int index, DragUpdateDetails details) {
-    setState(() {
-      double deltaHours = details.delta.dy / kHourHeight;
-      if (items[index].duration + deltaHours < 0.25) {
-        deltaHours = 0.25 - items[index].duration;
-      }
-      if (items[index].start + items[index].duration + deltaHours > 24) {
-        deltaHours = 24 - (items[index].start + items[index].duration);
-      }
-      items[index].duration += deltaHours;
-    });
-    _updateProvider();
-  }
-
-  Future<void> _showEditDialog(int index) async {
-    final item = items[index];
-
-    TextEditingController nameCtrl = TextEditingController(text: item.title);
-
-    double tempStart = item.start;
-    double tempDuration = item.isAdd ? 1.5 : item.duration;
-
-    await showDialog(
-        context: context,
-        builder: (ctx) {
-          return StatefulBuilder(builder: (context, setDialogState) {
-            final startH = tempStart.floor();
-            final startM = ((tempStart - startH) * 60).round();
-            final startTime = TimeOfDay(hour: startH, minute: startM);
-
-            final endDouble = tempStart + tempDuration;
-            int endH = endDouble.floor();
-            int endM = ((endDouble - endH) * 60).round();
-            if (endH >= 24) {
-              endH = 23;
-              endM = 59;
-            }
-            final endTime = TimeOfDay(hour: endH, minute: endM);
-
-            return AlertDialog(
-                backgroundColor: Colors.white.withValues(alpha: 0.95),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-                title: Text(item.isAdd ? 'Add New Task' : 'Edit Task Details',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Task Name',
-                        border: OutlineInputBorder(),
-                      ),
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (context, setModalState) {
+          return Padding(
+            padding:
+                EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 20)
+                ],
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(isNew ? 'Add Task' : 'Edit Task',
+                          style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F111A))),
+                      if (!isNew)
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.red),
+                          onPressed: () {
+                            setState(() => _blocks.removeAt(index));
+                            _updateProvider();
+                            Navigator.pop(ctx);
+                          },
+                        )
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: titleCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Task Title',
+                      filled: true,
+                      fillColor: const Color(0xFFF1F5F9),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none),
                     ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Start Time:'),
-                        TextButton(
-                          onPressed: () async {
-                            final picked = await showTimePicker(
-                              context: ctx,
-                              initialTime: startTime,
-                              helpText: 'Select Start Time',
-                            );
-                            if (picked != null) {
-                              setDialogState(() {
-                                double nStart =
-                                    picked.hour + picked.minute / 60.0;
-                                double currentEnd = tempStart + tempDuration;
-                                tempStart = nStart;
-                                if (currentEnd <= tempStart) {
-                                  currentEnd = tempStart + 0.5;
+                    onChanged: (_) {
+                      if (errorMessage != null) {
+                        setModalState(() => errorMessage = null);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final t = await showTimePicker(
+                                context: ctx, initialTime: block.startTime);
+                            if (t != null) {
+                              setModalState(() {
+                                block.startTime = t;
+                                final minutes =
+                                    int.tryParse(durationCtrl.text.trim());
+                                if (minutes != null &&
+                                    minutes > 0 &&
+                                    minutes < 1440) {
+                                  block.setDurationMinutes(minutes);
                                 }
-                                tempDuration = currentEnd - tempStart;
+                                errorMessage = null;
                               });
                             }
                           },
-                          child: Text(startTime.format(ctx),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                        )
-                      ],
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('End Time:'),
-                        TextButton(
-                          onPressed: () async {
-                            final picked = await showTimePicker(
-                              context: ctx,
-                              initialTime: endTime,
-                              helpText: 'Select End Time',
-                            );
-                            if (picked != null) {
-                              setDialogState(() {
-                                double nEnd =
-                                    picked.hour + picked.minute / 60.0;
-                                if (nEnd <= tempStart) nEnd += 24.0;
-                                if (nEnd > 24) nEnd = 24.0;
-                                tempDuration = nEnd - tempStart;
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 16, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Start Time',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF64748B))),
+                                const SizedBox(height: 4),
+                                Text(block.startTime.format(ctx),
+                                    style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final t = await showTimePicker(
+                                context: ctx, initialTime: block.endTime);
+                            if (t != null) {
+                              setModalState(() {
+                                block.endTime = t;
+                                durationCtrl.text =
+                                    block.durationMinutes.toString();
+                                errorMessage = null;
                               });
                             }
                           },
-                          child: Text(endTime.format(ctx),
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
-                        )
-                      ],
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 16, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('End Time',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF64748B))),
+                                const SizedBox(height: 4),
+                                Text(block.endTime.format(ctx),
+                                    style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Duration indicator
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Duration: ${block.durationString}',
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF94A3B8)),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: durationCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Duration (minutes)',
+                      filled: true,
+                      fillColor: const Color(0xFFF1F5F9),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none),
+                    ),
+                    onChanged: (value) {
+                      final minutes = int.tryParse(value.trim());
+                      if (minutes == null || minutes <= 0 || minutes >= 1440) {
+                        setModalState(() => errorMessage =
+                            'Duration must be 1 to 1439 minutes.');
+                        return;
+                      }
+                      setModalState(() {
+                        block.setDurationMinutes(minutes);
+                        errorMessage = null;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: categoryCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Category (Optional)',
+                      filled: true,
+                      fillColor: const Color(0xFFF1F5F9),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: notesCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: 'Notes (Optional)',
+                      filled: true,
+                      fillColor: const Color(0xFFF1F5F9),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none),
+                    ),
+                  ),
+                  if (errorMessage != null) ...[
+                    const SizedBox(height: 16),
+                    Text(errorMessage!,
+                        style: const TextStyle(
+                            color: Colors.red, fontWeight: FontWeight.w500)),
                   ],
-                ),
-                actions: [
-                  if (!item.isAdd)
-                    TextButton(
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3B82F6),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
                       onPressed: () {
+                        if (titleCtrl.text.trim().isEmpty) {
+                          setModalState(
+                              () => errorMessage = 'Title cannot be blank.');
+                          return;
+                        }
+                        if (block.startMinutes == block.endMinutes) {
+                          setModalState(() => errorMessage =
+                              'Start and end time cannot be the same.');
+                          return;
+                        }
+                        final durationMinutes =
+                            int.tryParse(durationCtrl.text.trim());
+                        if (durationMinutes == null ||
+                            durationMinutes <= 0 ||
+                            durationMinutes >= 1440) {
+                          setModalState(() => errorMessage =
+                              'Duration must be 1 to 1439 minutes.');
+                          return;
+                        }
+                        block.setDurationMinutes(durationMinutes);
+
+                        // Overlap validation
+                        if (!_allowOverlap) {
+                          bool hasOverlap = false;
+                          for (int i = 0; i < _blocks.length; i++) {
+                            if (!isNew && i == index) continue;
+                            if (block.overlapsWith(_blocks[i])) {
+                              hasOverlap = true;
+                              break;
+                            }
+                          }
+                          if (hasOverlap) {
+                            setModalState(() => errorMessage =
+                                'Time overlaps with another task. Adjust times or allow overlaps.');
+                            return;
+                          }
+                        }
+
+                        block.title = titleCtrl.text.trim();
+                        block.category = categoryCtrl.text.trim();
+                        block.notes = notesCtrl.text.trim();
+                        block.updatedAt = DateTime.now().toIso8601String();
+
                         setState(() {
-                          items.removeWhere(
-                              (candidate) => candidate.id == item.id);
-                        });
-                        _updateProvider();
-                        Navigator.pop(ctx);
-                      },
-                      child: const Text('Delete'),
-                    ),
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel')),
-                  ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          item.title = nameCtrl.text.isEmpty
-                              ? 'New Task'
-                              : nameCtrl.text;
-                          item.start = tempStart;
-                          item.duration = tempDuration;
-                          if (item.isAdd) {
-                            item.isAdd = false;
-                            item.hasTopTape = true;
-                            item.hasBottomTape = true;
-                            item.icon = Icons.star_rounded;
-                            item.color =
-                                _cycleColors[_colorIndex % _cycleColors.length];
-                            _colorIndex++;
+                          if (isNew) {
+                            _blocks.add(block);
+                          } else {
+                            _blocks[index] = block;
                           }
                         });
                         _updateProvider();
                         Navigator.pop(ctx);
                       },
-                      child:
-                          Text(item.isAdd ? 'Create Task' : 'Save Fixed Time')),
-                ]);
-          });
+                      child: Text(isNew ? 'Create Task' : 'Save Task',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
         });
-  }
-
-  Widget _buildDroplet(double size, {Color color = Colors.white}) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withValues(alpha: 0.4),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 4,
-              offset: const Offset(1, 2)),
-          BoxShadow(
-              color: Colors.white.withValues(alpha: 0.8),
-              blurRadius: 4,
-              offset: const Offset(-1, -1)),
-        ],
-      ),
+      },
     );
-  }
 
-  Widget _buildTapeWithDrops({GestureDragUpdateCallback? onDrag}) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeUpDown,
-      child: GestureDetector(
-        onVerticalDragUpdate: onDrag,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 56,
-              height: 16,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.95), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 4,
-                      offset: const Offset(0, 3)),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(),
-                ),
-              ),
-            ),
-            Positioned(right: -6, bottom: -4, child: _buildDroplet(14)),
-            Positioned(right: 4, top: -2, child: _buildDroplet(8)),
-            Positioned(left: 8, top: -5, child: _buildDroplet(10)),
-            Positioned(left: -4, bottom: 2, child: _buildDroplet(6)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildColoredBlock(int index, ScheduleItem item) {
-    final top = item.start * kHourHeight;
-    final height = item.duration * kHourHeight;
-    final bool isSmall = item.duration <= 2.0;
-
-    String timeText = '';
-    if (item.id == 'sleep') {
-      timeText =
-          'Start: ${_formatTime(item.start)} | End: ${_formatTime(item.start + item.duration)}';
-    } else {
-      timeText =
-          '${_formatTime(item.start)} - ${_formatTime(item.start + item.duration)}';
-    }
-
-    return Positioned(
-      top: top,
-      left: kLeftOffset,
-      right: 0,
-      height: height,
-      child: GestureDetector(
-        onTap: () => _showEditDialog(index),
-        onLongPress: () => _showEditDialog(index),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      item.color!.withValues(alpha: 0.3),
-                      item.color!.withValues(alpha: 0.05)
-                    ],
-                  ),
-                  border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.8), width: 1.5),
-                  boxShadow: [
-                    BoxShadow(
-                        color: item.color!.withValues(alpha: 0.2),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6)),
-                    BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        blurRadius: 8,
-                        offset: const Offset(-2, -2)),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  // Using SingleChildScrollView prevents layout overflow when resized too small!
-                  child: SingleChildScrollView(
-                    physics: const NeverScrollableScrollPhysics(),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 16, vertical: isSmall ? 6 : 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(item.icon,
-                                    color: item.color!.withValues(alpha: 0.9),
-                                    size: isSmall ? 20 : 24),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                    child: Text(item.title,
-                                        style: TextStyle(
-                                            fontSize: isSmall ? 16 : 18,
-                                            fontWeight: FontWeight.w800,
-                                            color: const Color(0xFF1E293B)))),
-                                const Icon(Icons.more_vert_rounded,
-                                    color: Color(0xFF64748B), size: 20),
-                              ],
-                            ),
-                            if (timeText.isNotEmpty) ...[
-                              if (isSmall)
-                                const SizedBox(height: 2)
-                              else
-                                const SizedBox(height: 12),
-                              Container(
-                                height: isSmall ? 22 : 32,
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.35),
-                                  borderRadius:
-                                      BorderRadius.circular(isSmall ? 11 : 16),
-                                  border: Border.all(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.8),
-                                      width: 1),
-                                ),
-                                child: Stack(
-                                  children: [
-                                    Positioned(
-                                      top: 0,
-                                      left: 0,
-                                      right: 0,
-                                      height: 6,
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(
-                                                isSmall ? 11 : 16)),
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              begin: Alignment.topCenter,
-                                              end: Alignment.bottomCenter,
-                                              colors: [
-                                                Colors.black
-                                                    .withValues(alpha: 0.06),
-                                                Colors.transparent
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    Center(
-                                      child: Text(timeText,
-                                          style: TextStyle(
-                                              fontSize: isSmall ? 11 : 13,
-                                              fontWeight: FontWeight.w600,
-                                              color: const Color(0xFF334155))),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (item.hasTopTape)
-              Positioned(
-                  top: -8,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                      child: _buildTapeWithDrops(
-                          onDrag: (d) => _onTopTapeDrag(index, d)))),
-            if (item.hasBottomTape)
-              Positioned(
-                  bottom: -8,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                      child: _buildTapeWithDrops(
-                          onDrag: (d) => _onBottomTapeDrag(index, d)))),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniBlock(int index, ScheduleItem item) {
-    final top = item.start * kHourHeight + 4;
-    final height = kHourHeight - 8;
-    return Positioned(
-      top: top,
-      left: kLeftOffset,
-      right: 0,
-      height: height,
-      child: GestureDetector(
-        onTap: () => _showEditDialog(index),
-        onLongPress: () => _showEditDialog(index),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(height / 2),
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.8), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2)),
-              BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  blurRadius: 4,
-                  offset: const Offset(-1, -1)),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(height / 2),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(item.title,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF334155))),
-                    const Icon(Icons.more_vert_rounded,
-                        color: Color(0xFF94A3B8), size: 18),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAddButton(int index, ScheduleItem item) {
-    final height = 36.0;
-    // Add buttons dynamically span 1 hour for layout visually
-    final top = item.start * kHourHeight - height / 2;
-    return Positioned(
-      top: top,
-      left: kLeftOffset,
-      right: 0,
-      height: height,
-      child: GestureDetector(
-        onTap: () => _showEditDialog(index),
-        child: Container(
-          decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(height / 2),
-              border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.7), width: 1.5),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2)),
-              ]),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(height / 2),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 6,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.05),
-                            Colors.transparent
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Center(
-                    child: Icon(Icons.add_rounded,
-                        color: Color(0xFF60A5FA), size: 28),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    titleCtrl.dispose();
+    categoryCtrl.dispose();
+    notesCtrl.dispose();
+    durationCtrl.dispose();
   }
 
   @override
@@ -699,153 +487,167 @@ class _OnboardingPage9State extends ConsumerState<OnboardingPage9> {
     final bottomPadding =
         MediaQuery.of(context).padding.bottom + kButtonOverlayH;
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Padding(
-        padding:
-            EdgeInsets.fromLTRB(20, topPadding + 16, 20, bottomPadding + 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // ── Title ───────────────────────────────────────────────────────
-            RichText(
-              textAlign: TextAlign.center,
-              text: const TextSpan(
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F111A),
-                  height: 1.15,
-                  letterSpacing: -1.0,
-                ),
-                children: [
-                  TextSpan(text: 'Set Your '),
-                  TextSpan(
-                    text: 'Fixed Schedule',
-                    style: TextStyle(color: Color(0xFF3B82F6)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Align your daily routine with your goals.',
-              textAlign: TextAlign.center,
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, topPadding + 16, 20, bottomPadding + 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          RichText(
+            textAlign: TextAlign.center,
+            text: const TextSpan(
               style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF374151),
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F111A),
+                height: 1.15,
+                letterSpacing: -1.0,
               ),
+              children: [
+                TextSpan(text: 'Set Your '),
+                TextSpan(
+                  text: 'Fixed Schedule',
+                  style: TextStyle(color: Color(0xFF3B82F6)),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: _addScheduleItem,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Add task'),
-              ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Add your daily non-negotiables (work, classes, sleep).',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF374151),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 24 * kHourHeight,
-              child: Stack(
-                clipBehavior: Clip.none,
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
                 children: [
-                  // Axis lines + text
-                  ...List.generate(24, (i) {
-                    String label = i == 0
-                        ? "12 AM"
-                        : (i < 12
-                            ? "$i AM"
-                            : (i == 12 ? "12 PM" : "${i - 12} PM"));
-                    return Positioned(
-                      top: i * kHourHeight - 10,
-                      left: 0,
-                      width: 44,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(label,
-                              style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF64748B))),
-                          const SizedBox(width: 6),
-                          Container(
-                              width: 4,
-                              height: 1.5,
-                              color: const Color(0xFFCBD5E1)),
-                        ],
-                      ),
-                    );
-                  }),
-
-                  // Glass Ruler
-                  Positioned(
-                    top: 0,
-                    bottom: 0,
-                    left: 48,
-                    width: 10,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            width: 1.2),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 4,
-                              offset: const Offset(2, 2)),
-                          BoxShadow(
-                              color: Colors.white.withValues(alpha: 0.7),
-                              blurRadius: 4,
-                              offset: const Offset(-2, -2)),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(5),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                          child: Stack(
-                            children: List.generate(24, (i) {
-                              return Positioned(
-                                top: i * kHourHeight - 0.75,
-                                left: 0,
-                                right: 0,
-                                child: Center(
-                                    child: Container(
-                                        width: 4,
-                                        height: 1.5,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.8))),
-                              );
-                            }),
-                          ),
-                        ),
-                      ),
-                    ),
+                  Checkbox(
+                    value: _allowOverlap,
+                    onChanged: (val) =>
+                        setState(() => _allowOverlap = val ?? false),
+                    activeColor: const Color(0xFF3B82F6),
                   ),
-
-                  // Render Blocks
-                  ...items.asMap().entries.map((entry) {
-                    int idx = entry.key;
-                    ScheduleItem item = entry.value;
-                    if (item.isAdd) {
-                      return _buildAddButton(idx, item);
-                    } else if (item.isMini) {
-                      return _buildMiniBlock(idx, item);
-                    } else {
-                      return _buildColoredBlock(idx, item);
-                    }
-                  }),
+                  const Text('Allow Overlaps',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF334155))),
                 ],
               ),
-            ),
-          ],
-        ),
+              FilledButton.icon(
+                onPressed: () => _showEditDialog(null),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add Task'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF3B82F6),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: _blocks.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.calendar_month_rounded,
+                            size: 64,
+                            color: Colors.blueGrey.withValues(alpha: 0.2)),
+                        const SizedBox(height: 16),
+                        const Text('No fixed tasks yet.',
+                            style: TextStyle(
+                                color: Colors.blueGrey,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  )
+                : ReorderableListView.builder(
+                    itemCount: _blocks.length,
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        if (newIndex > oldIndex) newIndex -= 1;
+                        final item = _blocks.removeAt(oldIndex);
+                        _blocks.insert(newIndex, item);
+                      });
+                      _updateProvider();
+                    },
+                    itemBuilder: (context, index) {
+                      final block = _blocks[index];
+                      return Container(
+                        key: ValueKey(block.templateId),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.03),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4)),
+                          ],
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          title: Text(block.title,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 16,
+                                  color: Color(0xFF1E293B))),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Text(
+                                      '${block.startTime.format(context)} – ${block.endTime.format(context)}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF64748B))),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEFF6FF),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(block.durationString,
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF3B82F6))),
+                                  ),
+                                ],
+                              ),
+                              if (block.category.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(block.category,
+                                    style: const TextStyle(
+                                        color: Color(0xFF94A3B8),
+                                        fontSize: 13)),
+                              ]
+                            ],
+                          ),
+                          trailing: const Icon(Icons.drag_handle_rounded,
+                              color: Color(0xFFCBD5E1)),
+                          onTap: () => _showEditDialog(index),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

@@ -563,12 +563,16 @@ Users must add more than 3 fixed schedule tasks, and those tasks must repeat eve
 
 4h
 
+#### Status
+
+Completed on 2026-05-01.
+
 #### Done Criteria
 
-- [ ] User can add more than 3 blocks.
-- [ ] Blocks persist as templates.
-- [ ] Validation exists.
-- [ ] No one-time-only fixed schedule behavior remains.
+- [x] User can add more than 3 blocks.
+- [x] Blocks persist as templates.
+- [x] Validation exists.
+- [x] No one-time-only fixed schedule behavior remains.
 
 ### Task 1.4 - Add final AI plan ready onboarding page
 
@@ -628,12 +632,16 @@ The User Flow requires the user to see the first plan before entering Home.
 
 1 day
 
+#### Status
+
+Completed on 2026-05-01.
+
 #### Done Criteria
 
-- [ ] Page 10 exists.
-- [ ] Start Today completes onboarding.
-- [ ] Fixed schedule appears in Routine today.
-- [ ] Required docs/events exist.
+- [x] Page 10 exists.
+- [x] Start Today completes onboarding.
+- [x] Fixed schedule appears in Routine today.
+- [x] Required docs/events exist.
 
 ## Phase 2 - Event Spine and Firestore Contracts
 

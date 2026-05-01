@@ -1,7 +1,40 @@
 import '../services/firestore_service.dart';
+import '../models/context_snapshot.dart';
 import '../models/goal_model.dart';
 import '../models/habit_model.dart';
+import '../models/scheduled_notification_model.dart';
+import '../models/task_model.dart';
 import '../models/user_model.dart';
+
+class OnboardingCompletionResult {
+  final Map<String, dynamic> onboarding;
+  final List<TaskModel> tasks;
+  final List<ScheduledNotification> notifications;
+  final List<Map<String, dynamic>> suggestions;
+  final Map<String, dynamic> snapshot;
+
+  const OnboardingCompletionResult({
+    required this.onboarding,
+    required this.tasks,
+    required this.notifications,
+    required this.suggestions,
+    required this.snapshot,
+  });
+}
+
+class _OnboardingMaterializationResult {
+  final List<TaskModel> tasks;
+  final List<ScheduledNotification> notifications;
+  final List<Map<String, dynamic>> suggestions;
+  final Map<String, dynamic> snapshot;
+
+  const _OnboardingMaterializationResult({
+    required this.tasks,
+    required this.notifications,
+    required this.suggestions,
+    required this.snapshot,
+  });
+}
 
 class OnboardingDataSnapshot {
   final Map<String, dynamic> onboarding;
@@ -68,14 +101,58 @@ class UserRepository {
       'coachName': onboardingMap['coachName'] as String? ?? '',
       'accountabilityType':
           onboardingMap['accountabilityType'] as String? ?? 'Strict',
-      'scheduleItems': List<Map<String, dynamic>>.from(
-        (onboardingMap['scheduleItems'] as List? ?? const []).map(
-          (item) => Map<String, dynamic>.from(item as Map),
-        ),
-      ),
+      'fixedSchedule': _sanitizeFixedSchedule(onboardingMap['fixedSchedule']),
       'aboutYou': aboutYou,
       'completedAt': completedAt,
     };
+  }
+
+  List<Map<String, dynamic>> _sanitizeFixedSchedule(Object? raw) {
+    final items = raw is List ? raw : const [];
+    return [
+      for (var i = 0; i < items.length; i++)
+        if (items[i] is Map)
+          _sanitizeFixedScheduleItem(
+            Map<String, dynamic>.from(items[i] as Map),
+            i,
+          ),
+    ];
+  }
+
+  Map<String, dynamic> _sanitizeFixedScheduleItem(
+    Map<String, dynamic> item,
+    int index,
+  ) {
+    final now = DateTime.now().toIso8601String();
+    final templateId = _cleanLabel(item['templateId']?.toString() ?? '');
+    final createdAt = _cleanLabel(item['createdAt']?.toString() ?? '');
+    final updatedAt = _cleanLabel(item['updatedAt']?.toString() ?? '');
+
+    return {
+      'templateId':
+          templateId.isNotEmpty ? templateId : 'fixed_schedule_${index + 1}',
+      'title': _cleanLabel(item['title']?.toString() ?? ''),
+      'routineType': 'fixed_schedule',
+      'startTime': _sanitizeTime(item['startTime'], fallback: '09:00'),
+      'endTime': _sanitizeTime(item['endTime'], fallback: '10:00'),
+      'repeatRule': 'daily',
+      'category': _cleanLabel(item['category']?.toString() ?? ''),
+      'notes': _cleanLabel(item['notes']?.toString() ?? ''),
+      'isActive': item['isActive'] as bool? ?? true,
+      'createdAt': createdAt.isNotEmpty ? createdAt : now,
+      'updatedAt': updatedAt.isNotEmpty ? updatedAt : now,
+    };
+  }
+
+  String _sanitizeTime(Object? value, {required String fallback}) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})$')
+        .firstMatch(value?.toString().trim() ?? '');
+    if (match == null) return fallback;
+    final hour = int.tryParse(match.group(1)!);
+    final minute = int.tryParse(match.group(2)!);
+    if (hour == null || minute == null) return fallback;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
   }
 
   Map<String, dynamic> _sanitizeAboutYou(Object? raw) {
@@ -272,7 +349,8 @@ class UserRepository {
   }
 
   /// Complete onboarding by setting hasCompletedOnboarding to true.
-  Future<void> completeOnboarding(Map<String, dynamic> onboardingMap) async {
+  Future<OnboardingCompletionResult> completeOnboarding(
+      Map<String, dynamic> onboardingMap) async {
     final completedAt = DateTime.now().toIso8601String();
     final rootOnboarding = _buildRootOnboardingPayload(
       onboardingMap,
@@ -327,30 +405,48 @@ class UserRepository {
       ),
     );
 
-    await _materializeOnboardingSelections(
+    final materialized = await _materializeOnboardingSelections(
       onboardingMap,
       completedAt: DateTime.parse(completedAt),
     );
+    return OnboardingCompletionResult(
+      onboarding: rootOnboarding,
+      tasks: materialized.tasks,
+      notifications: materialized.notifications,
+      suggestions: materialized.suggestions,
+      snapshot: materialized.snapshot,
+    );
   }
 
-  Future<void> _materializeOnboardingSelections(
+  Future<_OnboardingMaterializationResult> _materializeOnboardingSelections(
     Map<String, dynamic> onboardingMap, {
     required DateTime completedAt,
   }) async {
-    final goodHabits =
+    final rawGoodHabits =
         List<String>.from(onboardingMap['goodHabits'] as List? ?? const []);
     final badHabits =
         List<String>.from(onboardingMap['badHabits'] as List? ?? const []);
-    final goals =
+    final rawGoals =
         List<String>.from(onboardingMap['goals'] as List? ?? const []);
-    final scheduleItems = List<Map<String, dynamic>>.from(
-      (onboardingMap['scheduleItems'] as List? ?? const []).map(
-        (item) => Map<String, dynamic>.from(item as Map),
-      ),
+    final fixedSchedule = _effectiveFixedSchedule(
+      _sanitizeFixedSchedule(onboardingMap['fixedSchedule']),
+      completedAt,
     );
+    final goodHabits = rawGoodHabits
+        .map(_cleanLabel)
+        .where((name) => name.isNotEmpty)
+        .toList();
+    final goals =
+        rawGoals.map(_cleanLabel).where((goal) => goal.isNotEmpty).toList();
+    final habitNames =
+        goodHabits.isNotEmpty ? goodHabits : const ['Review daily plan'];
+    final goalTitles = goals.isNotEmpty
+        ? goals
+        : const ['Complete today with one finished block'];
+    final createdTasks = <TaskModel>[];
+    final scheduledNotifications = <ScheduledNotification>[];
 
-    for (final name
-        in goodHabits.map(_cleanLabel).where((name) => name.isNotEmpty)) {
+    for (final name in habitNames) {
       final id = 'onboarding_good_${_slug(name)}';
       if (await _service.getUserSubdocument('habits', id) != null) continue;
       await _service.saveUserSubdocument(
@@ -395,8 +491,7 @@ class UserRepository {
       );
     }
 
-    for (final title
-        in goals.map(_cleanLabel).where((goal) => goal.isNotEmpty)) {
+    for (final title in goalTitles) {
       final id = 'onboarding_goal_${_slug(title)}';
       if (await _service.getUserSubdocument('goals', id) != null) continue;
       await _service.saveUserSubdocument(
@@ -415,44 +510,266 @@ class UserRepository {
       );
     }
 
-    final fixedBlocks = scheduleItems
-        .where((item) =>
-            item['isAdd'] != true &&
-            _cleanLabel(item['title'] as String? ?? '').isNotEmpty &&
-            ((item['duration'] as num?)?.toDouble() ?? 0) > 0)
-        .map((item) {
-      final title = _cleanLabel(item['title'] as String? ?? '');
-      final startHours =
-          ((item['start'] as num?)?.toDouble() ?? 0).clamp(0, 24);
-      final durationHours =
-          ((item['duration'] as num?)?.toDouble() ?? 0).clamp(0.25, 24);
-      final startMinute = (startHours * 60).round().clamp(0, 1439).toInt();
-      final endMinute = ((startHours + durationHours) * 60)
-          .round()
-          .clamp(startMinute + 1, 1440)
-          .toInt();
-      final rawId = _cleanLabel(item['id'] as String? ?? '');
-      final id = rawId.isNotEmpty ? _slug(rawId) : _slug(title);
+    final templates = fixedSchedule
+        .where(
+            (item) => _cleanLabel(item['title']?.toString() ?? '').isNotEmpty)
+        .toList();
 
-      return {
-        'id': id,
-        'title': title,
-        'emoji': _emojiForScheduleTitle(title),
-        'startMinute': startMinute,
-        'endMinute': endMinute,
-        'colorHex': _colorHexFromArgb(item['color']),
-      };
-    }).toList();
+    final existingRoutine = await _service.getRoutine() ?? {};
+    final existingTemplates = existingRoutine['templates'] is Map
+        ? Map<String, dynamic>.from(existingRoutine['templates'] as Map)
+        : <String, dynamic>{};
+    await _service.saveRoutine({
+      ...existingRoutine,
+      'templates': {
+        ...existingTemplates,
+        'fixed_schedule': templates,
+      },
+      'fixedScheduleSetUp': templates.isNotEmpty,
+    });
 
-    if (fixedBlocks.isNotEmpty) {
-      final existingRoutine = await _service.getRoutine();
-      await _service.saveRoutine({
-        ...?existingRoutine,
-        'fixedBlocks': fixedBlocks,
-        'fixedScheduleSetUp': true,
-      });
+    final todayTasks = _buildTodayTasksFromTemplates(
+      templates,
+      completedAt: completedAt,
+    );
+    for (final task in todayTasks) {
+      await _service.saveUserSubdocument(
+        'tasks',
+        task.id,
+        task.toFirestore(),
+      );
+      createdTasks.add(task);
     }
+
+    final notifications = _buildStarterNotifications(
+      todayTasks,
+      completedAt: completedAt,
+    );
+    for (final notification in notifications) {
+      await _service.saveUserSubdocument(
+        'scheduled_notifications',
+        notification.notifId,
+        notification.toFirestore(),
+      );
+      scheduledNotifications.add(notification);
+    }
+
+    final suggestions = _buildStarterSuggestions(
+      onboardingMap,
+      fixedSchedule: templates,
+      habits: habitNames,
+      goals: goalTitles,
+      completedAt: completedAt,
+    );
+    final snapshot = _buildInitialContextSnapshot(
+      onboardingMap,
+      taskCount: createdTasks.length,
+      habitCount: habitNames.length + badHabits.length,
+      goalCount: goalTitles.length,
+      notificationCount: scheduledNotifications.length,
+      suggestions: suggestions,
+      completedAt: completedAt,
+    );
+    await _service.saveUserSubdocument(
+      'ai_context_snapshots',
+      snapshot['snapshotId'] as String,
+      snapshot,
+    );
+
+    return _OnboardingMaterializationResult(
+      tasks: createdTasks,
+      notifications: scheduledNotifications,
+      suggestions: suggestions,
+      snapshot: snapshot,
+    );
   }
+
+  List<Map<String, dynamic>> _effectiveFixedSchedule(
+    List<Map<String, dynamic>> fixedSchedule,
+    DateTime completedAt,
+  ) {
+    final nonBlank = fixedSchedule
+        .where(
+            (item) => _cleanLabel(item['title']?.toString() ?? '').isNotEmpty)
+        .toList();
+    if (nonBlank.isNotEmpty) return nonBlank;
+
+    final now = completedAt.toIso8601String();
+    return [
+      {
+        'templateId': 'starter_morning_focus',
+        'title': 'Morning Focus',
+        'routineType': 'fixed_schedule',
+        'startTime': '09:00',
+        'endTime': '09:30',
+        'repeatRule': 'daily',
+        'category': 'Focus',
+        'notes': 'Start with one clear priority.',
+        'isActive': true,
+        'createdAt': now,
+        'updatedAt': now,
+      },
+      {
+        'templateId': 'starter_habit_check',
+        'title': 'Habit Check-in',
+        'routineType': 'fixed_schedule',
+        'startTime': '13:00',
+        'endTime': '13:15',
+        'repeatRule': 'daily',
+        'category': 'Habits',
+        'notes': 'Log one habit and reset the day.',
+        'isActive': true,
+        'createdAt': now,
+        'updatedAt': now,
+      },
+      {
+        'templateId': 'starter_evening_review',
+        'title': 'Evening Review',
+        'routineType': 'fixed_schedule',
+        'startTime': '20:30',
+        'endTime': '20:45',
+        'repeatRule': 'daily',
+        'category': 'Review',
+        'notes': 'Close the day and pick tomorrow\'s first block.',
+        'isActive': true,
+        'createdAt': now,
+        'updatedAt': now,
+      },
+    ];
+  }
+
+  List<TaskModel> _buildTodayTasksFromTemplates(
+    List<Map<String, dynamic>> templates, {
+    required DateTime completedAt,
+  }) {
+    final today =
+        DateTime(completedAt.year, completedAt.month, completedAt.day);
+    final dateKey = _dateKey(today);
+    return templates.map((template) {
+      final templateId =
+          _cleanLabel(template['templateId']?.toString() ?? 'template');
+      final title = _cleanLabel(template['title']?.toString() ?? '');
+      final startMinutes =
+          _minutesFromTime(template['startTime'], fallback: '09:00');
+      final endMinutes =
+          _minutesFromTime(template['endTime'], fallback: '10:00');
+      final plannedStart = today.add(Duration(minutes: startMinutes));
+      var plannedEnd = today.add(Duration(minutes: endMinutes));
+      if (!plannedEnd.isAfter(plannedStart)) {
+        plannedEnd = plannedEnd.add(const Duration(days: 1));
+      }
+      return TaskModel(
+        id: 'onboarding_${dateKey}_${_slug(templateId)}',
+        type: TaskType.fixed,
+        parentRoutine: templateId,
+        title: title.isNotEmpty ? title : 'Routine block',
+        emoji: _emojiForScheduleTitle(title),
+        color: '#CBD5E1',
+        identityTags: [if (title.isNotEmpty) title],
+        plannedStart: plannedStart,
+        plannedEnd: plannedEnd,
+        createdAt: completedAt,
+        updatedAt: completedAt,
+      );
+    }).toList();
+  }
+
+  List<ScheduledNotification> _buildStarterNotifications(
+    List<TaskModel> tasks, {
+    required DateTime completedAt,
+  }) {
+    final now = DateTime.now();
+    return tasks.take(3).toList().asMap().entries.map((entry) {
+      final task = entry.value;
+      var scheduledFor = task.plannedStart.subtract(const Duration(minutes: 5));
+      if (!scheduledFor.isAfter(now)) {
+        scheduledFor = now.add(Duration(minutes: 15 * (entry.key + 1)));
+      }
+      return ScheduledNotification(
+        notifId: 'onboarding_task_reminder_${task.id}',
+        category: NotifCategory.taskReminder,
+        scheduledFor: scheduledFor,
+        taskId: task.id,
+        createdAt: completedAt,
+      );
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> _buildStarterSuggestions(
+    Map<String, dynamic> onboardingMap, {
+    required List<Map<String, dynamic>> fixedSchedule,
+    required List<String> habits,
+    required List<String> goals,
+    required DateTime completedAt,
+  }) {
+    final coachStyle = onboardingMap['coachStyle'] as String? ?? 'Supportive';
+    return [
+      {
+        'suggestionId': 'onboarding_start_first_block',
+        'title': 'Start with the first scheduled block',
+        'body': fixedSchedule.isEmpty
+            ? 'Use the starter plan today, then customize it after your first run.'
+            : 'Treat your first fixed block as today\'s anchor.',
+        'source': 'onboarding_deterministic',
+        'createdAt': completedAt.toIso8601String(),
+      },
+      {
+        'suggestionId': 'onboarding_log_one_habit',
+        'title': 'Log one habit today',
+        'body': 'Focus on ${habits.first}. One clean log is enough to begin.',
+        'source': 'onboarding_deterministic',
+        'createdAt': completedAt.toIso8601String(),
+      },
+      {
+        'suggestionId': 'onboarding_goal_review',
+        'title': 'Connect the plan to your top goal',
+        'body':
+            'Use the $coachStyle coach style to stay aligned with ${goals.first}.',
+        'source': 'onboarding_deterministic',
+        'createdAt': completedAt.toIso8601String(),
+      },
+    ];
+  }
+
+  Map<String, dynamic> _buildInitialContextSnapshot(
+    Map<String, dynamic> onboardingMap, {
+    required int taskCount,
+    required int habitCount,
+    required int goalCount,
+    required int notificationCount,
+    required List<Map<String, dynamic>> suggestions,
+    required DateTime completedAt,
+  }) {
+    final snapshotId = 'onboarding_initial_${_dateKey(completedAt)}';
+    return {
+      'snapshotId': snapshotId,
+      ...const ContextSnapshot(
+        userState: 'on_track',
+        notificationsSentToday: 0,
+        dailyNotificationBudget: 3,
+      ).toMap(),
+      'source': 'onboarding',
+      'onboardingStep': 10,
+      'coachStyle': onboardingMap['coachStyle'] as String? ?? 'Supportive',
+      'routineTaskCount': taskCount,
+      'habitCount': habitCount,
+      'goalCount': goalCount,
+      'scheduledNotificationCount': notificationCount,
+      'suggestions': suggestions,
+      'createdAt': completedAt.toIso8601String(),
+      'updatedAt': completedAt.toIso8601String(),
+      'schemaVersion': 1,
+    };
+  }
+
+  int _minutesFromTime(Object? value, {required String fallback}) {
+    final normalized = _sanitizeTime(value, fallback: fallback);
+    final parts = normalized.split(':');
+    return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}${date.month.toString().padLeft(2, '0')}${date.day.toString().padLeft(2, '0')}';
 
   String _cleanLabel(String value) => value.replaceAll('\n', ' ').trim();
 
@@ -501,15 +818,9 @@ class UserRepository {
         key.contains('food')) {
       return '🍽️';
     }
+    if (key.contains('habit')) return '✅';
+    if (key.contains('review')) return '📝';
     return '📌';
-  }
-
-  String _colorHexFromArgb(Object? value) {
-    if (value is num) {
-      final rgb = value.toInt() & 0xFFFFFF;
-      return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
-    }
-    return '#CBD5E1';
   }
 
   /// Load onboarding data from the user profile.

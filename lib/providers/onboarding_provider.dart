@@ -1,9 +1,60 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/user_model.dart';
+import 'package:optivus2/services/event_service.dart';
+
+List<Map<String, dynamic>> _normalizeFixedSchedule(Object? raw) {
+  final items = raw is List ? raw : const [];
+  return [
+    for (var i = 0; i < items.length; i++)
+      if (items[i] is Map)
+        _normalizeFixedScheduleItem(
+          Map<String, dynamic>.from(items[i] as Map),
+          i,
+        ),
+  ];
+}
+
+Map<String, dynamic> _normalizeFixedScheduleItem(
+  Map<String, dynamic> item,
+  int index,
+) {
+  final now = DateTime.now().toIso8601String();
+  final templateId = _cleanString(item['templateId']);
+  final createdAt = _cleanString(item['createdAt']);
+  final updatedAt = _cleanString(item['updatedAt']);
+  return {
+    'templateId':
+        templateId.isNotEmpty ? templateId : 'fixed_schedule_${index + 1}',
+    'title': _cleanString(item['title']),
+    'routineType': 'fixed_schedule',
+    'startTime': _normalizeTime(item['startTime'], fallback: '09:00'),
+    'endTime': _normalizeTime(item['endTime'], fallback: '10:00'),
+    'repeatRule': 'daily',
+    'category': _cleanString(item['category']),
+    'notes': _cleanString(item['notes']),
+    'isActive': item['isActive'] as bool? ?? true,
+    'createdAt': createdAt.isNotEmpty ? createdAt : now,
+    'updatedAt': updatedAt.isNotEmpty ? updatedAt : now,
+  };
+}
+
+String _cleanString(Object? value) => value?.toString().trim() ?? '';
+
+String _normalizeTime(Object? value, {required String fallback}) {
+  final text = value?.toString() ?? '';
+  final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(text.trim());
+  if (match == null) return fallback;
+  final hour = int.tryParse(match.group(1)!);
+  final minute = int.tryParse(match.group(2)!);
+  if (hour == null || minute == null) return fallback;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+  return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+}
 
 class OnboardingState {
   final List<String> selectedCategories;
@@ -13,7 +64,7 @@ class OnboardingState {
   final String coachStyle;
   final String coachName;
   final String accountabilityType;
-  final List<Map<String, dynamic>> scheduleItems;
+  final List<Map<String, dynamic>> fixedSchedule;
   final AboutYouProfile aboutYou;
   final int currentStep;
   final String? completedAt;
@@ -28,7 +79,7 @@ class OnboardingState {
     this.coachStyle = 'Supportive',
     this.coachName = '',
     this.accountabilityType = 'Strict',
-    this.scheduleItems = const [],
+    this.fixedSchedule = const [],
     this.aboutYou = const AboutYouProfile(),
     this.currentStep = 0,
     this.completedAt,
@@ -44,7 +95,7 @@ class OnboardingState {
     String? coachStyle,
     String? coachName,
     String? accountabilityType,
-    List<Map<String, dynamic>>? scheduleItems,
+    List<Map<String, dynamic>>? fixedSchedule,
     AboutYouProfile? aboutYou,
     int? currentStep,
     String? completedAt,
@@ -60,7 +111,7 @@ class OnboardingState {
       coachStyle: coachStyle ?? this.coachStyle,
       coachName: coachName ?? this.coachName,
       accountabilityType: accountabilityType ?? this.accountabilityType,
-      scheduleItems: scheduleItems ?? this.scheduleItems,
+      fixedSchedule: fixedSchedule ?? this.fixedSchedule,
       aboutYou: aboutYou ?? this.aboutYou,
       currentStep: currentStep ?? this.currentStep,
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
@@ -84,11 +135,7 @@ class OnboardingState {
       coachStyle: map['coachStyle'] as String? ?? 'Supportive',
       coachName: map['coachName'] as String? ?? '',
       accountabilityType: map['accountabilityType'] as String? ?? 'Strict',
-      scheduleItems: List<Map<String, dynamic>>.from(
-        (map['scheduleItems'] as List? ?? const []).map(
-          (item) => Map<String, dynamic>.from(item as Map),
-        ),
-      ),
+      fixedSchedule: _normalizeFixedSchedule(map['fixedSchedule']),
       aboutYou: map['aboutYou'] is Map
           ? AboutYouProfile.fromMap(
               Map<String, dynamic>.from(map['aboutYou'] as Map))
@@ -110,7 +157,7 @@ class OnboardingState {
       'coachStyle': coachStyle,
       'coachName': coachName,
       'accountabilityType': accountabilityType,
-      'scheduleItems': scheduleItems,
+      'fixedSchedule': _normalizeFixedSchedule(fixedSchedule),
       'aboutYou': aboutYou.toMap(),
       'onboardingStep': currentStep,
       'completedAt': completedAt,
@@ -121,8 +168,10 @@ class OnboardingState {
 class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Timer? _debounceTimer;
   final UserRepository _userRepo;
+  final EventService _eventService;
 
-  OnboardingNotifier(this._userRepo) : super(OnboardingState());
+  OnboardingNotifier(this._userRepo, this._eventService)
+      : super(OnboardingState());
 
   @override
   void dispose() {
@@ -150,8 +199,8 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   void updateCoachName(String name) => state = state.copyWith(coachName: name);
   void updateAccountability(String type) =>
       state = state.copyWith(accountabilityType: type);
-  void updateScheduleItems(List<Map<String, dynamic>> items) =>
-      state = state.copyWith(scheduleItems: items);
+  void updateFixedSchedule(List<Map<String, dynamic>> items) =>
+      state = state.copyWith(fixedSchedule: _normalizeFixedSchedule(items));
   void updateCurrentStep(int step) => state = state.copyWith(currentStep: step);
   void updateAboutYou(AboutYouProfile aboutYou) =>
       state = state.copyWith(aboutYou: aboutYou);
@@ -228,11 +277,73 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
         currentStep: 10,
         completedAt: completedAt,
       );
-      await _userRepo.completeOnboarding(state.toMap());
+      final result = await _userRepo.completeOnboarding(state.toMap());
+      await _emitCompletionEvents(result);
       return true;
     } catch (e) {
       debugPrint('Error completing onboarding: $e');
       return false;
+    }
+  }
+
+  Future<void> _emitCompletionEvents(OnboardingCompletionResult result) async {
+    await _eventService.emit(
+      eventName: EventNames.onboardingCompleted,
+      source: 'onboarding',
+      payload: {
+        'onboardingStep': 10,
+        'hasCompletedOnboarding': true,
+        'completedAt': state.completedAt,
+        'selectedCategories': state.selectedCategories,
+        'badHabits': state.badHabits,
+        'goodHabits': state.goodHabits,
+        'goals': state.goals,
+        'coachStyle': state.coachStyle,
+        'coachName': state.coachName,
+        'accountabilityType': state.accountabilityType,
+        'fixedSchedule': result.onboarding['fixedSchedule'],
+        'taskCount': result.tasks.length,
+        'habitCount': state.goodHabits.length + state.badHabits.length,
+        'goalCount': state.goals.length,
+        'notificationCount': result.notifications.length,
+        'snapshotId': result.snapshot['snapshotId'],
+      },
+    );
+
+    for (final task in result.tasks) {
+      await _eventService.emit(
+        eventName: EventNames.taskScheduled,
+        source: 'onboarding',
+        payload: {
+          'taskId': task.id,
+          'type': task.type.toJson(),
+          'plannedStart': task.plannedStart.toIso8601String(),
+          'plannedEnd': task.plannedEnd.toIso8601String(),
+          'plannedDurationMin': task.plannedDurationMin,
+        },
+      );
+    }
+
+    for (final notification in result.notifications) {
+      await _eventService.emit(
+        eventName: EventNames.notificationScheduled,
+        source: 'onboarding',
+        payload: {
+          'notifId': notification.notifId,
+          'category': notification.category,
+          'scheduledFor': notification.scheduledFor.toIso8601String(),
+          if (notification.taskId != null) 'taskId': notification.taskId,
+          if (notification.habitId != null) 'habitId': notification.habitId,
+        },
+      );
+    }
+
+    for (final suggestion in result.suggestions) {
+      await _eventService.emit(
+        eventName: EventNames.suggestionGenerated,
+        source: 'onboarding',
+        payload: suggestion,
+      );
     }
   }
 }
@@ -243,5 +354,8 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
 final onboardingProvider =
     StateNotifierProvider<OnboardingNotifier, OnboardingState>(
-  (ref) => OnboardingNotifier(ref.read(userRepositoryProvider)),
+  (ref) => OnboardingNotifier(
+    ref.read(userRepositoryProvider),
+    ref.read(eventServiceProvider),
+  ),
 );

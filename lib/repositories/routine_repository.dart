@@ -14,6 +14,27 @@ class RoutineRepository {
     return _service.saveRoutine(state.toMap());
   }
 
+  /// Save only the fixed schedule template config at
+  /// /users/{uid}/routine/current.templates.fixed_schedule.
+  Future<void> saveFixedScheduleTemplates(
+    List<FixedScheduleTemplate> templates,
+  ) async {
+    final existing = await _service.getRoutine() ?? <String, dynamic>{};
+    final existingTemplates = existing['templates'] is Map
+        ? Map<String, dynamic>.from(existing['templates'] as Map)
+        : <String, dynamic>{};
+
+    await _service.saveRoutine({
+      ...existing,
+      'templates': {
+        ...existingTemplates,
+        'fixed_schedule':
+            templates.map((template) => template.toMap()).toList(),
+      },
+      'fixedScheduleSetUp': templates.isNotEmpty,
+    });
+  }
+
   /// Load the routine state. Returns null if no data exists yet.
   Future<RoutineState?> loadRoutine() async {
     final data = await _service.getRoutine();
