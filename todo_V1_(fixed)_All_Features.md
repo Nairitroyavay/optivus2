@@ -360,12 +360,16 @@ Antigravity must understand the current app before changing it.
 
 2h
 
+#### Status
+
+Completed on 2026-05-01.
+
 #### Done Criteria
 
-- [ ] Inventory doc exists.
-- [ ] Feature matrix exists.
-- [ ] Every feature has UI, backend, Firestore, event, verification columns.
-- [ ] No runtime code changed.
+- [x] Inventory doc exists.
+- [x] Feature matrix exists.
+- [x] Every feature has UI, backend, Firestore, event, verification columns.
+- [x] No runtime code changed.
 
 ### Task 0.2 - Add contract test skeletons
 
@@ -402,11 +406,15 @@ Each phase needs a safe place to add tests without blocking on full implementati
 
 1h
 
+#### Status
+
+Completed on 2026-05-01.
+
 #### Done Criteria
 
-- [ ] Test skeletons exist.
-- [ ] Tests do not fail because of empty TODO groups.
-- [ ] Missing npm script is documented if needed.
+- [x] Test skeletons exist — 7 Dart files (~190 skipped tests) + 3 JS files.
+- [x] Tests do not fail because of empty TODO groups (`flutter test` → +0, ~190 skipped).
+- [x] Missing npm script documented in `docs/implementation_inventory.md`.
 
 ## Phase 1 - Auth, User Schema, and Onboarding
 
