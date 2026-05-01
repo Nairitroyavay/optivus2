@@ -146,6 +146,36 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
     return '$displayH:$minStr $ampm';
   }
 
+  double _nextAvailableStart() {
+    final concreteItems = items.where((item) => !item.isAdd).toList();
+    if (concreteItems.isEmpty) return 7.5;
+
+    final latestEnd = concreteItems
+        .map((item) => item.start + item.duration)
+        .fold<double>(0, (latest, end) => end > latest ? end : latest);
+    final next = latestEnd + 0.5;
+    return next <= 22.5 ? next : 7.5;
+  }
+
+  Future<void> _addScheduleItem() async {
+    final item = ScheduleItem(
+      id: 'schedule_${DateTime.now().microsecondsSinceEpoch}',
+      title: '',
+      start: _nextAvailableStart(),
+      duration: 1.5,
+      isAdd: true,
+    );
+
+    setState(() => items.add(item));
+    await _showEditDialog(items.length - 1);
+
+    if (!mounted) return;
+    if (item.isAdd) {
+      setState(() => items.removeWhere((candidate) => candidate.id == item.id));
+    }
+    _updateProvider();
+  }
+
   void _onTopTapeDrag(int index, DragUpdateDetails details) {
     setState(() {
       double deltaHours = details.delta.dy / kHourHeight;
@@ -277,6 +307,18 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
                   ],
                 ),
                 actions: [
+                  if (!item.isAdd)
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          items.removeWhere(
+                              (candidate) => candidate.id == item.id);
+                        });
+                        _updateProvider();
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('Delete'),
+                    ),
                   TextButton(
                       onPressed: () => Navigator.pop(ctx),
                       child: const Text('Cancel')),
@@ -696,6 +738,15 @@ class _OnboardingPage8State extends ConsumerState<OnboardingPage8> {
               ),
             ),
             const SizedBox(height: 24),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: _addScheduleItem,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add task'),
+              ),
+            ),
+            const SizedBox(height: 16),
             SizedBox(
               height: 24 * kHourHeight,
               child: Stack(

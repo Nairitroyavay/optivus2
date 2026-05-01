@@ -24,8 +24,9 @@ class OnboardingPage9 extends ConsumerWidget {
         .where((item) =>
             item['isAdd'] != true &&
             (item['title'] as String? ?? '').trim().isNotEmpty)
-        .take(2)
-        .toList();
+        .toList()
+      ..sort((a, b) => ((a['start'] as num?)?.toDouble() ?? 0)
+          .compareTo(((b['start'] as num?)?.toDouble() ?? 0)));
     final goals = onboarding.goals.take(3).toList();
     final habits = [
       ...onboarding.goodHabits,

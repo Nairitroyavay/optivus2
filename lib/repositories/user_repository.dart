@@ -358,9 +358,11 @@ class UserRepository {
           .round()
           .clamp(startMinute + 1, 1440)
           .toInt();
+      final rawId = _cleanLabel(item['id'] as String? ?? '');
+      final id = rawId.isNotEmpty ? _slug(rawId) : _slug(title);
 
       return {
-        'id': _slug(title),
+        'id': id,
         'title': title,
         'emoji': _emojiForScheduleTitle(title),
         'startMinute': startMinute,
