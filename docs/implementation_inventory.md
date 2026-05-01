@@ -225,6 +225,7 @@ This inventory is descriptive only. It does not authorize runtime changes. The c
 
 - Existing jobs: morning brief, midday pulse, day close, inactivity check, utilities.
 - Status: partial. Needs notification dispatcher, AI planner/rule engine/safety split, export/delete, cleanup/backfill, weekly summary, emulator tests.
+- Verification note for Task 0.2: `functions/package.json` currently does not define an `npm test` script, so `cd functions && npm test` is not available yet. Add a test script before enabling the Cloud Functions contract test command.
 
 ## Firestore Rules and Indexes
 
@@ -248,3 +249,55 @@ This inventory is descriptive only. It does not authorize runtime changes. The c
 6. Tests are missing or skeletal.
 7. Feature matrix must be kept current after each phase.
 
+## Testing
+
+### Flutter contract tests
+
+Run with:
+
+```
+flutter test test/services/
+```
+
+All 7 service contract test files exist under `test/services/`. As of Task 0.2 all
+tests are skipped (`~190 skipped, +0 passed`). They define the intended public
+surface and state-machine contracts so that implementations can be verified against
+them once `fake_cloud_firestore` and `firebase_auth_mocks` are added as
+dev-dependencies.
+
+| File | Service | Groups |
+|---|---|---|
+| `event_service_contract_test.dart` | EventService | emit, on, onAny, replayRecentEvents, dispose |
+| `task_service_contract_test.dart` | TaskService | tasksFor, tasksForWindow, createTask, syncRoutineTasks, startTask, pauseTask, resumeTask, completeTask, abandonTask, skipTask, toggleSubtask |
+| `routine_service_contract_test.dart` | RoutineService | runDayCloseIfNeeded (guard, happy path, idempotency, error resilience) |
+| `habit_service_contract_test.dart` | HabitService | habits, getHabit, dailyLogCount, dailyTotal, createHabit, updateHabit, deleteHabit, logGood, logSlip |
+| `streak_service_contract_test.dart` | StreakService | runDayCloseRollup, event emission, bad-habit goal types, error resilience, watchAllStreaks, watchStreak, getStreak |
+| `notification_service_contract_test.dart` | NotificationService | init, scheduleTaskReminder, scheduleTaskEndReminder, cancelTaskEndReminder, scheduleStreakMilestone, scheduleSlipRecovery, ensureNotificationSettings, reserveNotificationSlot, writeSuppressionEvent |
+| `suggestion_service_contract_test.dart` | SuggestionService (planned) | fetchSuggestions, dismissSuggestion, acceptSuggestion, watchPendingSuggestions |
+
+### Cloud Functions contract tests
+
+Three JS contract test files exist under `functions/test/`:
+
+| File | Surface |
+|---|---|
+| `events.contract.test.js` | Event helper doc shape, dual-write, idempotency, auth guard, events_recent trimming |
+| `jobs.contract.test.js` | scheduledDayClose, scheduledInactivityCheck, scheduledMorningBrief, scheduledMiddayPulse |
+| `routineImport.contract.test.js` | Planned `routineImport` callable — auth, validation, Firestore writes, event emission, return shape, idempotency |
+
+> [!WARNING]
+> `functions/package.json` does **not** define an `npm test` script.
+> `cd functions && npm test` will fail with `Missing script: "test"`.
+>
+> To enable JS tests, install a test runner (e.g. Jest) and add a test script:
+>
+> ```json
+> // functions/package.json — scripts section
+> "scripts": {
+>   "test": "jest --testPathPattern=test/"
+> }
+> ```
+>
+> Then install: `npm install --save-dev jest`
+>
+> This is deferred to a later task (test infrastructure wiring).
