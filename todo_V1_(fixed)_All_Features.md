@@ -1,44 +1,6 @@
-# Optivus Production TODO V1 Fixed All Features
+# Optivus Production TODO V1 Fixed - All Features
 
-Date: 2026-04-30
-Scope: planning and Antigravity task instructions only. No implementation code is included.
-
-## 1. Short Summary
-
-1. The current Optivus app is a real Flutter/Firebase codebase, not a fresh project.
-2. The code already has Firebase initialization, Auth, Firestore, Riverpod providers, GoRouter, six main tabs, onboarding, tasks, habits, streaks, routine, coach, notifications, export/delete, and some Cloud Functions.
-3. The codebase is ahead of a prototype, but it is not yet production-complete against the seven system documents.
-4. Firestore-first is the canonical v1 architecture. Postgres references in V2 docs are future-state only and must not drive v1 migrations.
-5. The most important gap is consistency: some flows use real services, some use partial data, and some production paths still rely on incomplete defaults or TODO behavior.
-6. The user flow document requires a connected loop from signup to onboarding to routine/habit/task logging to day close to coaching to retention.
-7. Onboarding currently covers core choices, but it does not fully implement the 11-step documented flow, especially About You, safety-sensitive questions, notification preferences, and resilient resume behavior.
-8. Auth works for email/password and creates a user document, but it needs production polish around display name, sign-out events, deletion, provider linking, and account lifecycle verification.
-9. Home exists and reads real providers, but the mission ring, calendar, progress, and coach prompts need to be backed by canonical summaries and events.
-10. Routine setup and task generation exist, but routine completion, drift analysis, full alarms, timeline accuracy, and server/client day-close alignment are incomplete.
-11. Task lifecycle is partially implemented with scheduled, started, paused, resumed, completed, skipped, and abandoned states.
-12. Habit logging is partially implemented and writes both nested and flat logs, but habit CRUD events and tracker-specific schemas are incomplete.
-13. Streaks exist but need documented grace, pause, ghost-day, comeback, and milestone rules.
-14. Tracker coverage is partial. Water, smoking, screen time, junk food, procrastination, meditation, reading, exercise, money saving, and routine completion each need complete UI, schema, events, backend, and verification.
-15. Goals and identity exist in early form but need documented identity scoring, milestones, habit links, weekly review, and UI paths.
-16. The event service already writes to `/users/{uid}/events` and `/users/{uid}/events_recent`, but it needs strict event contracts, idempotency, schema validation, and failure behavior.
-17. Cloud Functions exist for AI generation and scheduled jobs, but they are not yet the authoritative production event processors.
-18. The AI coach has a rule engine and Gemini function, but the AI Master Engine requirements are much broader: rule-first decisions, speak budget, safety, crisis SOP, memory, output validation, and cost controls.
-19. Notifications exist locally, but custom alarms, server pushes, token/device handling, tap/dismiss events, quiet hours, and budgets need completion.
-20. Profile has privacy/export/delete work started, but the export/delete scope must match the final Firestore schema and the UI must explain account deletion clearly.
-21. Account deletion must delete the Firebase Auth user as well as Firestore data. After the Auth user is deleted, the same Gmail can create a new account, subject to Firebase provider rules and any provider-specific identity constraints.
-22. Analytics is mostly missing beyond events and daily summaries.
-23. Tests are currently not sufficient for production readiness.
-24. The first implementation priority is not UI polish. It is schema, events, services, security rules, indexes, and test scaffolding.
-25. Backend and Firestore contracts must be stabilized before adding new screens.
-26. Event system must be stable before AI.
-27. Habit logs and task events must be stable before streaks and day close.
-28. Day close must be stable before dashboard summaries and coaching insights.
-29. Notification budgets and scheduled notification persistence must be stable before proactive coach behavior.
-30. The phase plan below starts from the current codebase and finishes at a production-ready app with frontend, backend, Firestore, events, AI, notifications, analytics, and tests.
-
-## 2. Sources Read
-
-Documents read:
+Generated after reading the current Flutter/Firebase codebase and all seven Optivus documents:
 
 - `OPTIVUS Docs/1_Optivus_PRD.md`
 - `OPTIVUS Docs/2_Optivus_UserFlow.md`
@@ -47,1587 +9,2553 @@ Documents read:
 - `OPTIVUS Docs/5_Optivus_ServiceContracts.md`
 - `OPTIVUS Docs/6_Optivus_AI_Master_Engine.md`
 - `OPTIVUS Docs/7_Optivus_Database_Schema.md`
-- V2 patch documents for PRD, User Flow, Event System, System Design, Service Contracts, AI Master Engine, and Database Schema.
 
-Code areas reviewed:
+This is a planning document only. Do not write app code while using this file unless a specific task tells Antigravity to implement that task.
 
-- `lib/main.dart`
-- `lib/core/providers.dart`
-- `lib/core/router/app_router.dart`
-- `lib/core/providers/bootstrap_provider.dart`
-- `lib/core/event_orchestrator.dart`
-- `lib/models/*`
-- `lib/providers/*`
-- `lib/repositories/*`
-- `lib/services/*`
-- `lib/views/screens/*`
-- `lib/views/tabs/*`
-- `functions/index.js`
-- `functions/jobs/*`
-- `functions/utils.js`
+## 1. Short Summary
 
-## 3. Codebase Analysis
+1. The app is not a fresh project. It already has a Flutter shell, Firebase setup, auth, onboarding, six main tabs, basic task/habit/streak/routine services, local notifications, and a basic AI coach.
+2. The current codebase is directionally aligned with the documents but is not production-complete.
+3. The biggest gap is not UI polish. The biggest gap is contract correctness across events, Firestore schema, service payloads, day lifecycle, notification lifecycle, and AI rule execution.
+4. The User Flow document is the source of truth for what the user must see and do.
+5. The Event System document is the source of truth for how modules communicate.
+6. The Service Contracts document is the source of truth for service method behavior and event payloads.
+7. The Database Schema document is the source of truth for Firestore paths.
+8. The AI Master Engine document must not be implemented before the event spine and context snapshot are correct.
+9. Existing working screens must be extended, not redesigned.
+10. Existing services must be completed, not replaced wholesale.
+11. Firestore must remain the source of truth. Do not introduce Postgres or a separate backend database.
+12. All state-changing actions must write Firestore and emit a canonical event.
+13. Every user-visible feature needs a UI path, state provider, Firestore path, backend/Cloud Function where needed, event triggers, verification, and done criteria.
+14. Current onboarding has pages `0-9`; the docs require a stronger About You step and a final AI plan ready step.
+15. Current task flows exist but are missing contract methods, strict payloads, custom alarm controls, synced subtasks, and full day-close handling.
+16. Current habit flows exist but are missing create/update/archive events, edit/pause/archive UI, detail screens, undo/delete log, tracker variants, and safety behavior.
+17. Current streak logic exists but is too simple for accountability, grace, ghost days, comeback, and milestone rules.
+18. Current notification service exists but does not yet implement the full lifecycle: scheduled, sent, tapped, dismissed, suppressed, dedupe, caps, and deep links.
+19. Current AI coach exists but is not yet the strategic AI master engine from the docs.
+20. Current Goals tab is mostly read-only and needs full identity goal creation, detail, milestone, why score, and habit connection flows.
+21. Current Profile tab needs settings depth: coach, accountability, notifications, About You editing, privacy, export, deletion queue, and subscription.
+22. Current Cloud Functions exist but need event-triggered AI, proper scheduled jobs, FCM sends, cleanup/backfill jobs, and emulator tests.
+23. Backend must come before UI polish.
+24. Event system must come before AI.
+25. Habit logs must come before streaks.
+26. Tasks and routine logs must come before mission ring analytics.
+27. Notification schema must come before custom alarms.
+28. Profile/About You data must come before AI personalization.
+29. Tests and emulator verification must be added phase by phase, not left until the end.
+30. Completion means the user can navigate to and use every feature described in all seven documents.
+
+## 2. Codebase Analysis
 
 ### Already Implemented
 
-- Flutter app boots Firebase, Firestore persistence, Crashlytics, Remote Config, App Check, and Riverpod.
-- Auth flow exists with email/password signup and login.
-- Router/bootstrap flow exists for unauthenticated, onboarding, and ready states.
-- `/users/{uid}` root document is created on signup.
-- Onboarding screen exists and saves partial onboarding progress.
-- Home screen exists with the six-tab app shell.
-- Tabs exist for Home, Routine, Tracker, Coach, Goals, and Profile.
-- Task service exists and uses `/users/{uid}/tasks`.
-- Habit service exists and uses `/users/{uid}/habits` plus `/users/{uid}/habit_logs`.
-- Streak service exists and uses `/users/{uid}/streaks`.
-- Event service exists and writes to `/users/{uid}/events` and `/users/{uid}/events_recent`.
-- Routine service and repository exist and use `/users/{uid}/routine/current`.
-- Notification service exists and persists scheduled notifications under `/users/{uid}/scheduled_notifications`.
-- Coach service, rule engine, context aggregator, and Gemini Cloud Function exist.
-- Cloud Functions exist for AI generation, day close, inactivity, morning brief, and midday pulse.
-- Profile export/delete work exists for a subset of user-owned collections.
-- Current implementation has real service integration in many core flows, not only demo UI.
+- Flutter app startup in `lib/main.dart` initializes Firebase, App Check, Firestore offline persistence, Remote Config, and Crashlytics.
+- Routing exists in `lib/core/router/app_router.dart` for loading, welcome, login, signup, onboarding, and home.
+- Bootstrap auth/onboarding routing exists in `lib/core/providers/bootstrap_provider.dart`.
+- Email/password auth exists in `lib/services/auth_service.dart`, `lib/views/screens/signup_screen.dart`, and `lib/views/screens/login_screen.dart`.
+- User root documents are created at `/users/{uid}` during signup.
+- `user_signed_up` is already emitted by `AuthService.signUp`.
+- Onboarding screens exist at `lib/views/onboarding/onboarding_page_0.dart` through `onboarding_page_9.dart`.
+- Onboarding persistence exists in `lib/providers/onboarding_provider.dart` and `lib/repositories/user_repository.dart`.
+- Onboarding writes `/users/{uid}/onboarding/state`, `/users/{uid}/profile/main`, and `/users/{uid}/identity_profile/main`.
+- A six-tab home shell exists in `lib/views/screens/home_screen.dart`.
+- Home, Routine, Tracker, Coach, Goals, and Profile tabs exist.
+- Basic event infrastructure exists in `lib/services/event_service.dart`, `lib/models/event_model.dart`, and `lib/core/constants/event_names.dart`.
+- Event replay and a local event bus exist.
+- Basic task model and service exist in `lib/models/task_model.dart` and `lib/services/task_service.dart`.
+- Routine setup screens exist for fixed schedule, skin care, eating, and classes.
+- Routine timeline UI exists in `lib/views/routine/routine_tab.dart`, `timeline_section.dart`, and `timeline_zoom_views.dart`.
+- Basic habit model, logs, and service exist in `lib/models/habit_model.dart`, `lib/models/habit_log_model.dart`, and `lib/services/habit_service.dart`.
+- Habit logging sheet exists in `lib/views/habits/log_habit_sheet.dart`.
+- Basic streak model and day-close service exist in `lib/models/streak_model.dart`, `lib/services/streak_service.dart`, and `lib/services/routine_service.dart`.
+- Basic local notification service exists in `lib/services/notification_service.dart`.
+- Basic notification suppression events exist.
+- Android screen-time bridge/importer exists in `lib/services/screen_time_bridge.dart` and `lib/services/screen_time_importer.dart`.
+- Coach tab and Gemini service exist in `lib/views/tabs/coach_tab.dart`, `lib/services/coach_service.dart`, and `lib/services/gemini_service.dart`.
+- Cloud Function `aiGenerate` and scheduled jobs exist in `functions/index.js` and `functions/jobs/*.js`.
+- Firestore rules and indexes exist in `firestore.rules` and `firestore.indexes.json`.
 
 ### Partially Implemented
 
-- Signup/login: real Firebase Auth and Firestore user creation exist, but lifecycle events and display name consistency need hardening.
-- Onboarding: core preference pages exist, but the full documented flow, About You, safety questions, notification settings, and skip/resume logic are incomplete.
-- Home: reads providers, but mission ring and summary data are not fully canonical.
-- Routine: supports some setup and task syncing, but completion analytics, drift, server authority, and alarms are incomplete.
-- Tasks: lifecycle exists, but quick-complete, auto-abandon, alarm tiers, skip semantics, and server idempotency need alignment.
-- Habits: logging exists, but CRUD events, pause/resume, archive/delete semantics, tracker-specific details, and validation need completion.
-- Streaks: current/longest streak updates exist, but grace, ghost, comeback, milestone rules, and server/client consistency need completion.
-- Coach: rule engine and Gemini function exist, but safety, memory, output validation, cost control, and rule coverage are incomplete.
-- Notifications: local notifications exist, but production scheduling, tap/dismiss events, FCM, quiet hours, budgets, and custom alarms are incomplete.
-- Profile: export/delete exists, but the final collection list is incomplete and delete must include Firebase Auth account deletion confirmation.
-- Cloud Functions: scheduled jobs exist, but they overlap with client logic and are not yet the canonical event processors.
+- Auth exists, but Google/Apple providers and full auth lifecycle analytics are missing.
+- Onboarding exists, but Page 5 About You is incomplete and Page 10 AI plan ready is missing.
+- Onboarding completion materializes habits/goals/routine, but does not fully write the documented schema or schedule all notifications.
+- EventService writes `/events` and `/events_recent`, but idempotency, schema validation, payload contracts, transaction semantics, and recent trimming are incomplete.
+- TaskService has start/pause/resume/complete/abandon/skip, but does not fully match the Service Contracts document.
+- Subtasks are displayed but UI checkbox changes are not reliably persisted through TaskService events.
+- RoutineService closes only yesterday and does not fully compute routine percentage, mission ring, focus time, or missed-day backlog.
+- HabitService logs good habits and bad slips, but create/update/pause/resume/archive/delete-log contracts are incomplete.
+- StreakService has simple streak updates but lacks accountability modes, grace rules, ghost pause, comeback, and all milestone rules.
+- NotificationService schedules basic local notifications but lacks custom alarm tiers, lifecycle events, deep links, send-time budgets, dedupe, and re-registration on app start.
+- EventOrchestrator reacts to some local events but is not yet a complete production event listener layer.
+- RuleEngineService has some rules but not the full AI rulebook from the AI Master Engine.
+- StateAggregatorService builds a partial context snapshot but misses many required signals.
+- Coach chat exists but does not emit canonical `coach_message_sent` and `coach_replied` events for every turn.
+- Goals UI reads identity/goals but does not provide creation, detail, milestones, why score, pause/archive, or habit connections.
+- Profile UI has basic account actions but lacks full settings, privacy, export/delete lifecycle, subscription, and About You editing.
+- Cloud Functions run scheduled jobs but do not yet implement the full event-driven AI/notification/backend system.
 
 ### Not Implemented
 
-- Full 11-step onboarding with all documented fields.
-- About You editor and sensitive data controls.
-- Complete tracker detail screens for every documented tracker.
-- Full identity goals system with why score, milestones, and habit connections.
-- Complete AI Master Engine with rule-first, LLM-wording-only mode.
-- Crisis detection SOP and handoff records.
-- Coach memory snapshots and user-readable memory controls.
-- Notification device registry and FCM push pipeline.
-- BigQuery analytics and production dashboards.
-- Comprehensive Firestore security rules and index verification.
-- Emulator-based integration tests for signup to day close.
-- Complete QA release checklist and production smoke automation.
+- Full User Flow Page 5 About You with body basics, lifestyle, and sensitive context sub-pages.
+- Final onboarding AI plan ready screen.
+- Full onboarding-derived AI plan generation and user-visible explanation.
+- Complete event payload validation and idempotent event writes.
+- Event-driven listeners for tasks, habits, streaks, identity, AI, notification, analytics, and re-engagement.
+- Full task state machine enforcement including active task exclusivity, complete-from-scheduled, synced subtasks, delete task, and task outcomes.
+- Full routine daily loop including day start, automatic abandoned tasks, end-of-day review, tomorrow setup, and multi-day catch-up.
+- Tracker-specific detail screens and variants: smoking, screen time, junk food/mindful eating safety, procrastination, hydration, meditation, money saving, reading, exercise/running, and daily routine completion meta-tracker.
+- Good habit quick log from Home cards.
+- Bad habit slip recovery flow with coalesced slip streak detection.
+- Habit add/edit/pause/archive/undo log UI.
+- Streak detail/history/heatmap UI.
+- Ghost-day detection and comeback modal.
+- Identity goal add/detail/edit/milestone/why-score/connected-habit flows.
+- Notification center and notification settings UI.
+- Custom alarm creation, ringing screen, snooze, stop, and alarm reason flows.
+- Full P1-P6 notification priority model and rolling caps.
+- Strategic AI planner, suggestion collection, accept/dismiss flows, speak log budget, and adaptive learning.
+- Safety/crisis routing and handoff UX.
+- Profile coach settings, accountability settings, About You editor, privacy controls, export queue, deletion queue, and subscription limits.
+- Analytics dashboards/summaries and production monitoring tasks.
+- Emulator/unit/widget/integration tests for the contracts.
 
 ### Needs Refactoring
 
-- Align all event names and payloads to the Event System catalog.
-- Make `EventService` transaction-safe and schema-validated.
-- Remove duplicate or conflicting day-close authority between client and Cloud Functions.
-- Convert TODO-driven coach orchestration into explicit supported cases.
-- Ensure every write path emits a documented event or intentionally documents why no event is required.
-- Expand export/delete to cover every final user-owned collection.
-- Replace any UI default that appears as real user data with empty/loading/error states.
-- Normalize Firestore paths across providers, services, and Cloud Functions.
+- `lib/services/event_service.dart`: make event writes transactional, schema-validated, idempotent, and contract-aligned.
+- `lib/core/event_orchestrator.dart`: keep it as the central reaction coordinator, but move domain-specific side effects behind event listener methods so services do not call each other directly.
+- `lib/services/task_service.dart`: align method names, Firestore writes, state transitions, and event payloads to Service Contracts.
+- `lib/services/habit_service.dart`: complete CRUD lifecycle events and exact log payloads.
+- `lib/services/streak_service.dart`: replace simple pass/fail logic with accountability and ghost/comeback rules.
+- `lib/services/routine_service.dart`: make day close timezone-aware, multi-day safe, and richer.
+- `lib/services/notification_service.dart`: separate scheduling records, send/tap/dismiss logs, caps, custom alarms, and deep links.
+- `lib/services/rule_engine_service.dart`: expand to the AI Master Engine rules and make rule inputs match emitted payloads.
+- `lib/services/state_aggregator_service.dart`: include recent events, tasks, habits, goals, profile, screen time, notification logs, coach logs, and daily summaries.
+- `functions/index.js` and `functions/jobs/*.js`: split callable AI, scheduled jobs, notification sending, cleanup, and event-triggered jobs into testable modules.
 
 ### Do Not Touch Unless Required
 
-- Firebase initialization in `lib/main.dart`, except for production hardening tasks.
-- Existing Riverpod/provider structure.
-- Existing GoRouter bootstrap pattern.
-- Existing six-tab navigation shell.
-- Existing Firestore-first v1 direction.
-- Existing task, habit, event, notification, and coach services as extension points.
-- Existing user-owned subtree model under `/users/{uid}`.
+- Do not replace Flutter with another frontend stack.
+- Do not move away from Firebase Auth, Firestore, and Cloud Functions.
+- Do not introduce Postgres or a separate backend database.
+- Do not rewrite the whole UI shell. Extend the existing tabs and screens.
+- Do not remove the existing liquid/glass design language unless a specific screen is unreadable.
+- Do not delete working auth/onboarding/routine/habit/task code. Complete and align it.
+- Do not expose Gemini/API keys in Flutter. Keep AI secrets in Cloud Functions.
+- Do not create root-level shared user data outside `/users/{uid}` except safe config collections already covered by rules.
+- Do not weaken Firestore security rules to make development easier.
+- Do not skip backend work for features that appear UI-only.
 
-## 4. User Flow Breakdown
+## 3. User Flow Breakdown
 
 ### Onboarding Flow
 
-Step: Signup
-
-- User action: enters name, email, password, and taps create account.
-- UI screen: `lib/views/screens/signup_screen.dart`
-- Backend action: Firebase Auth creates user; app creates `/users/{uid}`.
-- Firestore write: `/users/{uid}` with email, name, onboarding flags, timestamps.
-- Event triggered: `user_signed_up`.
-
-Step: Welcome and focus areas
-
-- User action: chooses why they are using Optivus.
-- UI screen: `lib/views/screens/onboarding_screen.dart`
-- Backend action: save onboarding draft.
-- Firestore write: `/users/{uid}/onboarding/state`.
-- Event triggered: no final event yet; draft update can emit `onboarding_step_saved` if added.
-
-Step: Bad habits
-
-- User action: selects habits to reduce such as smoking, screen time, junk food, procrastination.
-- UI screen: onboarding bad habit page.
-- Backend action: save selected bad habits.
-- Firestore write: `/users/{uid}/onboarding/state`.
-- Event triggered: `onboarding_step_saved`.
-
-Step: Good habits
-
-- User action: selects habits to build such as water, meditation, reading, exercise.
-- UI screen: onboarding good habit page.
-- Backend action: save selected good habits.
-- Firestore write: `/users/{uid}/onboarding/state`.
-- Event triggered: `onboarding_step_saved`.
-
-Step: Identity goals
-
-- User action: chooses identities and goals.
-- UI screen: onboarding identity page.
-- Backend action: save goals draft.
-- Firestore write: `/users/{uid}/onboarding/state`.
-- Event triggered: `onboarding_step_saved`.
-
-Step: About You
-
-- User action: enters biometrics, lifestyle, and optional sensitive context.
-- UI screen: onboarding About You pages.
-- Backend action: validate optional fields and privacy flags.
-- Firestore write: `/users/{uid}/profile/main`.
-- Event triggered: `biometrics_updated` and `profile_preferences_updated`.
-
-Step: Coach style and coach name
-
-- User action: selects tone and name.
-- UI screen: onboarding coach page.
-- Backend action: save coach settings.
-- Firestore write: `/users/{uid}/profile/main`.
-- Event triggered: `coach_preferences_updated`.
-
-Step: Accountability and notifications
-
-- User action: chooses accountability type, notification permission, quiet hours, budget.
-- UI screen: onboarding accountability page.
-- Backend action: save settings and request local permission.
-- Firestore write: `/users/{uid}/profile/main`.
-- Event triggered: `notification_preferences_updated`.
-
-Step: Schedule and routine
-
-- User action: adds fixed blocks and routine preferences.
-- UI screen: onboarding schedule page.
-- Backend action: save routine and generate initial tasks.
-- Firestore write: `/users/{uid}/routine/current`, `/users/{uid}/tasks`.
-- Event triggered: `routine_created`, `task_scheduled`.
-
-Step: Plan ready
-
-- User action: taps finish.
-- UI screen: onboarding final page.
-- Backend action: materialize habits, goals, routine, notification settings.
-- Firestore write: `/users/{uid}`, `/users/{uid}/habits`, `/users/{uid}/goals`, `/users/{uid}/routine/current`.
-- Event triggered: `onboarding_completed`.
+| Step | User action | UI screen | Backend action | Firestore write | Event triggered |
+|---|---|---|---|---|---|
+| 1 | Opens app | `WelcomeScreen` | None | None | None |
+| 2 | Taps Get Started | `/signup` | None | None | None |
+| 3 | Creates account | `SignupScreen` | `AuthService.signUp` creates Firebase Auth user and root user doc | `/users/{uid}` with uid, email, displayName/name, timezone, createdAt, updatedAt, schemaVersion, hasCompletedOnboarding=false | `user_signed_up` |
+| 4 | Lands in onboarding | `OnboardingScreen` | Bootstrap sees `hasCompletedOnboarding=false` | Reads `/users/{uid}` and `/users/{uid}/onboarding/state` | None |
+| 5 | Chooses identity categories | `onboarding_page_0.dart` | `OnboardingProvider` saves progress | `/users/{uid}/onboarding/state`, `/profile/main`, root onboarding map | None until complete |
+| 6 | Selects bad habits | `onboarding_page_1.dart` | Save progress | Same onboarding/profile docs | None until complete |
+| 7 | Selects good habits | `onboarding_page_2.dart` | Save progress | Same onboarding/profile docs | None until complete |
+| 8 | Selects goals | `onboarding_page_3.dart` | Save progress | Same onboarding/profile docs | None until complete |
+| 9 | Enters routine schedule | Existing schedule onboarding pages | Save fixed schedule items | `/users/{uid}/onboarding/state.scheduleItems` | None until complete |
+| 10 | Enters About You body basics | Must expand `onboarding_page_5.dart` | Validate age/height/weight/wake/sleep | `/users/{uid}/profile/main.biometrics`, `/onboarding/about_you/body` | `biometrics_updated` only if user edits after initial save; otherwise include in onboarding payload |
+| 11 | Enters lifestyle context | `onboarding_page_5.dart` sub-page | Save water, sleep, exercise, diet, stress, school/work | `/users/{uid}/profile/main.lifestyle`, `/onboarding/about_you/lifestyle` | None until complete |
+| 12 | Enters sensitive context | `onboarding_page_5.dart` sub-page | Save safety flags and coach boundaries | `/users/{uid}/profile/main.sensitiveContext` | None until complete |
+| 13 | Chooses coach/accountability | Existing coach onboarding pages | Save coach style/name and accountability mode | `/users/{uid}/profile/main.coachStyle`, `coachName`, `accountabilityMode` | None until complete |
+| 14 | Views AI plan ready | Create `onboarding_page_10.dart` | Generate deterministic first plan from onboarding; do not call paid AI unless configured | `/users/{uid}/routine/current`, `/habits/*`, `/goals/*`, `/scheduled_notifications/*`, `/ai_context_snapshots/{id}` | `onboarding_completed`, `task_scheduled` for generated tasks, `suggestion_generated` for initial plan |
+| 15 | Taps Start Today | `OnboardingScreen` final CTA | Marks onboarding complete and routes home | `/users/{uid}.hasCompletedOnboarding=true`, `/onboarding/state.status=completed` | `onboarding_completed`, then `day_started` if first app day |
 
 ### First Day Experience
 
-- User action: lands on Home after onboarding.
-- UI screen: `lib/views/tabs/home_tab.dart`.
-- Backend action: load today tasks, active habits, streaks, coach prompts.
-- Firestore read: `/users/{uid}/tasks`, `/users/{uid}/habits`, `/users/{uid}/habit_logs`, `/users/{uid}/streaks`, `/users/{uid}/coach_messages`.
-- Event triggered: `day_started` if this is the first daily session.
-
-- User action: starts first task.
-- UI screen: Home task card or Routine timeline.
-- Backend action: update task state.
-- Firestore write: `/users/{uid}/tasks/{taskId}`.
-- Event triggered: `task_started`.
-
-- User action: logs first good habit or bad habit slip.
-- UI screen: Home log sheet or Tracker tab.
-- Backend action: create flat habit log and nested habit log.
-- Firestore write: `/users/{uid}/habit_logs/{logId}` and `/users/{uid}/habits/{habitId}/logs/{date}/items/{logId}`.
-- Event triggered: `good_habit_logged` or `bad_habit_slip_logged`.
-
-- User action: closes the day or returns after midnight.
-- UI screen: Home/day close summary.
-- Backend action: aggregate tasks, habits, streaks, routine, identity.
-- Firestore write: `/users/{uid}/dailySummaries/{yyyy-MM-dd}`, `/users/{uid}/streaks/{habitId}`.
-- Event triggered: `day_closed`, `routine_day_summarized`, streak events.
+| Step | User action | UI screen | Backend action | Firestore write | Event triggered |
+|---|---|---|---|---|---|
+| 1 | Opens Home after onboarding | `HomeTab` | Start/replay event orchestrator, build today context | `/events_recent/day_started`, `/ai_context_snapshots/{id}` | `day_started` |
+| 2 | Reviews mission ring | `HomeTab` | Read tasks, habits, streaks, identity score | No write unless snapshot missing | None |
+| 3 | Taps habit quick check-in | `HomeTab` quick sheet | `HabitService.logGood` or `logSlip` | `/habit_logs/{logId}`, `/habits/{habitId}/logs/{date}/items/{logId}` | `good_habit_logged` or `bad_habit_slip_logged` |
+| 4 | Opens routine task | `RoutineTab` | Read today's `/tasks` | None | None |
+| 5 | Starts task | Task row | `TaskService.startTask` enforces active task | `/tasks/{taskId}.status=started`, active timestamps | `task_started` |
+| 6 | Completes task/subtasks | Task row/detail | `TaskService.completeTask`, auto-check required subtasks | `/tasks/{taskId}.status=completed`, `/task_outcomes/{id}` if created | `subtask_checked`, `task_completed` |
+| 7 | Logs slip | Tracker/Home slip sheet | `HabitService.logSlip`, checks slip streak | `/habit_logs/{logId}` | `bad_habit_slip_logged`, possible `slip_streak_detected` |
+| 8 | Receives coach reply | Coach tab or proactive card | Rule engine evaluates event | `/coach_messages/{messageId}`, `/coach_speak_log/{logId}` | `coach_replied` or `suggestion_generated` |
+| 9 | Receives reminder | Local notification or FCM | Notification send/tap lifecycle | `/scheduled_notifications/{id}`, `/notificationLog/{id}` or `/notification_log/{id}` consistently | `notification_sent`, `notification_tapped`, `notification_dismissed`, or `notification_suppressed` |
+| 10 | Ends day | End-of-day sheet/Home prompt | Day close computes tasks, routine, streaks, goals | `/dailySummaries/{date}`, `/streaks/{id}`, `/goals/{id}`, `/events_recent` | `day_closed`, `routine_day_summarized`, streak events, identity events |
 
 ### Daily Usage Loop
 
-- Morning: app opens, morning brief loads, today's tasks and habits are shown.
-- Work block: user starts, pauses, resumes, completes, skips, or abandons tasks.
-- Habit loop: user logs good habits, bad habit slips, tracker details, and notes.
-- Coach loop: rule engine reacts to important events and writes coach messages.
-- Routine loop: timeline shows schedule, current block, next task, alarms, and completion.
-- Evening: day close aggregates behavior and asks for tomorrow planning.
-- Retention: ghost-day, comeback, streak, milestone, and identity events drive reengagement.
+| Loop step | User action | UI screen | Backend action | Firestore write | Event triggered |
+|---|---|---|---|---|---|
+| Morning | Opens app or receives brief | Home notification card | Build context and morning plan | `/ai_context_snapshots/{id}`, `/coach_messages/{id}` | `day_started`, optional `coach_replied` |
+| During task window | Starts, pauses, resumes, completes, skips | Routine timeline | Enforce task state machine | `/tasks/{taskId}` | `task_started`, `task_paused`, `task_resumed`, `task_completed`, `task_skipped` |
+| Habit moment | Logs good habit or slip | Home/Tracker/detail | Update logs and streak inputs | `/habit_logs/{logId}` | `good_habit_logged`, `bad_habit_slip_logged` |
+| AI intervention | Accepts/dismisses suggestion | Coach/Home/Routine AI panel | Save learning signal | `/suggestions/{id}` | `suggestion_accepted` or `suggestion_dismissed` |
+| Notification | Opens, dismisses, or ignores | System notification -> deep link | Record lifecycle and cap data | `/notificationLog/{id}` | `notification_tapped`, `notification_dismissed`, `notification_suppressed` |
+| Evening | Reviews day and tomorrow | Home/Routine end-of-day sheet | Close day and schedule tomorrow | `/dailySummaries/{date}`, `/scheduled_notifications/*`, `/tasks/*` | `day_closed`, `task_scheduled` |
+| Long-term | Reviews streaks/goals/profile | Tracker/Goals/Profile | Recompute identity and progress | `/streaks/*`, `/goals/*`, `/identity_profile/main` | `identity_progress_changed`, milestone events |
 
 ### Event Trigger Points
 
-- Auth: `user_signed_up`, `user_signed_in`, `user_signed_out`, `account_deleted`.
-- Onboarding: `onboarding_step_saved`, `onboarding_completed`, `biometrics_updated`.
-- Routine: `routine_created`, `routine_updated`, `routine_day_started`, `routine_day_summarized`.
-- Tasks: `task_scheduled`, `task_started`, `task_paused`, `task_resumed`, `task_completed`, `task_abandoned`, `task_skipped`, `subtask_checked`.
-- Habits: `habit_created`, `habit_updated`, `habit_paused`, `habit_resumed`, `habit_archived`, `good_habit_logged`, `bad_habit_slip_logged`.
-- Trackers: `screen_time_imported`, `screen_time_spike_detected`, `water_logged`, `meditation_completed`, `reading_logged`, `exercise_logged`, `money_saved_logged`, `junk_food_logged`, `procrastination_logged`.
-- Streaks: `streak_extended`, `streak_broken`, `streak_milestone_reached`, `ghost_day_detected`, `comeback_detected`.
-- Coach: `coach_message_sent`, `coach_message_replied`, `coach_suggestion_shown`, `coach_suggestion_accepted`, `coach_suggestion_dismissed`.
-- Notifications: `notification_scheduled`, `notification_delivered`, `notification_opened`, `notification_dismissed`, `notification_suppressed`.
-- Summaries: `day_closed`, `weekly_summary_generated`.
+- Signup: `user_signed_up`.
+- Onboarding final submit: `onboarding_completed`.
+- Routine materialization: `task_scheduled`.
+- Task controls: `task_started`, `task_paused`, `task_resumed`, `task_completed`, `task_abandoned`, `task_skipped`, `task_deleted`.
+- Subtask controls: `subtask_checked`, `subtask_unchecked`.
+- Habit lifecycle: `habit_created`, `habit_updated`, `habit_archived`.
+- Habit logs: `good_habit_logged`, `bad_habit_slip_logged`, `habit_log_deleted`, `slip_streak_detected`.
+- Streak lifecycle: `streak_extended`, `streak_broken`, `streak_milestone_reached`, `streak_paused`, `streak_resumed`.
+- Coach: `coach_message_sent`, `coach_replied`.
+- Suggestions: `suggestion_generated`, `suggestion_accepted`, `suggestion_dismissed`.
+- Notifications: `notification_scheduled`, `notification_sent`, `notification_tapped`, `notification_dismissed`, `notification_suppressed`.
+- Day lifecycle: `day_started`, `day_closed`.
+- Identity: `identity_progress_changed`, `milestone_completed`.
+- Retention: `ghost_day_detected`, `comeback_initiated`.
 
 ### AI Interaction Points
 
-- After important events through `EventOrchestrator`.
-- On Coach tab user messages.
-- During routine planning suggestions.
-- During failure recovery after slips or abandoned tasks.
-- During end-of-day reflection.
-- During weekly review and identity progress.
-- During comeback after inactivity.
-- During crisis or sensitive language detection, with strict safety behavior.
+- First plan ready after onboarding.
+- Home mission ring explanation.
+- Routine AI panel for schedule/routine improvement.
+- Coach chat direct messages.
+- Proactive coach messages after meaningful events.
+- Habit slip recovery coaching.
+- Missed task recovery and routine adjustment.
+- End-of-day summary and tomorrow setup.
+- Ghost-day comeback flow.
+- Goal/identity why-score explanations.
+- Notification copy generation within rule-based boundaries.
+- Safety/crisis routing with non-LLM emergency/handoff behavior.
 
 ### Feature Entry Points
 
-- Signup: `/signup`
-- Login: `/login`
-- Onboarding: `/onboarding`
-- Main app: `/home`
-- Home tab: mission ring, today's tasks, habit check-ins, coach prompt.
-- Routine tab: timeline, routine setup, active task controls.
-- Tracker tab: tracker home, habit logs, tracker detail screens.
-- Coach tab: messages, suggestions, user replies.
-- Goals tab: identity goals, milestones, linked habits.
-- Profile tab: settings, About You, notifications, privacy, export/delete, sign out.
+- Home tab: mission ring, habit quick check-ins, streak cards, calendar, today's routine, notification center, proactive coach card.
+- Routine tab: timeline, filters, setup screens, active task controls, custom alarms, Routine AI panel.
+- Tracker tab: habit cards, good/bad habit details, add/edit habit, screen time, analytics, money saved.
+- Coach tab: chat, topic modes, proactive messages, suggestions history.
+- Goals tab: identity hero, today's identity push, goal grid, goal detail, milestones, why score, add/edit goals.
+- Profile tab: identity profile, coach settings, accountability settings, notification settings, About You editor, privacy/export/delete, subscription, signout.
+- System notifications: deep link into tasks, habits, coach, goals, or comeback flow.
 
 ### Retention Loops
 
-- Streak milestone loop: logs -> streak update -> message/notification -> next log.
-- Failure recovery loop: slip/missed task -> coach support -> smaller next action -> comeback.
-- Routine completion loop: scheduled tasks -> completed tasks -> day summary -> tomorrow plan.
-- Identity loop: habit/task proof -> goal progress -> identity score -> next recommended action.
-- Ghost-day loop: inactivity detection -> gentle reentry -> reduced plan -> resumed usage.
+| Loop | Trigger | User-visible path | Backend action | Firestore write | Event |
+|---|---|---|---|---|---|
+| Streak reinforcement | Good habit logged or task completed | Home streak card, Tracker detail | Update streak and milestone | `/streaks/{id}` | `streak_extended`, milestone event |
+| Slip recovery | Bad habit slip logged | Slip recovery sheet, Coach card | Detect repeated slips | `/habit_logs/*`, `/coach_messages/*` | `bad_habit_slip_logged`, `slip_streak_detected` |
+| Mission recovery | Missed tasks or low routine pct | Home/Routine AI prompt | Suggest reduced plan | `/suggestions/{id}` | `suggestion_generated` |
+| Ghost comeback | No activity for 1/3/7/14/30 days | Comeback modal | Pause streaks, create restart plan | `/streaks/*`, `/suggestions/*` | `ghost_day_detected`, `comeback_initiated` |
+| Identity progress | Consistent habits/tasks | Goals/Profile identity hero | Recompute identity score | `/identity_profile/main`, `/goals/*` | `identity_progress_changed` |
+| Notification learning | User taps/dismisses/ignores | Settings and notification center | Update delivery budget and timing | `/notificationLog/*`, `/profile/main.notificationSettings` | notification lifecycle events |
 
-## 5. Feature Inventory and Completion Score
+## 4. Codebase vs Document Analysis
 
-| Feature | Status | Score |
-|---|---|---:|
-| Firebase boot/App Check/Crashlytics | Partially complete | 75 |
-| Email signup/login | Partially complete | 70 |
-| Auth account lifecycle/delete/recreate | Partially complete | 55 |
-| Router/bootstrap flow | Partially complete | 75 |
-| Full onboarding | Partially complete | 45 |
-| About You profile | Mostly missing | 15 |
-| Home mission dashboard | Partially complete | 45 |
-| Routine builder | Partially complete | 55 |
-| Task lifecycle | Partially complete | 65 |
-| Habit core logging | Partially complete | 60 |
-| Habit CRUD events | Mostly missing | 25 |
-| Smoking tracker | Partially complete | 35 |
-| Screen time tracker | Partially complete | 30 |
-| Junk food tracker | Mostly missing | 15 |
-| Procrastination tracker | Mostly missing | 10 |
-| Water tracker | Partially complete | 45 |
-| Meditation tracker | Mostly missing | 15 |
-| Reading tracker | Mostly missing | 10 |
-| Exercise/running tracker | Mostly missing | 20 |
-| Money saving tracker | Mostly missing | 10 |
-| Routine completion tracker | Mostly missing | 20 |
-| Streak system | Partially complete | 45 |
-| Goals and identity | Partially complete | 35 |
-| Event system | Partially complete | 55 |
-| Cloud Functions jobs | Partially complete | 35 |
-| Coach chat | Partially complete | 45 |
-| AI Master Engine | Mostly missing | 15 |
-| AI safety/crisis/cost/memory | Mostly missing | 10 |
-| Notifications | Partially complete | 35 |
-| Analytics/BigQuery | Mostly missing | 10 |
-| Profile/settings/privacy | Partially complete | 50 |
-| Export/delete | Partially complete | 55 |
-| Security rules/indexes | Partially complete | 30 |
-| Tests/QA | Mostly missing | 5 |
-| Release hardening | Mostly missing | 10 |
+### Already Implemented
 
-## 6. Dependency Map
+- Firebase app bootstrap, auth bootstrap, and route redirect are already usable.
+- The app already has the six-tab product shell required by the PRD.
+- The project already has the main service/module names required by the architecture docs.
+- Firestore already uses per-user subcollections for most user data.
+- Event names already include almost all canonical names from the docs.
+- AI/Coach is already present enough to extend, not rebuild.
+- Cloud Functions already exist and should be extended, not replaced.
 
-1. Firebase config, security rules, indexes, and emulator setup must come first.
-2. Auth and bootstrap must be stable before onboarding and main app flows.
-3. Firestore schema constants and model contracts must exist before services are expanded.
-4. Event service idempotency and event catalog validation must exist before downstream automations.
-5. Habit logs and task events must exist before streaks, summaries, home metrics, and AI.
-6. Routine schedule and generated tasks must exist before routine completion scoring.
-7. Streak service must depend on habit logs and day-close summaries.
-8. Day close must depend on task states, habit logs, routine data, and streaks.
-9. Home dashboard must depend on daily summaries, today tasks, active habits, streaks, and coach messages.
-10. Goals and identity scoring must depend on habits, tasks, streaks, and events.
-11. Notifications must depend on task schedules, habit reminders, budgets, quiet hours, and device tokens.
-12. Coach rule engine must depend on event history, context snapshots, notification budget, and safety settings.
-13. LLM generation must come after rule selection, context building, safety checks, and output validation.
-14. Cloud Functions must become canonical for scheduled jobs before production release.
-15. Analytics must depend on stable event taxonomy and summaries.
-16. Export/delete must include all final user-owned collections after schema is finalized.
-17. Integration tests must cover signup, onboarding, home, routine, tracker, coach, profile, and day close before release.
+### Partially Implemented
 
-## 7. Phase-Wise TODO List
+- Event storage paths exist, but event contracts are not strict enough.
+- Task and habit services emit some events, but payloads do not always match service contracts.
+- Routine setup exists, but routine execution is not fully connected to daily review, alarms, AI suggestions, and analytics.
+- Home UI exists, but several widgets are read-only or incomplete.
+- Tracker UI exists, but lacks detail screens, variants, and habit management.
+- Coach UI exists, but lacks evented chat, safety, modes, and suggestion acceptance.
+- Goals/Profile are present but shallow.
+- Notification service exists but lifecycle and custom alarm behavior are incomplete.
+- Scheduled Cloud Functions exist but are too simple and not fully event-driven.
 
-### Phase 1 - Stabilize Firebase Foundation
+### Not Implemented
 
-#### Task 1.1 - Verify Firebase Setup, Security Rules, and Indexes
+- The full User Flow document is not yet implemented end to end.
+- Full production event-driven architecture is not implemented.
+- Full database schema v1 is not implemented consistently.
+- Full AI Master Engine is not implemented.
+- Full analytics/notification/re-engagement loops are not implemented.
+- Full production test and emulator verification are missing.
 
-##### Why
-Production behavior depends on correct Firebase configuration before feature work.
+### Needs Refactoring
 
-##### What to tell Antigravity
-MODIFY `firebase.json`, `firestore.rules`, `firestore.indexes.json`, `lib/main.dart`, and any existing Firebase config files. Confirm the app uses Firebase Auth, Firestore persistence, Crashlytics, Remote Config, and App Check without demo bypasses. Add or verify indexes for `/users/{uid}/events`, `/events_recent`, `/habit_logs`, `/tasks`, `/coach_messages`, `/addiction_logs`, and `/scheduled_notifications`. Ensure Firestore rules only allow authenticated users to read/write their own `/users/{uid}` subtree and protect append-only event assumptions.
+- Refactor contracts before adding more UI. Otherwise new UI will write inconsistent Firestore data.
+- Refactor EventService first, then TaskService/HabitService, then Streak/Routine/Notification, then AI.
+- Refactor only around the requested feature boundaries. Do not rewrite screens that already work.
 
-##### Dependencies
-None.
+### Do Not Touch
 
-##### How to verify
-Run Firebase emulator rules tests or manual emulator writes. Confirm one user cannot read another user's subtree. Confirm queries used by providers do not require missing indexes.
+- Keep `lib/views/screens/home_screen.dart` as the main shell.
+- Keep existing tab files and add routes/screens around them.
+- Keep `routine/current` unless a task explicitly adds backward-compatible support for other routine docs.
+- Keep Gemini calls in Cloud Functions and `GeminiService`.
+- Keep Firebase Auth as the auth provider source.
+- Keep App Check, Firestore offline persistence, Crashlytics, and Remote Config initialization.
 
-##### Estimate
+## 5. Dependency Map
+
+1. Auth/user root schema must exist before onboarding can complete.
+2. Onboarding/About You data must exist before personalized routines, goals, notifications, and AI context can be reliable.
+3. EventService contract must be fixed before service events are expanded.
+4. Firestore schema/rules/indexes must be aligned before backend jobs rely on queries.
+5. Habit logs must exist before streaks, money saved, bad-habit recovery, and tracker analytics.
+6. Task lifecycle must exist before routine completion, mission ring, notification deep links, and day close.
+7. Day start/day close must exist before daily summaries, identity progress, retention loops, and AI daily planning.
+8. Notification records must exist before custom alarms, caps, dedupe, and notification analytics.
+9. Context snapshots must exist before AI rule engine and LLM calls.
+10. Rule engine must exist before proactive AI and suggestions.
+11. Suggestions storage must exist before Routine AI panel accept/dismiss flows.
+12. Goals/identity schema must exist before mission ring identity scoring and why-score UI.
+13. Ghost/comeback detection depends on event logs, daily summaries, streak state, and notification rules.
+14. Privacy/export/delete flows depend on stable schema paths.
+15. Production release depends on emulator tests, unit tests, widget tests, integration smoke tests, rules tests, and function tests.
+
+## 6. Production Build Plan
+
+- Phase 0: Freeze the current map and add guardrail docs/tests for existing behavior.
+- Phase 1: Complete auth, user schema, onboarding, About You, and first plan materialization.
+- Phase 2: Fix the event spine and Firestore schema consistency.
+- Phase 3: Complete task/routine/day lifecycle.
+- Phase 4: Complete habit/tracker system.
+- Phase 5: Complete streak, accountability, ghost, and comeback loops.
+- Phase 6: Complete goals and identity system.
+- Phase 7: Complete notifications and custom alarms.
+- Phase 8: Complete AI Master Engine and Coach.
+- Phase 9: Complete Profile, settings, privacy, export/delete, and subscription.
+- Phase 10: Complete analytics, Cloud Functions, monitoring, and cleanup.
+- Phase 11: Complete production QA and release readiness.
+
+## 7. Phase-wise Antigravity TODO List
+
+## Phase 0 - Audit Guardrails
+
+### Task 0.1 — Create implementation inventory and feature matrix
+
+#### Why
+
+The project already has working pieces. Antigravity must know what to extend and what not to rewrite before making changes.
+
+#### What to tell Antigravity
+
+- CREATE `docs/implementation_inventory.md`.
+- CREATE `docs/feature_matrix.md`.
+- Read these paths and summarize what exists:
+  - `lib/main.dart`
+  - `lib/core/router/app_router.dart`
+  - `lib/core/providers.dart`
+  - `lib/core/providers/bootstrap_provider.dart`
+  - `lib/services/*.dart`
+  - `lib/views/screens/*.dart`
+  - `lib/views/tabs/*.dart`
+  - `lib/views/routine/*.dart`
+  - `lib/views/onboarding/*.dart`
+  - `functions/index.js`
+  - `functions/jobs/*.js`
+  - `firestore.rules`
+  - `firestore.indexes.json`
+- In `docs/feature_matrix.md`, create rows for every feature from all seven docs.
+- For every feature, include columns: UI path, Flutter state/provider, service method, Firestore path, event name, Cloud Function/backend, verification.
+- Mark each row as `implemented`, `partial`, or `missing`.
+- Do not change app runtime code in this task.
+
+#### Dependencies
+
+- None.
+
+#### How to verify
+
+- Open `docs/implementation_inventory.md` and confirm it names current files accurately.
+- Open `docs/feature_matrix.md` and confirm every PRD/User Flow feature has a row.
+- Confirm `git diff` shows only the two docs files for this task.
+
+#### Estimate
+
+2h
+
+#### Done Criteria
+
+- [ ] Current code paths are listed.
+- [ ] All seven docs are reflected.
+- [ ] No runtime code changed.
+- [ ] Each feature has UI/backend/Firestore/event/verification columns.
+
+### Task 0.2 — Add contract test skeletons without changing behavior
+
+#### Why
+
+The production plan needs verification from the start. Skeleton tests provide places to add assertions as contracts are completed.
+
+#### What to tell Antigravity
+
+- CREATE `test/services/event_service_contract_test.dart`.
+- CREATE `test/services/task_service_contract_test.dart`.
+- CREATE `test/services/habit_service_contract_test.dart`.
+- CREATE `test/services/streak_service_contract_test.dart`.
+- CREATE `test/services/notification_service_contract_test.dart`.
+- CREATE `functions/test/events.contract.test.js`.
+- CREATE `functions/test/jobs.contract.test.js`.
+- Each file should contain TODO test groups only. Do not test behavior that is not implemented yet.
+- Add comments listing required contract areas from `OPTIVUS Docs/5_Optivus_ServiceContracts.md`.
+- Do not modify production services in this task.
+
+#### Dependencies
+
+- Task 0.1.
+
+#### How to verify
+
+- Run `flutter test`.
+- Run `cd functions && npm test` if package scripts exist; otherwise document the missing test script in `docs/implementation_inventory.md`.
+- Confirm test files compile or are marked skipped without failing.
+
+#### Estimate
+
+1h
+
+#### Done Criteria
+
+- [ ] Test skeleton files exist.
+- [ ] Tests do not fail due to missing implementation.
+- [ ] Contract gaps are documented in test TODOs.
+
+## Phase 1 - Auth, User Schema, and Onboarding
+
+### Task 1.1 — Align user root and auth lifecycle
+
+#### Why
+
+Every later feature depends on a stable `/users/{uid}` root doc and canonical auth events.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/services/auth_service.dart`.
+- MODIFY `lib/repositories/auth_repository.dart`.
+- MODIFY `lib/models/user_model.dart`.
+- MODIFY `lib/views/screens/signup_screen.dart`.
+- MODIFY `lib/views/screens/login_screen.dart`.
+- MODIFY `lib/core/constants/event_names.dart` only if a missing event constant is required.
+- Keep current email/password login working.
+- Ensure `/users/{uid}` contains:
+  - `uid`
+  - `email`
+  - `displayName`
+  - `createdAt`
+  - `updatedAt`
+  - `schemaVersion`
+  - `timezone`
+  - `hasCompletedOnboarding`
+  - `onboardingStep`
+  - `lastDayClosed`
+- Ensure `user_signed_up` payload contains:
+  - `authProvider`
+  - `email`
+  - `timezone`
+  - `schemaVersion`
+  - `createdAt`
+- Add Google/Apple sign-in only if Firebase config already supports it; otherwise add disabled UI states with clear TODO comments and do not break email/password.
+- State management: expose auth loading/error through existing screen state or provider, not global mutable state.
+- Backend: no Cloud Function needed.
+- Validation: keep existing password validation and login errors.
+
+#### Dependencies
+
+- Task 0.1.
+
+#### How to verify
+
+- UI behavior: create an account from `SignupScreen`; confirm redirect goes to onboarding.
+- Firebase console: `/users/{uid}` has all required fields.
+- Events: `/users/{uid}/events_recent` contains `user_signed_up`.
+- Logs: no Crashlytics/runtime errors during signup.
+- Navigation: sign out from Profile and sign in again; route returns to onboarding or home depending on onboarding status.
+
+#### Estimate
+
+2h
+
+#### Done Criteria
+
+- [ ] Email/password signup still works.
+- [ ] Root user doc matches schema.
+- [ ] `user_signed_up` is emitted exactly once per account.
+- [ ] Login and forgot password still work.
+
+### Task 1.2 — Complete About You onboarding data model and UI
+
+#### Why
+
+AI personalization, hydration, routine timing, safety behavior, and notification tone all depend on About You data.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/onboarding/onboarding_page_5.dart`.
+- MODIFY `lib/providers/onboarding_provider.dart`.
+- MODIFY `lib/repositories/user_repository.dart`.
+- MODIFY `lib/models/identity_profile_model.dart`.
+- MODIFY `lib/models/user_model.dart` only if needed for typed fields.
+- Keep the screen inside the current onboarding flow.
+- Implement three sub-pages inside Page 5:
+  - Body basics: age range, height, weight, gender optional, wake time, sleep time, timezone.
+  - Lifestyle: work/school type, exercise level, water intake, diet preference, stress level, sleep quality.
+  - Sensitive context: eating disorder flag, crisis/self-harm flag, medical disclaimer acknowledgement, coach boundary preference.
+- Firestore writes:
+  - `/users/{uid}/onboarding/state.aboutYou`
+  - `/users/{uid}/profile/main.biometrics`
+  - `/users/{uid}/profile/main.lifestyle`
+  - `/users/{uid}/profile/main.sensitiveContext`
+- State management:
+  - Add typed fields to existing `OnboardingProvider`.
+  - Persist progress on page changes using existing repository methods.
+- Backend:
+  - No Cloud Function required.
+- Events:
+  - Do not emit `biometrics_updated` during initial onboarding partial saves.
+  - Later Profile edits should emit `biometrics_updated`.
+- Error/loading/empty states:
+  - Show validation errors for impossible age/height/weight values.
+  - Allow sensitive questions to be skipped with explicit null/unknown values.
+  - Show loading while saving.
+
+#### Dependencies
+
+- Task 1.1.
+
+#### How to verify
+
+- UI behavior: complete all three sub-pages and navigate forward/back without losing data.
+- Firebase console: confirm `aboutYou`, `biometrics`, `lifestyle`, and `sensitiveContext` exist.
+- Logs: no exceptions when values are skipped.
+- Navigation: onboarding can continue after Page 5.
+- Expected data: sensitive flags are booleans/nulls, not display strings.
+
+#### Estimate
+
 4h
 
-##### Done Criteria
-- [ ] Firestore rules match the v1 schema.
-- [ ] All required indexes are declared.
-- [ ] App Check has debug/dev and production behavior documented.
-- [ ] No Firebase demo project paths are used in production config.
+#### Done Criteria
 
-#### Task 1.2 - Add Test Harness and Emulator Baseline
+- [ ] Page 5 has three sub-pages.
+- [ ] Data persists across app restart.
+- [ ] Firestore paths match this task.
+- [ ] Validation works.
 
-##### Why
-Every later feature needs repeatable verification.
+### Task 1.3 — Add final AI plan ready onboarding step
 
-##### What to tell Antigravity
-CREATE or MODIFY `test/`, `integration_test/`, `functions/test/`, `pubspec.yaml`, and Firebase emulator scripts. Add a beginner-friendly test README. Add emulator seed data for one user with onboarding complete, habits, tasks, routine, streaks, coach messages, and scheduled notifications. Do not change production behavior.
+#### Why
 
-##### Dependencies
-Task 1.1.
+The User Flow requires the user to see their first plan before entering the daily loop.
 
-##### How to verify
-Run Flutter unit tests, widget tests, and Firebase emulator tests. Confirm tests can create and delete an isolated test user subtree.
+#### What to tell Antigravity
 
-##### Estimate
+- CREATE `lib/views/onboarding/onboarding_page_10.dart`.
+- MODIFY `lib/views/screens/onboarding_screen.dart`.
+- MODIFY `lib/providers/onboarding_provider.dart`.
+- MODIFY `lib/repositories/user_repository.dart`.
+- MODIFY `lib/services/task_service.dart` only to call existing task creation safely if needed.
+- MODIFY `lib/services/habit_service.dart` only to call existing habit creation safely if needed.
+- UI behavior:
+  - Show generated plan sections: Today's routine, habits to track, first identity goals, notification summary, coach style.
+  - CTA: `Start Today`.
+  - Secondary action: edit selections by going back.
+  - Empty state: if no routine/habits/goals selected, show a minimal starter plan.
+- Firestore writes on completion:
+  - `/users/{uid}.hasCompletedOnboarding=true`
+  - `/users/{uid}.onboardingStep=10`
+  - `/users/{uid}/onboarding/state.status=completed`
+  - `/users/{uid}/profile/main`
+  - `/users/{uid}/routine/current`
+  - `/users/{uid}/habits/{habitId}`
+  - `/users/{uid}/goals/{goalId}`
+  - `/users/{uid}/scheduled_notifications/{notificationId}`
+  - `/users/{uid}/ai_context_snapshots/{snapshotId}`
+- Events:
+  - `onboarding_completed`
+  - `task_scheduled` for each materialized task.
+  - `notification_scheduled` for generated reminders.
+  - `suggestion_generated` for first plan suggestions.
+- Backend:
+  - No external LLM required for this task. Generate deterministic plan from onboarding selections.
+
+#### Dependencies
+
+- Task 1.2.
+- Task 2.1 should be done before final production release, but this task can initially use current EventService and be revalidated after Phase 2.
+
+#### How to verify
+
+- UI behavior: new user reaches AI plan ready page and taps Start Today.
+- Firebase console: habits, goals, routine, scheduled notifications, and context snapshot are created.
+- Events: onboarding and scheduled task events are present in `/events_recent`.
+- Navigation: user lands on Home after tapping Start Today.
+- Expected data: generated plan is visible on Home/Routine/Tracker/Goals.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] Test folders exist.
-- [ ] Emulator can run locally.
-- [ ] Seed data matches documented Firestore paths.
-- [ ] CI or local command list is documented.
+#### Done Criteria
 
-#### Task 1.3 - Remove Misleading Production Placeholders
+- [ ] Page 10 exists and is reachable.
+- [ ] Start Today completes onboarding.
+- [ ] User-visible plan appears across tabs.
+- [ ] Required Firestore docs and events exist.
 
-##### Why
-The app must not show fake values as if they are user data.
+## Phase 2 - Event Spine and Firestore Contracts
 
-##### What to tell Antigravity
-MODIFY `lib/views/screens/signup_screen.dart`, `lib/views/screens/login_screen.dart`, `lib/views/screens/onboarding_screen.dart`, `lib/views/tabs/home_tab.dart`, `lib/views/tabs/routine_tab.dart`, `lib/views/tabs/tracker_tab.dart`, `lib/views/tabs/coach_tab.dart`, `lib/views/tabs/profile_tab.dart`, and supporting widgets. Replace fake/demo values in production paths with loading, empty, or setup states. Keep visual placeholders only where clearly labeled as sample copy or onboarding previews.
+### Task 2.1 — Make EventService production-grade
 
-##### Dependencies
-Task 1.1.
+#### Why
 
-##### How to verify
-Create a brand-new account in emulator. Every empty state should say what the user can do next, not show fake completed stats.
+All backend, AI, notification, analytics, streak, and retention logic depends on reliable events.
 
-##### Estimate
+#### What to tell Antigravity
+
+- MODIFY `lib/services/event_service.dart`.
+- MODIFY `lib/models/event_model.dart`.
+- MODIFY `lib/core/constants/event_names.dart`.
+- MODIFY `lib/core/utils/uuid_generator.dart`.
+- CREATE `lib/services/event_payload_validator.dart`.
+- MODIFY tests in `test/services/event_service_contract_test.dart`.
+- Firestore paths:
+  - Write every event to `/users/{uid}/events/{eventId}`.
+  - Write the same envelope to `/users/{uid}/events_recent/{eventId}`.
+- Event envelope fields:
+  - `eventId`
+  - `eventName`
+  - `uid`
+  - `timestamp`
+  - `source`
+  - `schemaVersion`
+  - `payload`
+  - `deviceId`
+  - `appVersion` if available
+- Idempotency:
+  - Use stable event IDs supplied by the caller when retrying user actions.
+  - For one-time actions, generate UUIDv7 or existing sortable UUID equivalent.
+  - Use a Firestore transaction: if `/events/{eventId}` exists, do not write duplicate events.
+- Local bus:
+  - Emit locally only after Firestore write is queued/committed successfully.
+  - Keep replay of `/events_recent`.
+- Validation:
+  - Reject unknown event names.
+  - Validate required payload keys for high-risk events: task, habit, notification, coach, day lifecycle.
+- Error/loading:
+  - Throw typed app errors, not raw strings.
+
+#### Dependencies
+
+- Task 0.2.
+
+#### How to verify
+
+- UI behavior: signup/onboarding/task/habit actions still work.
+- Firebase console: each event appears in both `/events` and `/events_recent`.
+- Logs: duplicate retries do not create duplicate docs.
+- Tests: `flutter test test/services/event_service_contract_test.dart`.
+- Expected data: event envelope contains `uid`, `source`, `schemaVersion`, and `payload`.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Event writes are transactional/idempotent.
+- [ ] Event payload validation exists.
+- [ ] Existing flows still emit events.
+- [ ] Tests cover duplicate event IDs.
+
+### Task 2.2 — Align Firestore schema, rules, and indexes
+
+#### Why
+
+The schema document is the production contract. UI and Cloud Functions must query the same paths.
+
+#### What to tell Antigravity
+
+- MODIFY `firestore.rules`.
+- MODIFY `firestore.indexes.json`.
+- MODIFY `lib/services/firestore_service.dart`.
+- CREATE `docs/firestore_schema_v1_mapping.md`.
+- Audit and standardize these per-user paths:
+  - `/users/{uid}/profile/main`
+  - `/users/{uid}/onboarding/state`
+  - `/users/{uid}/routine/current`
+  - `/users/{uid}/habits/{habitId}`
+  - `/users/{uid}/habit_logs/{logId}`
+  - `/users/{uid}/tasks/{taskId}`
+  - `/users/{uid}/goals/{goalId}`
+  - `/users/{uid}/streaks/{streakId}`
+  - `/users/{uid}/events_recent/{eventId}`
+  - `/users/{uid}/events/{eventId}`
+  - `/users/{uid}/coach_messages/{messageId}`
+  - `/users/{uid}/coach_speak_log/{logId}`
+  - `/users/{uid}/ai_context_snapshots/{snapshotId}`
+  - `/users/{uid}/scheduled_notifications/{notificationId}`
+  - `/users/{uid}/notificationLog/{logId}` or rename consistently with a migration plan.
+  - `/users/{uid}/journal_entries/{entryId}`
+  - `/users/{uid}/screen_time_logs/{logId}`
+  - `/users/{uid}/addiction_logs/{logId}`
+  - `/users/{uid}/suggestions/{suggestionId}`
+  - `/users/{uid}/dailySummaries/{date}`
+- Security rules:
+  - User can read/write only their own subtree.
+  - Event docs should be append-only from client after creation where practical.
+  - Protect server-only fields if possible.
+- Indexes:
+  - Add required compound indexes for `tasks`, `habit_logs`, `events_recent`, `coach_messages`, `scheduled_notifications`, `screen_time_logs`, `suggestions`, and `dailySummaries`.
+- Backend:
+  - No Cloud Function required unless a migration is needed.
+
+#### Dependencies
+
+- Task 2.1.
+
+#### How to verify
+
+- UI behavior: app still loads Home/Routine/Tracker/Coach/Goals/Profile.
+- Firebase console: new writes use documented paths.
+- Logs: no missing-index runtime errors.
+- Tests: run Firestore rules tests if present; otherwise document missing emulator test command.
+- Expected data: `docs/firestore_schema_v1_mapping.md` lists every actual path.
+
+#### Estimate
+
 4h
 
-##### Done Criteria
-- [ ] No fake streaks, fake tasks, fake coach history, or fake profile stats appear for new users.
-- [ ] Empty states are clear.
-- [ ] Existing real provider wiring remains intact.
+#### Done Criteria
 
-### Phase 2 - Auth, Bootstrap, and Account Lifecycle
+- [ ] Schema mapping exists.
+- [ ] Rules protect per-user data.
+- [ ] Indexes cover production queries.
+- [ ] No screen has permission errors.
 
-#### Task 2.1 - Harden Signup, Login, Sign Out, and Account Events
+## Phase 3 - Task, Routine, and Day Lifecycle
 
-##### Why
-Auth is the first production user flow and must create trustworthy data.
+### Task 3.1 — Complete TaskService contract
 
-##### What to tell Antigravity
-MODIFY `lib/services/auth_service.dart`, `lib/core/providers/bootstrap_provider.dart`, `lib/core/router/app_router.dart`, `lib/views/screens/signup_screen.dart`, and `lib/views/screens/login_screen.dart`. On signup, set Firebase Auth display name, create `/users/{uid}`, create `/users/{uid}/profile/main`, and emit `user_signed_up`. On login, update `lastLoginAt` and emit `user_signed_in`. On sign out, emit `user_signed_out` before signing out. Keep validation, loading, and error states visible.
+#### Why
 
-##### Dependencies
-Phase 1.
+Tasks drive routines, notifications, mission ring, day close, AI decisions, and analytics.
 
-##### How to verify
-UI: signup, logout, login work. Firebase console: `/users/{uid}` and `/profile/main` exist. Logs: `user_signed_up`, `user_signed_in`, and `user_signed_out` appear in `/events`.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY `lib/services/task_service.dart`.
+- MODIFY `lib/models/task_model.dart`.
+- MODIFY `lib/core/constants/event_names.dart` only if a constant is missing.
+- MODIFY `test/services/task_service_contract_test.dart`.
+- Required methods:
+  - `createTask`
+  - `watchTask`
+  - `watchTasksForDay`
+  - `watchActiveTask`
+  - `startTask`
+  - `pauseTask`
+  - `resumeTask`
+  - `completeTask`
+  - `abandonTask`
+  - `skipTask`
+  - `deleteTask`
+  - `checkSubtask`
+  - `uncheckSubtask`
+- Firestore path:
+  - `/users/{uid}/tasks/{taskId}`
+- Required fields:
+  - `taskId`, `title`, `routineType`, `status`, `dateKey`, `scheduledStart`, `scheduledEnd`, `actualStart`, `actualEnd`, `durationMin`, `subtasks`, `alarmTier`, `customAlarm`, `createdAt`, `updatedAt`, `source`.
+- State rules:
+  - Only one `started` task can be active unless current active task is paused/abandoned/completed first.
+  - Completing a scheduled task without pressing start is allowed and must set reasonable actual timestamps.
+  - Skipping applies before start; abandoning applies after start.
+  - Subtask completion must persist and emit events.
+- Events:
+  - `task_scheduled`
+  - `task_started`
+  - `task_paused`
+  - `task_resumed`
+  - `task_completed`
+  - `task_abandoned`
+  - `task_skipped`
+  - `task_deleted`
+  - `subtask_checked`
+  - `subtask_unchecked`
+- Backend:
+  - No Cloud Function required in this task.
+
+#### Dependencies
+
+- Task 2.1.
+- Task 2.2.
+
+#### How to verify
+
+- UI behavior: task status changes still appear in Routine.
+- Firebase console: `/tasks/{taskId}` status/timestamps update correctly.
+- Events: each task action creates one event with contract payload.
+- Logs: attempting to start a second active task resolves predictably.
+- Tests: task contract test covers each state transition.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] All required methods exist.
+- [ ] State machine rules are enforced.
+- [ ] Subtasks persist.
+- [ ] Events match contracts.
+
+### Task 3.2 — Complete Routine timeline task controls
+
+#### Why
+
+User-visible task execution must expose the full task state machine.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/routine/routine_tab.dart`.
+- MODIFY `lib/views/routine/timeline_section.dart`.
+- MODIFY `lib/views/routine/timeline_zoom_views.dart`.
+- MODIFY `lib/views/routine/add_task_sheet.dart`.
+- MODIFY `lib/core/providers.dart`.
+- UI behavior:
+  - Each task row shows correct actions for its current status.
+  - Scheduled: Start, Complete, Skip.
+  - Started: Pause, Complete, Abandon.
+  - Paused: Resume, Complete, Abandon.
+  - Completed/Skipped/Abandoned: read-only result state.
+  - Subtask checkboxes call TaskService and update Firestore.
+  - Show active task pinned at top of Routine and Home.
+  - Add error/loading states per action.
+- Firestore:
+  - Read/write `/users/{uid}/tasks/{taskId}`.
+- Events:
+  - Use TaskService only; UI must not emit task events directly.
+- Backend:
+  - No Cloud Function required.
+
+#### Dependencies
+
+- Task 3.1.
+
+#### How to verify
+
+- UI behavior: run through every task action from Routine.
+- Firebase console: task status/timestamps/subtasks update.
+- Events: all expected task events appear.
+- Navigation: tapping calendar day shows that date's tasks.
+- Expected data: no local-only subtask changes remain.
+
+#### Estimate
+
 4h
 
-##### Done Criteria
-- [ ] Auth display name and Firestore name match.
-- [ ] Auth screens show errors safely.
-- [ ] Auth lifecycle events are recorded.
-- [ ] Bootstrap redirects correctly.
+#### Done Criteria
 
-#### Task 2.2 - Make Account Deletion Complete and Re-Signup Safe
+- [ ] Routine UI exposes all task actions.
+- [ ] Task controls are status-aware.
+- [ ] Subtasks are synced.
+- [ ] Active task is visible.
 
-##### Why
-Users must own their data, and same Gmail signup must work after deletion.
+### Task 3.3 — Complete routine setup and materialization
 
-##### What to tell Antigravity
-MODIFY `lib/services/firestore_service.dart`, `lib/services/auth_service.dart`, `lib/views/tabs/profile_tab.dart`, and any supporting profile services. Delete only after explicit typed confirmation. Export and delete all final user-owned paths: `/users/{uid}`, `/profile`, `/onboarding`, `/routine`, `/tasks`, `/habits`, `/habit_logs`, `/goals`, `/streaks`, `/events`, `/events_recent`, `/coach_messages`, `/coach_chats`, `/coach_speak_log`, `/dailySummaries`, `/scheduled_notifications`, `/screen_time_logs`, `/addiction_logs`, `/ai_context_snapshots`, `/journal_entries`, and any final profile subcollections. Emit `account_deleted`, then delete Firestore subtree in safe batches, then delete Firebase Auth user. If recent login is required, show re-auth UI. Document that same Gmail can sign up again only after Firebase Auth user deletion succeeds.
+#### Why
 
-##### Dependencies
-Task 2.1 and final schema tasks.
+The docs require fixed, skin, eating, and class routines to create user-visible tasks and notifications.
 
-##### How to verify
-UI: deletion requires explicit confirmation. Firebase console: user subtree is gone. Auth console: user is gone. Signup with the same Gmail creates a new uid or account according to Firebase provider behavior. Logs: `account_deleted` exists before deletion or in audit destination if retained.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY `lib/repositories/routine_repository.dart`.
+- MODIFY `lib/providers/routine_provider.dart`.
+- MODIFY `lib/views/routine/fixed_schedule_setup_screen.dart`.
+- MODIFY `lib/views/routine/skin_care_setup_screen.dart`.
+- MODIFY `lib/views/routine/eating_setup_screen.dart`.
+- MODIFY `lib/views/routine/class_setup_screen.dart`.
+- MODIFY `lib/views/routine/routine_settings_sheet.dart`.
+- MODIFY `lib/services/task_service.dart` only through existing contract methods.
+- Firestore:
+  - Store canonical routine config at `/users/{uid}/routine/current`.
+  - Materialize daily task instances at `/users/{uid}/tasks/{taskId}`.
+  - Store scheduled reminders at `/users/{uid}/scheduled_notifications/{notificationId}`.
+- UI behavior:
+  - Setup screens show save/loading/error.
+  - Existing routine config loads on reopen.
+  - User can edit fixed schedule, skin care, eating, and classes.
+  - Saving updates future task materialization without deleting historical completed tasks.
+- Events:
+  - `task_scheduled` for new generated tasks.
+  - `notification_scheduled` for generated reminders.
+- Backend:
+  - Client can materialize near-term tasks; Cloud Functions will later re-materialize future schedule.
+
+#### Dependencies
+
+- Task 3.1.
+- Task 7.1 for final notification lifecycle; this task may create provisional notification records first.
+
+#### How to verify
+
+- UI behavior: edit each routine type and see Timeline update.
+- Firebase console: `/routine/current`, `/tasks`, and `/scheduled_notifications` update.
+- Events: new tasks emit `task_scheduled`.
+- Navigation: Routine tab reflects edits without app restart.
+- Expected data: completed historical tasks are preserved.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] No destructive shortcut is used.
-- [ ] Export includes every user-owned collection.
-- [ ] Delete handles pagination/batches.
-- [ ] Auth user is deleted.
-- [ ] Same email re-signup is verified.
+#### Done Criteria
 
-#### Task 2.3 - Stabilize Bootstrap and First-Run Routing
+- [ ] All setup screens persist/load.
+- [ ] Routine edits create/update future tasks.
+- [ ] Historical task records are preserved.
+- [ ] Notifications are scheduled or queued.
 
-##### Why
-Users must never get stuck between onboarding and home.
+### Task 3.4 — Implement day start, day close, and mission ring
 
-##### What to tell Antigravity
-MODIFY `lib/core/providers/bootstrap_provider.dart`, `lib/core/router/app_router.dart`, `lib/repositories/user_repository.dart`, and onboarding completion calls. Treat `/users/{uid}.hasCompletedOnboarding` as the routing flag and `/users/{uid}/onboarding/state` as draft state. Handle missing user doc repair, missing profile doc repair, loading, auth expired, and offline cached state.
+#### Why
 
-##### Dependencies
-Task 2.1.
+The daily loop depends on correct day lifecycle, routine completion, and summary analytics.
 
-##### How to verify
-UI: fresh signup goes to onboarding; completed user goes to home; deleted/missing user doc shows a repair-safe state. Firebase console: flags update exactly once.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY `lib/services/routine_service.dart`.
+- MODIFY `lib/models/day_summary_model.dart`.
+- MODIFY `lib/views/tabs/home_tab.dart`.
+- MODIFY `lib/core/providers.dart`.
+- MODIFY `functions/jobs/dayClose.js`.
+- Firestore:
+  - `/users/{uid}/dailySummaries/{date}`
+  - `/users/{uid}/events_recent/{eventId}`
+  - `/users/{uid}/tasks/{taskId}`
+  - `/users/{uid}/streaks/{streakId}`
+- Day start:
+  - Emit `day_started` once per local date when app opens or scheduled job runs.
+  - Build `/ai_context_snapshots/{snapshotId}` for the day.
+- Day close:
+  - Close every unclosed past day, not just yesterday.
+  - Mark overdue started/scheduled tasks as abandoned/skipped according to contract.
+  - Compute task completion %, routine completion %, focus minutes, habit completion, slips, streak outcomes, identity progress input, mission score.
+  - Write `dailySummaries/{date}`.
+  - Emit `day_closed` and `routine_day_summarized`.
+- UI:
+  - Home mission ring uses the summary/real-time projection, not only task count.
+  - Show empty state if no tasks/habits exist.
+  - Show end-of-day prompt after configured sleep block.
+- Backend:
+  - Cloud Function day close must use same schema as Flutter service.
+
+#### Dependencies
+
+- Task 3.1.
+- Task 4.1.
+- Task 5.1.
+
+#### How to verify
+
+- UI behavior: Home mission ring updates after completing tasks/habits.
+- Firebase console: `dailySummaries/{date}` has routine, task, habit, streak, identity fields.
+- Logs: day close can run twice without duplicate day events.
+- Cloud Functions: emulator/scheduled job writes same summary shape.
+- Expected data: missed days are closed in order.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] `day_started` and `day_closed` are idempotent.
+- [ ] Mission ring uses documented formula inputs.
+- [ ] Daily summaries are complete.
+- [ ] Client and Function day close agree.
+
+## Phase 4 - Habit and Tracker System
+
+### Task 4.1 — Complete HabitService lifecycle contract
+
+#### Why
+
+Tracker, streaks, AI, money saved, and recovery flows depend on correct habit events and logs.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/services/habit_service.dart`.
+- MODIFY `lib/models/habit_model.dart`.
+- MODIFY `lib/models/habit_log_model.dart`.
+- MODIFY `test/services/habit_service_contract_test.dart`.
+- Required methods:
+  - `createHabit`
+  - `updateHabit`
+  - `pauseHabit`
+  - `resumeHabit`
+  - `archiveHabit`
+  - `logGood`
+  - `logSlip`
+  - `deleteLog`
+  - `watchHabits`
+  - `watchHabitLogsForDate`
+- Firestore:
+  - `/users/{uid}/habits/{habitId}`
+  - `/users/{uid}/habit_logs/{logId}`
+  - Keep nested logs only if needed for compatibility; flat `habit_logs` must be canonical.
+- Required habit fields:
+  - `habitId`, `name`, `type`, `category`, `target`, `unit`, `status`, `visibility`, `accountabilityMode`, `moneyValue`, `createdAt`, `updatedAt`, `archivedAt`.
+- Required log fields:
+  - `logId`, `habitId`, `habitType`, `dateKey`, `amount`, `unit`, `note`, `createdAt`, `source`, `undoUntil`.
+- Events:
+  - `habit_created`
+  - `habit_updated`
+  - `habit_archived`
+  - `good_habit_logged` with `amount`, `unit`, `todayTotalAfter`, `goalHitToday`.
+  - `bad_habit_slip_logged` with `countTodayAfter`.
+  - `habit_log_deleted`.
+  - `slip_streak_detected` when rule threshold is crossed.
+
+#### Dependencies
+
+- Task 2.1.
+- Task 2.2.
+
+#### How to verify
+
+- UI behavior: existing Log Habit sheet still works.
+- Firebase console: habit docs and flat habit logs match schema.
+- Events: every lifecycle/log action emits expected event.
+- Logs: deleting/undoing a log updates totals.
+- Tests: habit service contract tests pass.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Full habit lifecycle exists.
+- [ ] Good and bad log payloads match contracts.
+- [ ] Undo/delete log exists.
+- [ ] Slip streak detection emits once per threshold window.
+
+### Task 4.2 — Add Home and Tracker good habit quick logging
+
+#### Why
+
+The daily loop requires fast check-ins from Home and Tracker.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/tabs/home_tab.dart`.
+- MODIFY `lib/views/tabs/tracker_tab.dart`.
+- MODIFY `lib/views/habits/log_habit_sheet.dart`.
+- MODIFY `lib/core/providers.dart`.
+- UI behavior:
+  - Home habit cards are tappable.
+  - Good habit tap opens quick sheet with amount, unit, note optional.
+  - Bad habit tap opens slip sheet with count/note and recovery copy.
+  - Tracker cards expose Log, Undo latest, Details.
+  - Loading and error states appear inline.
+  - Empty state tells user to add habits from Tracker.
+- Firestore:
+  - `/users/{uid}/habit_logs/{logId}`.
+- Events:
+  - Use HabitService only.
+- Backend:
+  - No Cloud Function required.
+
+#### Dependencies
+
+- Task 4.1.
+
+#### How to verify
+
+- UI behavior: log a good habit from Home and Tracker.
+- Firebase console: log is created once.
+- Events: `good_habit_logged` or `bad_habit_slip_logged` exists.
+- Navigation: Details button opens detail screen after Task 4.5; before then, disabled state is acceptable.
+- Expected data: progress totals update immediately.
+
+#### Estimate
+
 4h
 
-##### Done Criteria
-- [ ] No route loops.
-- [ ] Offline cached ready state works.
-- [ ] Missing docs are repaired or surfaced safely.
+#### Done Criteria
 
-### Phase 3 - Full Onboarding
+- [ ] Home cards support quick log.
+- [ ] Tracker cards support quick log.
+- [ ] Undo latest log is visible.
+- [ ] Empty/loading/error states exist.
 
-#### Task 3.1 - Expand Onboarding State Model
+### Task 4.3 — Add habit add/edit/pause/archive UI
 
-##### Why
-The documented onboarding requires more data than the current provider stores.
+#### Why
 
-##### What to tell Antigravity
-MODIFY `lib/providers/onboarding_provider.dart`, `lib/repositories/user_repository.dart`, and onboarding models. Add fields for focus areas, bad habits, good habits, identity goals, biometrics, lifestyle, sensitive flags, coach style, coach name, accountability type, notification preferences, quiet hours, daily notification budget, fixed schedule, timezone, version, currentStep, skippedSteps, and completedAt. Save drafts to `/users/{uid}/onboarding/state`.
+Users must manage their habits after onboarding.
 
-##### Dependencies
-Phase 2.
+#### What to tell Antigravity
 
-##### How to verify
-UI: leave onboarding halfway, restart app, continue from last step. Firebase console: `/onboarding/state` has all fields and currentStep.
+- CREATE `lib/views/habits/habit_editor_screen.dart`.
+- CREATE `lib/views/habits/habit_detail_screen.dart` if not created in Task 4.5.
+- MODIFY `lib/views/tabs/tracker_tab.dart`.
+- MODIFY `lib/core/router/app_router.dart`.
+- MODIFY `lib/core/providers.dart`.
+- UI behavior:
+  - Tracker has Add Habit entry point.
+  - Editor supports good/bad habit type, category, name, target, unit, schedule, money value, accountability mode, reminders, status.
+  - Detail screen supports Edit, Pause/Resume, Archive.
+  - Archived habits leave historical logs visible but are not active in daily cards.
+  - Validation prevents blank name and invalid target.
+- Firestore:
+  - `/users/{uid}/habits/{habitId}`.
+  - `/users/{uid}/scheduled_notifications/{notificationId}` if reminders are configured.
+- Events:
+  - `habit_created`, `habit_updated`, `habit_archived`.
+  - `notification_scheduled` if reminder is created.
+- Backend:
+  - No Cloud Function required.
 
-##### Estimate
+#### Dependencies
+
+- Task 4.1.
+- Task 7.1 for final reminder lifecycle.
+
+#### How to verify
+
+- UI behavior: create, edit, pause, resume, archive a habit.
+- Firebase console: habit `status` updates.
+- Events: lifecycle events are emitted.
+- Navigation: Tracker list reflects status changes.
+- Expected data: archived habit logs remain in history.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] All documented onboarding fields are represented.
-- [ ] Draft save is debounced and resilient.
-- [ ] Skip behavior is explicit.
+#### Done Criteria
 
-#### Task 3.2 - Implement the Complete Onboarding UI Flow
+- [ ] Habit editor exists.
+- [ ] Pause/resume/archive exists.
+- [ ] Validation exists.
+- [ ] Tracker only shows active habits in daily cards.
 
-##### Why
-The User Flow document defines what the user sees before first use.
+### Task 4.4 — Implement tracker-specific habit variants
 
-##### What to tell Antigravity
-MODIFY `lib/views/screens/onboarding_screen.dart` and existing onboarding widgets. Add the full 11-step flow: welcome, focus areas, bad habits, good habits, identity goals, About You biometrics, About You lifestyle, About You sensitive optional, coach style/name, accountability/notifications, schedule/routine, plan ready. Use existing styling. Add validation, back/next, progress, skip where allowed, loading, and error states.
+#### Why
 
-##### Dependencies
-Task 3.1.
+The User Flow requires tailored tracking behavior, not generic cards only.
 
-##### How to verify
-UI: complete onboarding from a new account. Firebase console: draft updates on each step. Logs: final `onboarding_completed` only fires once.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY `lib/models/habit_model.dart`.
+- MODIFY `lib/views/tabs/tracker_tab.dart`.
+- MODIFY `lib/views/habits/habit_detail_screen.dart`.
+- CREATE `lib/views/habits/variants/smoking_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/screen_time_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/mindful_eating_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/procrastination_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/hydration_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/meditation_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/money_saving_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/reading_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/exercise_tracker_view.dart`.
+- CREATE `lib/views/habits/variants/routine_completion_tracker_view.dart`.
+- Firestore:
+  - `/users/{uid}/habits/{habitId}.variant`
+  - `/users/{uid}/habit_logs/{logId}`
+  - `/users/{uid}/screen_time_logs/{logId}`
+  - `/users/{uid}/addiction_logs/{logId}` for addiction-specific context if needed.
+- UI behavior:
+  - Smoking: cigarette count, time since last, money saved, slip recovery.
+  - Screen time: manual and Android imported minutes, app/category breakdown when available.
+  - Mindful eating: no calorie shaming if eatingDisorderFlag is true; use mindful check-in language.
+  - Procrastination: task avoided, replacement action, recovery timer.
+  - Hydration: water amount quick buttons and daily target.
+  - Meditation: timer and completed minutes.
+  - Money saving: amount saved and streak.
+  - Reading: pages/minutes and book note.
+  - Exercise/running: minutes/distance/intensity.
+  - Routine completion: meta tracker from daily summaries, not manual-only.
+- Events:
+  - Use good/bad habit log events.
+  - Screen time import emits `screen_time_synced`.
+- Backend:
+  - No Cloud Function required for manual variants.
+
+#### Dependencies
+
+- Task 4.1.
+- Task 1.2 for sensitive eating flag.
+- Task 3.4 for routine completion variant.
+
+#### How to verify
+
+- UI behavior: create one habit for each variant and log it.
+- Firebase console: logs have correct units and variant metadata.
+- Events: expected habit/screen-time events exist.
+- Navigation: each variant detail is reachable from Tracker.
+- Expected data: mindful eating safety mode changes copy/behavior when flag is true.
+
+#### Estimate
+
+2 days
+
+#### Done Criteria
+
+- [ ] All listed variants exist.
+- [ ] Each variant has a user-visible detail path.
+- [ ] Each variant writes canonical logs.
+- [ ] Safety behavior exists for mindful eating.
+
+### Task 4.5 — Complete screen time import and UI
+
+#### Why
+
+Screen time is a core bad-habit signal and AI trigger.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/services/screen_time_bridge.dart`.
+- MODIFY `lib/services/screen_time_importer.dart`.
+- MODIFY `lib/models/screen_time_log_model.dart`.
+- MODIFY `lib/views/habits/variants/screen_time_tracker_view.dart`.
+- MODIFY `lib/views/tabs/tracker_tab.dart`.
+- Firestore:
+  - `/users/{uid}/screen_time_logs/{logId}`
+  - `/users/{uid}/habit_logs/{logId}` if mapped to a habit.
+- UI behavior:
+  - Show Android permission state.
+  - Show manual fallback on unsupported platforms.
+  - Show daily total, target, app/category breakdown if available.
+  - Show loading/error/empty permission states.
+- Events:
+  - `screen_time_synced`.
+  - `bad_habit_slip_logged` only if screen time exceeds configured threshold and maps to a bad habit.
+- Backend:
+  - No Cloud Function required.
+
+#### Dependencies
+
+- Task 4.1.
+- Task 4.4.
+
+#### How to verify
+
+- UI behavior: unsupported platform shows manual fallback.
+- Firebase console: screen time logs write with source.
+- Events: `screen_time_synced` appears after import/manual save.
+- Logs: permission denial does not crash.
+- Expected data: over-threshold day can trigger AI after Phase 8.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] All documented screens are accessible.
-- [ ] Required fields block next until valid.
-- [ ] Optional sensitive fields are clearly optional.
-- [ ] Resume works.
+#### Done Criteria
 
-#### Task 3.3 - Materialize Onboarding into Production Collections
+- [ ] Permission states are visible.
+- [ ] Manual fallback exists.
+- [ ] Logs write to schema path.
+- [ ] Event is emitted.
 
-##### Why
-Onboarding must create real app state, not only save answers.
+## Phase 5 - Streaks, Accountability, and Retention
 
-##### What to tell Antigravity
-MODIFY `lib/repositories/user_repository.dart`, `lib/services/habit_service.dart`, `lib/services/task_service.dart`, `lib/repositories/routine_repository.dart`, and `lib/services/event_service.dart`. On finish, create `/profile/main`, `/routine/current`, `/habits/{habitId}`, `/goals/{goalId}`, initial `/tasks/{taskId}` if schedule requires, and notification preferences. Emit `onboarding_completed`, `habit_created`, `goal_created`, `routine_created`, and `task_scheduled` where applicable.
+### Task 5.1 — Implement production streak rules
 
-##### Dependencies
-Tasks 3.1, 3.2, 4.1.
+#### Why
 
-##### How to verify
-Firebase console: new user has real habits, goals, profile, and routine. UI: Home, Routine, Tracker, Goals, and Profile all show the same data.
+Streaks are central to retention and identity progress, and current logic is too simple.
 
-##### Estimate
+#### What to tell Antigravity
+
+- MODIFY `lib/services/streak_service.dart`.
+- MODIFY `lib/models/streak_model.dart`.
+- MODIFY `test/services/streak_service_contract_test.dart`.
+- Firestore:
+  - `/users/{uid}/streaks/{streakId}`
+  - `/users/{uid}/habit_logs/{logId}`
+  - `/users/{uid}/dailySummaries/{date}`
+- Implement:
+  - Good habit streaks.
+  - Bad habit no-slip streaks.
+  - Routine completion streaks.
+  - Accountability modes from `/profile/main.accountabilityMode`.
+  - Grace days/weekly skips if allowed by mode.
+  - Milestones: 3, 7, 14, 30, 60, 90, 180, 365.
+  - Ghost-day pause/resume.
+  - Comeback handling.
+- Events:
+  - `streak_extended`
+  - `streak_broken`
+  - `streak_milestone_reached`
+  - `streak_paused`
+  - `streak_resumed`
+
+#### Dependencies
+
+- Task 4.1.
+- Task 3.4.
+
+#### How to verify
+
+- UI behavior: streak cards update after day close.
+- Firebase console: streak doc records current, best, lastDate, status, grace usage.
+- Events: milestone events fire at 3/7/14/etc.
+- Logs: ghost days pause instead of incorrectly breaking streaks when rule says pause.
+- Tests: streak contract tests pass.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] No onboarding answer is lost.
-- [ ] Materialization is idempotent.
-- [ ] Events are emitted once.
+#### Done Criteria
 
-### Phase 4 - Event System Foundation
+- [ ] Accountability modes affect streaks.
+- [ ] Milestones match docs.
+- [ ] Ghost pause/resume exists.
+- [ ] Tests cover good and bad habit streaks.
 
-#### Task 4.1 - Make EventService Idempotent and Contract-Validated
+### Task 5.2 — Add streak detail, history, and heatmaps
 
-##### Why
-Every automation depends on trustworthy events.
+#### Why
 
-##### What to tell Antigravity
-MODIFY `lib/services/event_service.dart`, `lib/models/app_event.dart`, and `lib/core/providers.dart`. CREATE `lib/core/events/event_catalog.dart`. Implement canonical event names, payload versions, required fields, and safe validation. Use transaction or deterministic idempotent writes so retries do not duplicate events. Always write to `/users/{uid}/events/{eventId}` and `/users/{uid}/events_recent/{eventId}`. Do not publish local events until the write succeeds unless explicitly documented as optimistic.
+The User Flow requires users to inspect streak history and understand progress.
 
-##### Dependencies
-Phase 1.
+#### What to tell Antigravity
 
-##### How to verify
-Emit the same event twice with same idempotency key. Firebase console shows one event. Invalid payload is rejected and logged.
+- CREATE `lib/views/streaks/streak_detail_screen.dart`.
+- CREATE `lib/views/streaks/streak_history_sheet.dart`.
+- MODIFY `lib/views/tabs/home_tab.dart`.
+- MODIFY `lib/views/tabs/tracker_tab.dart`.
+- MODIFY `lib/core/router/app_router.dart`.
+- Firestore:
+  - Read `/users/{uid}/streaks/{streakId}`.
+  - Read `/users/{uid}/habit_logs`.
+  - Read `/users/{uid}/dailySummaries`.
+- UI behavior:
+  - Home streak cards are tappable.
+  - Detail shows current streak, best streak, milestones, calendar heatmap, misses, grace usage.
+  - Empty state for new streak.
+  - Loading/error state for failed reads.
+- Events:
+  - No direct event emission unless user starts comeback from the detail screen.
+- Backend:
+  - No Cloud Function required.
 
-##### Estimate
+#### Dependencies
+
+- Task 5.1.
+
+#### How to verify
+
+- UI behavior: tap streak card from Home and Tracker.
+- Firebase console: detail values match streak/log data.
+- Navigation: back navigation returns to original tab.
+- Expected data: heatmap matches logs.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] Event names are centralized.
-- [ ] Payload validation exists.
-- [ ] Idempotency is tested.
-- [ ] Events and events_recent stay in sync.
+#### Done Criteria
 
-#### Task 4.2 - Align All Services to Event Catalog
+- [ ] Streak cards are tappable.
+- [ ] Detail screen exists.
+- [ ] Heatmap/history works.
+- [ ] Empty/loading/error states exist.
 
-##### Why
-Services currently emit some events with incomplete or inconsistent payloads.
+### Task 5.3 — Implement ghost-day and comeback flow
 
-##### What to tell Antigravity
-MODIFY `lib/services/task_service.dart`, `lib/services/habit_service.dart`, `lib/services/streak_service.dart`, `lib/services/routine_service.dart`, `lib/services/notification_service.dart`, `lib/services/coach_service.dart`, and `functions/utils.js`. Replace string literals with catalog constants. Ensure every payload includes required ids, names, timestamps, source, and metadata. Add missing CRUD events.
+#### Why
 
-##### Dependencies
-Task 4.1.
+Long-term retention depends on graceful re-entry after inactivity.
 
-##### How to verify
-Run emulator flows for task complete, habit log, notification schedule, coach message, and day close. Firebase console events match the catalog exactly.
+#### What to tell Antigravity
 
-##### Estimate
+- CREATE `lib/views/retention/comeback_modal.dart`.
+- MODIFY `lib/core/event_orchestrator.dart`.
+- MODIFY `lib/services/routine_service.dart`.
+- MODIFY `lib/services/streak_service.dart`.
+- MODIFY `functions/jobs/inactivityCheck.js`.
+- Firestore:
+  - `/users/{uid}/events_recent/{eventId}`
+  - `/users/{uid}/dailySummaries/{date}`
+  - `/users/{uid}/streaks/{streakId}`
+  - `/users/{uid}/suggestions/{suggestionId}`
+- Detect inactivity at 1, 3, 7, 14, and 30 days.
+- UI behavior:
+  - On app return after ghost period, show comeback modal before normal Home content.
+  - Modal offers restart today, reduce plan, or review missed days.
+  - User can accept a reduced plan.
+- Events:
+  - `ghost_day_detected`
+  - `comeback_initiated`
+  - `suggestion_generated`
+  - `suggestion_accepted` or `suggestion_dismissed`
+- Backend:
+  - Cloud Function detects inactive users and writes ghost event/suggestion.
+  - Client also detects on app open for offline/late cases.
+
+#### Dependencies
+
+- Task 3.4.
+- Task 5.1.
+- Task 8.4 for final suggestions UX; this task can write simple suggestions first.
+
+#### How to verify
+
+- UI behavior: seed last activity 3 days ago and reopen app; comeback modal appears.
+- Firebase console: ghost/comeback events and suggestion docs exist.
+- Logs: duplicate app opens do not duplicate ghost events.
+- Navigation: accepting restart routes to Home/Routine with reduced plan visible.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] No unmanaged event names remain in core services.
-- [ ] Missing service events are added.
-- [ ] Cloud Functions use the same names.
+#### Done Criteria
 
-#### Task 4.3 - Add Event Replay, Recent Pruning, and Failure Logging
+- [ ] Ghost thresholds are detected.
+- [ ] Comeback modal exists.
+- [ ] Restart/reduce plan actions write Firestore.
+- [ ] Events are idempotent.
 
-##### Why
-The app needs bounded UI reads and recoverable event processing.
+## Phase 6 - Goals and Identity
 
-##### What to tell Antigravity
-MODIFY `lib/core/event_orchestrator.dart`, `lib/services/event_service.dart`, `functions/jobs/dayClose.js`, and `functions/utils.js`. Keep `/events_recent` for UI and short-term rules. Keep `/events` as append-only history. Add pruning for recent events by age/count. Log processing failures to `/users/{uid}/event_errors/{errorId}` without crashing user flows.
+### Task 6.1 — Complete identity and goal schema/services
 
-##### Dependencies
-Task 4.1.
+#### Why
 
-##### How to verify
-Seed more than the recent retention limit. Recent collection prunes; full events remain. Simulated processor failure creates an event error.
+Goals must become active identity systems, not read-only cards.
 
-##### Estimate
+#### What to tell Antigravity
+
+- MODIFY `lib/models/goal_model.dart`.
+- MODIFY `lib/models/identity_profile_model.dart`.
+- MODIFY `lib/repositories/goal_repository.dart`.
+- MODIFY `lib/providers/goal_provider.dart`.
+- MODIFY `lib/providers/identity_provider.dart`.
+- MODIFY `lib/services/state_aggregator_service.dart`.
+- Firestore:
+  - `/users/{uid}/goals/{goalId}`
+  - `/users/{uid}/identity_profile/main`
+  - `/users/{uid}/habits/{habitId}` for connected habits.
+  - `/users/{uid}/tasks/{taskId}` for connected tasks.
+- Goal fields:
+  - `goalId`, `title`, `identityTag`, `why`, `status`, `progress`, `targetDate`, `milestones`, `connectedHabitIds`, `connectedRoutineTypes`, `createdAt`, `updatedAt`, `archivedAt`.
+- Identity profile fields:
+  - `identityStatement`, `identityTags`, `strengths`, `areasToImprove`, `score`, `lastComputedAt`, `coachStyle`, `accountabilityMode`.
+- Events:
+  - `identity_progress_changed`
+  - `milestone_completed`
+- Backend:
+  - No Cloud Function required; state aggregator can compute from Firestore/events.
+
+#### Dependencies
+
+- Task 3.4.
+- Task 4.1.
+- Task 5.1.
+
+#### How to verify
+
+- UI behavior: existing Goals/Profile still load after schema update.
+- Firebase console: goals and identity profile have required fields.
+- Events: identity progress event fires when score changes.
+- Logs: aggregator handles users with no goals.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Goal schema is complete.
+- [ ] Identity profile schema is complete.
+- [ ] Aggregator computes identity progress.
+- [ ] Empty state is safe.
+
+### Task 6.2 — Build full Goals tab flows
+
+#### Why
+
+Users need to create, inspect, and maintain identity goals from the Goals tab.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/tabs/goals_tab.dart`.
+- CREATE `lib/views/goals/goal_editor_screen.dart`.
+- CREATE `lib/views/goals/goal_detail_screen.dart`.
+- CREATE `lib/views/goals/milestone_editor_sheet.dart`.
+- MODIFY `lib/core/router/app_router.dart`.
+- UI behavior:
+  - Goals tab shows identity statement, today's identity push, active goals grid, archived section.
+  - Add Goal opens editor.
+  - Goal detail shows progress, why score, milestones, connected habits/tasks, AI suggestion area, pause/archive.
+  - Milestones can be added/completed.
+  - User can connect habits/routine types to a goal.
+  - Empty/loading/error states exist.
+- Firestore:
+  - `/users/{uid}/goals/{goalId}`
+  - `/users/{uid}/identity_profile/main`
+- Events:
+  - `identity_progress_changed`
+  - `milestone_completed`
+  - `suggestion_generated` only when AI recommendation is created.
+- Backend:
+  - No Cloud Function required until AI suggestion generation in Phase 8.
+
+#### Dependencies
+
+- Task 6.1.
+
+#### How to verify
+
+- UI behavior: create a goal, add milestone, connect a habit, complete milestone, archive goal.
+- Firebase console: goal fields update.
+- Events: milestone and identity events appear.
+- Navigation: all goal screens are reachable from Goals tab.
+- Expected data: archived goals do not count toward active identity push.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Add/edit/detail goal flows exist.
+- [ ] Milestones work.
+- [ ] Habit connections work.
+- [ ] Why score is visible.
+
+### Task 6.3 — Connect identity to Home/Profile/AI context
+
+#### Why
+
+Identity is a core product promise and must appear outside the Goals tab.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/tabs/home_tab.dart`.
+- MODIFY `lib/views/tabs/profile_tab.dart`.
+- MODIFY `lib/services/state_aggregator_service.dart`.
+- MODIFY `lib/models/context_snapshot.dart`.
+- Firestore:
+  - Read `/users/{uid}/identity_profile/main`.
+  - Write `/users/{uid}/ai_context_snapshots/{snapshotId}` with identity context.
+- UI behavior:
+  - Home shows today's identity push.
+  - Profile shows identity hero, strengths, and areas to improve.
+  - Mission ring includes identity-aligned task/habit contribution.
+  - Loading/empty states for new users.
+- Events:
+  - `identity_progress_changed` when score changes.
+- Backend:
+  - No Cloud Function required in this task.
+
+#### Dependencies
+
+- Task 6.1.
+- Task 3.4.
+
+#### How to verify
+
+- UI behavior: complete a connected habit/task and see identity progress update.
+- Firebase console: identity profile score changes.
+- Events: identity event appears once per meaningful score change.
+- Expected data: context snapshot includes identity tags and active goals.
+
+#### Estimate
+
 4h
 
-##### Done Criteria
-- [ ] Recent retention is documented.
-- [ ] Replay is bounded.
-- [ ] Failures are visible.
+#### Done Criteria
 
-### Phase 5 - Task Engine
+- [ ] Identity appears on Home.
+- [ ] Identity appears on Profile.
+- [ ] Context snapshot includes identity.
+- [ ] Mission ring uses identity contribution.
 
-#### Task 5.1 - Complete Task Model and Lifecycle
+## Phase 7 - Notifications and Custom Alarms
 
-##### Why
-Tasks are central to routine, home, day close, and AI context.
+### Task 7.1 — Complete notification lifecycle service
 
-##### What to tell Antigravity
-MODIFY `lib/models/task_model.dart`, `lib/services/task_service.dart`, `lib/views/tabs/home_tab.dart`, `lib/views/tabs/routine_tab.dart`, and task widgets. Support scheduled, started, paused, resumed, completed, skipped, and abandoned. Add fields: title, notes, category, source, routineBlockId, goalId, habitId, plannedStart, plannedEnd, startedAt, completedAt, state, priority, alarmTier, subtasks, createdAt, updatedAt. Store at `/users/{uid}/tasks/{taskId}`. Emit all task events.
+#### Why
 
-##### Dependencies
-Phase 4.
+Notifications are a core user loop and AI signal. They need lifecycle records, not just local scheduling.
 
-##### How to verify
-UI: user can start, pause, resume, complete, skip, and abandon a task. Firebase console: task state and event history match each action.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY `lib/services/notification_service.dart`.
+- MODIFY `lib/models/scheduled_notification_model.dart`.
+- MODIFY `lib/core/event_orchestrator.dart`.
+- MODIFY `lib/main.dart`.
+- MODIFY `functions/index.js` or create `functions/jobs/notificationDispatcher.js`.
+- Firestore:
+  - `/users/{uid}/scheduled_notifications/{notificationId}`
+  - `/users/{uid}/notificationLog/{logId}`
+  - `/users/{uid}/events_recent/{eventId}`
+- Implement:
+  - `requestPermissions`
+  - `scheduleForTask`
+  - `scheduleCustom`
+  - `cancel`
+  - `reRegisterAllOnAppStart`
+  - `recordSent`
+  - `recordTapped`
+  - `recordDismissed`
+  - `recordSuppressed`
+- UI behavior:
+  - Deep links route to task, habit, coach, goal, or comeback screen.
+- Events:
+  - `notification_scheduled`
+  - `notification_sent`
+  - `notification_tapped`
+  - `notification_dismissed`
+  - `notification_suppressed`
+- Backend:
+  - Cloud Functions can dispatch server notifications later; local notifications must still write lifecycle logs where possible.
+
+#### Dependencies
+
+- Task 2.1.
+- Task 2.2.
+
+#### How to verify
+
+- UI behavior: schedule a task reminder and tap notification to open task.
+- Firebase console: scheduled notification and notification log docs exist.
+- Events: all available lifecycle events are emitted.
+- Logs: app restart re-registers pending notifications.
+- Expected data: notification records include category, priority, scheduledFor, status, deepLink.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] All lifecycle states work.
-- [ ] Invalid transitions are blocked.
-- [ ] Subtask checks emit events.
-- [ ] Home and Routine show current state.
+#### Done Criteria
 
-#### Task 5.2 - Add Task Auto-Abandon and End Reminder Logic
+- [ ] Lifecycle methods exist.
+- [ ] Deep links work.
+- [ ] Re-registration runs on app start.
+- [ ] Notification events write to Firestore.
 
-##### Why
-The documents require task follow-through and failure recovery.
+### Task 7.2 — Implement notification priority, caps, dedupe, and settings
 
-##### What to tell Antigravity
-MODIFY `lib/services/task_service.dart`, `lib/services/notification_service.dart`, `functions/jobs/dayClose.js`, and any scheduled job needed. If a task remains started past plannedEnd plus grace, mark it abandoned or prompt the user depending on notification settings. Emit `task_abandoned` with reason. Schedule end reminders in `/scheduled_notifications`.
+#### Why
 
-##### Dependencies
-Task 5.1 and Phase 12.
+The docs require adaptive notifications with priority and restraint.
 
-##### How to verify
-Create a short task, let it pass the end time in emulator, run scheduled job. Firebase console: state changes and event appears.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY `lib/services/notification_service.dart`.
+- MODIFY `lib/models/scheduled_notification_model.dart`.
+- MODIFY `lib/views/tabs/profile_tab.dart`.
+- CREATE `lib/views/settings/notification_settings_screen.dart`.
+- MODIFY `lib/core/router/app_router.dart`.
+- Firestore:
+  - `/users/{uid}/profile/main.notificationSettings`
+  - `/users/{uid}/scheduled_notifications/{notificationId}`
+  - `/users/{uid}/notificationLog/{logId}`
+- Implement priorities:
+  - P1 custom alarms.
+  - P2 active task reminders.
+  - P3 schedule-critical reminders.
+  - P4 habit/streak reminders.
+  - P5 AI nudges.
+  - P6 summaries.
+- Implement caps:
+  - Daily cap.
+  - Rolling 60-minute cap.
+  - Category cap.
+  - Quiet hours/sleep block.
+  - Dedupe/coalescing similar notifications.
+- UI behavior:
+  - Profile -> Notification Settings.
+  - Toggles by category.
+  - Quiet hours picker.
+  - Daily cap control.
+  - Permission state.
+  - Loading/error states.
+- Events:
+  - `notification_suppressed` when cap/quiet/dedupe blocks a notification.
+- Backend:
+  - Cloud Functions must read the same settings before sending server notifications.
+
+#### Dependencies
+
+- Task 7.1.
+- Task 1.2 for sleep block.
+
+#### How to verify
+
+- UI behavior: change quiet hours and daily cap.
+- Firebase console: settings save under profile.
+- Logs: duplicate notification attempts create suppression event.
+- Expected data: notifications during quiet hours are suppressed unless P1.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Settings screen exists.
+- [ ] Priority model exists.
+- [ ] Caps and dedupe work.
+- [ ] Suppression events are logged.
+
+### Task 7.3 — Add custom alarm UX
+
+#### Why
+
+Custom alarms are explicitly required in the daily routine flow.
+
+#### What to tell Antigravity
+
+- CREATE `lib/views/alarms/custom_alarm_sheet.dart`.
+- CREATE `lib/views/alarms/alarm_ringing_screen.dart`.
+- CREATE `lib/views/alarms/alarm_reason_sheet.dart`.
+- MODIFY `lib/views/routine/routine_tab.dart`.
+- MODIFY `lib/services/notification_service.dart`.
+- MODIFY `lib/services/task_service.dart`.
+- Firestore:
+  - `/users/{uid}/scheduled_notifications/{notificationId}`
+  - `/users/{uid}/tasks/{taskId}.customAlarm`
+  - `/users/{uid}/notificationLog/{logId}`
+- UI behavior:
+  - User can add custom alarm to task/routine item.
+  - Alarm ringing screen has Start, Snooze, Stop.
+  - If user stops without starting task, ask reason.
+  - Snooze updates notification record.
+  - Stop reason can create `task_skipped` or leave task scheduled depending choice.
+- Events:
+  - `notification_scheduled`
+  - `notification_tapped`
+  - `task_started`
+  - `task_skipped`
+  - `notification_dismissed`
+- Backend:
+  - Local notification first. FCM/server send can be added in Task 10.2.
+
+#### Dependencies
+
+- Task 3.1.
+- Task 7.1.
+
+#### How to verify
+
+- UI behavior: add an alarm to a task, receive it, tap Start, then repeat and Snooze/Stop.
+- Firebase console: task customAlarm and notification docs update.
+- Events: start/snooze/stop produce expected events.
+- Navigation: ringing/tap routes to correct screen.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Custom alarm sheet exists.
+- [ ] Ringing screen exists.
+- [ ] Snooze/stop/start work.
+- [ ] Stop reason updates task/event data.
+
+## Phase 8 - AI Master Engine and Coach
+
+### Task 8.1 — Expand context snapshots and rule engine
+
+#### Why
+
+The AI must make decisions from structured state, not raw chat only.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/services/state_aggregator_service.dart`.
+- MODIFY `lib/services/rule_engine_service.dart`.
+- MODIFY `lib/models/context_snapshot.dart`.
+- MODIFY `lib/models/coach_rule.dart`.
+- CREATE `docs/ai_rulebook_mapping.md`.
+- Firestore:
+  - `/users/{uid}/ai_context_snapshots/{snapshotId}`
+  - `/users/{uid}/events_recent/{eventId}`
+  - `/users/{uid}/tasks/{taskId}`
+  - `/users/{uid}/habits/{habitId}`
+  - `/users/{uid}/habit_logs/{logId}`
+  - `/users/{uid}/dailySummaries/{date}`
+  - `/users/{uid}/goals/{goalId}`
+  - `/users/{uid}/notificationLog/{logId}`
+  - `/users/{uid}/coach_speak_log/{logId}`
+- Implement rule inputs for:
+  - Missed gym.
+  - Instagram/screen-time overuse.
+  - Smoking 4 cigarettes.
+  - Missed routines.
+  - Good progress.
+  - Bad habit slip patterns.
+  - Stress/sleep risk.
+  - Crisis/safety.
+  - Inactivity/ghost.
+  - Bad-day pattern.
+  - Streak milestone.
+  - End-of-day summary.
+- Events:
+  - Rule engine reacts to existing events; it emits `suggestion_generated` or queues coach reply through CoachService.
+- Backend:
+  - No direct LLM call in this task. Rules decide whether AI is allowed to speak.
+
+#### Dependencies
+
+- Phase 2.
+- Phase 3.
+- Phase 4.
+- Phase 5.
+- Phase 6.
+- Phase 7.
+
+#### How to verify
+
+- UI behavior: trigger sample missed task/slip/streak and see proactive card or suggestion where expected.
+- Firebase console: context snapshots include all required state.
+- Logs: rule evaluation includes matched rule ID and suppression reason.
+- Expected data: speak log prevents repeated nudges.
+
+#### Estimate
+
+2 days
+
+#### Done Criteria
+
+- [ ] Context snapshot is complete.
+- [ ] Rulebook mapping exists.
+- [ ] Required rules are implemented.
+- [ ] Speak budget is respected.
+
+### Task 8.2 — Complete Coach chat contracts and topic modes
+
+#### Why
+
+Coach chat is user-facing and must be evented, safe, and mode-aware.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/tabs/coach_tab.dart`.
+- MODIFY `lib/services/coach_service.dart`.
+- MODIFY `lib/services/gemini_service.dart`.
+- MODIFY `functions/index.js`.
+- Firestore:
+  - `/users/{uid}/coach_messages/{messageId}`
+  - `/users/{uid}/coach_speak_log/{logId}`
+  - `/users/{uid}/events_recent/{eventId}`
+- UI behavior:
+  - Add topic modes: Today, Habits, Routine, Goals, Recovery, Ask Anything.
+  - Show loading, retry, offline, and empty states.
+  - Persist both user and coach messages.
+  - Safety/crisis content routes to safe response and optional handoff, not generic coaching.
+- Events:
+  - `coach_message_sent`
+  - `coach_replied`
+- Backend:
+  - `aiGenerate` callable receives mode, recent context snapshot, safety flags, and user message.
+  - Function returns structured response: text, mode, safetyLevel, suggestedActions.
+  - Do not expose API key in Flutter.
+
+#### Dependencies
+
+- Task 8.1.
+- Task 1.2 for safety flags.
+
+#### How to verify
+
+- UI behavior: send a message in each mode.
+- Firebase console: user and coach messages persist.
+- Events: sent/replied events exist.
+- Logs: crisis-like input returns safe response path.
+- Expected data: `coach_speak_log` records reply metadata.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Topic modes exist.
+- [ ] Chat emits events.
+- [ ] Safety path exists.
+- [ ] Function response is structured.
+
+### Task 8.3 — Implement suggestions system and Routine AI panel
+
+#### Why
+
+The docs require AI suggestions that users can accept or dismiss.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/routine/ai_routine_panel.dart`.
+- MODIFY `lib/core/event_orchestrator.dart`.
+- CREATE `lib/models/suggestion_model.dart`.
+- CREATE `lib/services/suggestion_service.dart`.
+- CREATE `lib/views/suggestions/suggestion_detail_sheet.dart`.
+- MODIFY `lib/core/providers.dart`.
+- Firestore:
+  - `/users/{uid}/suggestions/{suggestionId}`
+  - `/users/{uid}/events_recent/{eventId}`
+- Suggestion fields:
+  - `suggestionId`, `type`, `title`, `body`, `reason`, `targetPath`, `status`, `priority`, `expiresAt`, `createdAt`, `acceptedAt`, `dismissedAt`, `sourceRuleId`.
+- UI behavior:
+  - Routine AI panel reads real suggestions.
+  - User can accept or dismiss.
+  - Accepting routine suggestion updates future routine/tasks.
+  - Empty state appears when no suggestions.
+  - Loading/error states exist.
+- Events:
+  - `suggestion_generated`
+  - `suggestion_accepted`
+  - `suggestion_dismissed`
+- Backend:
+  - Rule engine creates suggestions.
+  - LLM may write copy only after rule decides suggestion type.
+
+#### Dependencies
+
+- Task 8.1.
+- Task 3.3.
+
+#### How to verify
+
+- UI behavior: seed a suggestion and accept/dismiss it in Routine AI panel.
+- Firebase console: suggestion status updates.
+- Events: accept/dismiss events exist.
+- Navigation: targetPath opens correct screen.
+- Expected data: accepted routine suggestion changes future tasks only.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Suggestion model/service exists.
+- [ ] Routine AI panel uses Firestore suggestions.
+- [ ] Accept/dismiss works.
+- [ ] Events are emitted.
+
+### Task 8.4 — Implement strategic AI scheduled jobs
+
+#### Why
+
+The AI Master Engine requires morning, midday, day-close, inactivity, and safety jobs.
+
+#### What to tell Antigravity
+
+- MODIFY `functions/index.js`.
+- MODIFY `functions/jobs/morningBrief.js`.
+- MODIFY `functions/jobs/middayPulse.js`.
+- MODIFY `functions/jobs/dayClose.js`.
+- MODIFY `functions/jobs/inactivityCheck.js`.
+- CREATE `functions/jobs/aiPlanner.js`.
+- CREATE `functions/jobs/ruleEngine.js`.
+- CREATE `functions/jobs/safety.js`.
+- CREATE `functions/jobs/notifications.js`.
+- Firestore:
+  - `/users/{uid}/ai_context_snapshots/{snapshotId}`
+  - `/users/{uid}/coach_messages/{messageId}`
+  - `/users/{uid}/coach_speak_log/{logId}`
+  - `/users/{uid}/suggestions/{suggestionId}`
+  - `/users/{uid}/scheduled_notifications/{notificationId}`
+  - `/users/{uid}/events_recent/{eventId}`
+- Backend behavior:
+  - Morning job emits/uses `day_started`.
+  - Midday job checks drift and suggestions.
+  - Day-close job summarizes and writes coach message if allowed.
+  - Inactivity job writes ghost/comeback suggestions.
+  - Safety job detects crisis markers and avoids normal coaching.
+  - Notification job respects priority/caps/settings.
+- Events:
+  - `coach_replied`, `suggestion_generated`, `notification_scheduled`, `notification_suppressed`, `ghost_day_detected`, `day_closed`.
+- UI:
+  - Home/Coach/Routine should display generated coach messages and suggestions.
+
+#### Dependencies
+
+- Task 8.1.
+- Task 8.2.
+- Task 8.3.
+- Task 7.2.
+
+#### How to verify
+
+- Run Firebase emulator scheduled functions manually.
+- Firebase console/emulator: generated messages/suggestions appear under user.
+- Logs: jobs skip users without required data safely.
+- UI behavior: generated items appear in Home/Coach/Routine.
+- Expected data: speak log prevents over-messaging.
+
+#### Estimate
+
+2 days
+
+#### Done Criteria
+
+- [ ] Scheduled AI jobs are schema-aligned.
+- [ ] Jobs respect notification/speak budgets.
+- [ ] Generated outputs are user-visible.
+- [ ] Emulator tests cover jobs.
+
+## Phase 9 - Profile, Settings, Privacy, and Subscription
+
+### Task 9.1 — Complete Profile identity and settings hub
+
+#### Why
+
+Profile is the user's control center for identity, coach, accountability, notifications, and account.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/tabs/profile_tab.dart`.
+- CREATE `lib/views/settings/coach_settings_screen.dart`.
+- CREATE `lib/views/settings/accountability_settings_screen.dart`.
+- CREATE `lib/views/settings/about_you_settings_screen.dart`.
+- MODIFY `lib/core/router/app_router.dart`.
+- Firestore:
+  - `/users/{uid}/profile/main`
+  - `/users/{uid}/identity_profile/main`
+- UI behavior:
+  - Profile hero shows identity statement, strengths, areas to improve.
+  - Coach card opens coach settings.
+  - Accountability card opens accountability settings.
+  - About You opens editable body/lifestyle/sensitive data.
+  - Notification settings links to Task 7.2 screen.
+  - Loading/error/empty states exist.
+- Events:
+  - `biometrics_updated` for About You edits.
+  - `identity_progress_changed` if settings change score.
+- Backend:
+  - No Cloud Function required.
+
+#### Dependencies
+
+- Task 6.3.
+- Task 7.2.
+
+#### How to verify
+
+- UI behavior: open every settings screen from Profile.
+- Firebase console: edited settings persist.
+- Events: biometrics event fires on About You edit.
+- Navigation: back returns to Profile.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Profile hub exposes all required settings.
+- [ ] Identity hero uses real data.
+- [ ] About You editor exists.
+- [ ] Settings persist.
+
+### Task 9.2 — Implement privacy, export, and deletion lifecycle
+
+#### Why
+
+Production apps need safe account data controls. Current hard-delete behavior is not enough.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/views/tabs/profile_tab.dart`.
+- CREATE `lib/views/settings/privacy_data_screen.dart`.
+- CREATE `functions/jobs/exportUserData.js`.
+- CREATE `functions/jobs/deleteUserData.js`.
+- MODIFY `firestore.rules` if new server-only paths are added.
+- Firestore:
+  - `/users/{uid}/data_exports/{exportId}`
+  - `/users/{uid}/deletion_requests/{requestId}`
+  - Existing user subtree for export/delete.
+- UI behavior:
+  - User can request export.
+  - User sees export status: queued, processing, ready, failed.
+  - User can request account deletion with confirmation.
+  - Deletion is queued with recovery window, not immediate destructive client delete.
+  - User can cancel pending deletion before cutoff.
+- Events:
+  - `account_deleted` only after backend deletion completes.
+- Backend:
+  - Cloud Function creates export file/record.
+  - Cloud Function processes deletion after recovery window.
+  - Client must not recursively delete all data directly.
+
+#### Dependencies
+
+- Task 2.2.
+
+#### How to verify
+
+- UI behavior: request export and deletion in emulator.
+- Firebase console: request docs are created.
+- Logs: function updates status.
+- Expected data: canceling deletion changes request status and does not delete user data.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Privacy/data screen exists.
+- [ ] Export request lifecycle exists.
+- [ ] Deletion request lifecycle exists.
+- [ ] Immediate client hard-delete is removed or gated behind backend flow.
+
+### Task 9.3 — Add subscription and limit gates
+
+#### Why
+
+The PRD includes subscription-related product surfaces and AI/notification costs need limits.
+
+#### What to tell Antigravity
+
+- CREATE `lib/views/settings/subscription_screen.dart`.
+- MODIFY `lib/views/tabs/profile_tab.dart`.
+- MODIFY `lib/services/coach_service.dart`.
+- MODIFY `lib/services/notification_service.dart`.
+- MODIFY `lib/services/habit_service.dart` if free-tier habit count is limited.
+- Firestore:
+  - `/users/{uid}/profile/main.subscription`
+  - `/users/{uid}/usage/{monthKey}` if usage counters are added.
+- UI behavior:
+  - Profile shows subscription status.
+  - Subscription screen shows current plan and limits.
+  - If payments are not integrated yet, show a disabled upgrade CTA with clear internal TODO.
+  - Free limits can cap AI messages, proactive nudges, or active habits.
+- Events:
+  - No new canonical event required unless subscription event names are added intentionally.
+- Backend:
+  - Cloud Functions should enforce AI usage caps, not only UI.
+
+#### Dependencies
+
+- Task 8.2.
+- Task 7.2.
+
+#### How to verify
+
+- UI behavior: open subscription screen and see plan state.
+- Firebase console: subscription fields exist.
+- Logs: AI usage cap blocks extra call and returns user-friendly UI state.
+- Expected data: limits are enforced in backend and UI.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Subscription screen exists.
+- [ ] Profile links to subscription.
+- [ ] Usage limits are visible.
+- [ ] Backend enforces AI cap if cap is enabled.
+
+## Phase 10 - Analytics, Cloud Functions, and Operations
+
+### Task 10.1 — Implement analytics summaries
+
+#### Why
+
+Production needs analytics for user progress, AI decisions, and product health.
+
+#### What to tell Antigravity
+
+- CREATE `lib/services/analytics_service.dart`.
+- MODIFY `lib/services/routine_service.dart`.
+- MODIFY `lib/services/state_aggregator_service.dart`.
+- MODIFY `functions/jobs/dayClose.js`.
+- CREATE `functions/jobs/weeklySummary.js`.
+- Firestore:
+  - `/users/{uid}/dailySummaries/{date}`
+  - `/users/{uid}/weeklySummaries/{weekKey}`
+  - `/users/{uid}/events_recent/{eventId}`
+- Analytics fields:
+  - Task completion rate.
+  - Routine completion rate.
+  - Habit completion.
+  - Slip count.
+  - Screen time total.
+  - Streak changes.
+  - Identity score.
+  - Notification sent/tapped/dismissed/suppressed counts.
+  - AI messages/suggestions generated/accepted/dismissed.
+- UI:
+  - Surface daily summary on Home/Profile.
+  - Surface weekly summary in Profile or Tracker.
+- Events:
+  - Use existing day/suggestion/notification events.
+- Backend:
+  - Weekly Cloud Function computes weekly summary.
+
+#### Dependencies
+
+- Phases 3 through 8.
+
+#### How to verify
+
+- UI behavior: daily/weekly summaries appear after seeded data.
+- Firebase console: summary docs have all metrics.
+- Logs: weekly summary job handles empty weeks.
+- Expected data: counts match event logs.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Daily analytics complete.
+- [ ] Weekly summary job exists.
+- [ ] UI exposes summaries.
+- [ ] Metrics match source data.
+
+### Task 10.2 — Implement server notification dispatcher
+
+#### Why
+
+Production reminders need reliable backend delivery where local scheduling is insufficient.
+
+#### What to tell Antigravity
+
+- CREATE `functions/jobs/notificationDispatcher.js`.
+- MODIFY `functions/index.js`.
+- MODIFY `lib/services/notification_service.dart`.
+- Firestore:
+  - `/users/{uid}/scheduled_notifications/{notificationId}`
+  - `/users/{uid}/notificationLog/{logId}`
+  - `/users/{uid}/profile/main.notificationSettings`
+- Backend:
+  - Query due scheduled notifications.
+  - Respect priority, caps, quiet hours, dedupe, and user settings.
+  - Send FCM if device token storage exists; otherwise mark as pending_local and do not crash.
+  - Emit/write notification lifecycle events using server event helper.
+- UI:
+  - Existing notification center/settings display sent/suppressed status.
+- Events:
+  - `notification_sent`
+  - `notification_suppressed`
+
+#### Dependencies
+
+- Task 7.1.
+- Task 7.2.
+
+#### How to verify
+
+- Emulator: seed due notification and run dispatcher.
+- Firebase console: status changes to sent or suppressed.
+- Logs: no send occurs during quiet hours unless P1.
+- UI behavior: notification center reflects status.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Dispatcher exists.
+- [ ] Caps/settings are enforced server-side.
+- [ ] Lifecycle logs are written.
+- [ ] Missing FCM token is handled safely.
+
+### Task 10.3 — Add cleanup, archive, and backfill jobs
+
+#### Why
+
+The event schema uses recent and archive collections; production needs cleanup/backfill.
+
+#### What to tell Antigravity
+
+- CREATE `functions/jobs/eventMaintenance.js`.
+- CREATE `functions/jobs/schemaBackfill.js`.
+- MODIFY `functions/index.js`.
+- Firestore:
+  - `/users/{uid}/events_recent/{eventId}`
+  - `/users/{uid}/events/{eventId}`
+  - Any old/mismatched paths documented in `docs/firestore_schema_v1_mapping.md`.
+- Backend:
+  - Trim or TTL-manage `events_recent`.
+  - Keep full `events` archive.
+  - Backfill old docs missing `schemaVersion`, `uid`, or normalized fields.
+  - Dry-run mode must exist before write mode.
+- UI:
+  - No user-facing UI required.
+- Events:
+  - Do not emit user behavior events for maintenance changes.
+
+#### Dependencies
+
+- Task 2.1.
+- Task 2.2.
+
+#### How to verify
+
+- Emulator: seed old data and run dry-run.
+- Logs: dry-run reports exact changes.
+- Run write mode in emulator and inspect docs.
+- Expected data: recent events are trimmed without deleting archive events.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] Maintenance jobs exist.
+- [ ] Dry-run exists.
+- [ ] Backfill handles old schema.
+- [ ] Archive is preserved.
+
+### Task 10.4 — Add monitoring and remote config controls
+
+#### Why
+
+Production AI, notifications, and experiments need operational kill switches.
+
+#### What to tell Antigravity
+
+- MODIFY `lib/services/remote_config_service.dart`.
+- MODIFY `lib/main.dart`.
+- MODIFY `lib/services/global_error_handler.dart`.
+- MODIFY `functions/index.js`.
+- Firestore/Remote Config:
+  - Add config keys for AI enabled, proactive coach enabled, notifications enabled, custom alarms enabled, screen time enabled, subscription limits enabled.
+  - Keep local fallback defaults.
+- UI:
+  - If a feature is disabled, show graceful disabled state, not broken UI.
+- Backend:
+  - Functions check kill-switch flags before generating AI messages or notifications.
+- Events:
+  - `notification_suppressed` can be used if notification feature disabled.
+  - Do not emit fake user events for disabled features.
+
+#### Dependencies
+
+- Phases 7 and 8.
+
+#### How to verify
+
+- Toggle local/default config and confirm feature disables gracefully.
+- Logs: disabled AI job skips work.
+- UI behavior: Coach and notifications show disabled state.
+- Expected data: no new AI/notification docs are created when disabled.
+
+#### Estimate
+
 4h
 
-##### Done Criteria
-- [ ] Auto behavior is idempotent.
-- [ ] User can still manually resolve.
-- [ ] Notifications respect budget and quiet hours.
+#### Done Criteria
 
-### Phase 6 - Routine System
+- [ ] Remote config keys exist.
+- [ ] App has graceful disabled states.
+- [ ] Functions honor kill switches.
+- [ ] Crash/error logging remains active.
 
-#### Task 6.1 - Version Routine Schema and Repository
+## Phase 11 - Production QA and Release
 
-##### Why
-Routine data drives generated tasks and daily summaries.
+### Task 11.1 — Build full test suite
 
-##### What to tell Antigravity
-MODIFY `lib/repositories/routine_repository.dart`, `lib/providers/routine_provider.dart`, `lib/models/routine_model.dart`, and routine-related screens. Store canonical routine at `/users/{uid}/routine/current` with version, timezone, fixedBlocks, classes, meals, skincare, exercise, windDown, generatedTaskRules, updatedAt. Emit `routine_created` and `routine_updated`.
+#### Why
 
-##### Dependencies
-Phase 4.
+The app touches user identity, routines, addiction tracking, AI, and notifications. Release without tests is unsafe.
 
-##### How to verify
-UI: edit schedule, restart app, routine persists. Firebase console: `/routine/current` contains versioned fields.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY existing test files under `test/services/`.
+- CREATE widget tests:
+  - `test/widgets/onboarding_flow_test.dart`
+  - `test/widgets/home_tab_test.dart`
+  - `test/widgets/routine_tab_test.dart`
+  - `test/widgets/tracker_tab_test.dart`
+  - `test/widgets/coach_tab_test.dart`
+  - `test/widgets/goals_tab_test.dart`
+  - `test/widgets/profile_tab_test.dart`
+- CREATE integration smoke tests if project supports them:
+  - `integration_test/onboarding_to_home_test.dart`
+  - `integration_test/daily_loop_test.dart`
+- MODIFY `functions/test/*.test.js`.
+- Test coverage:
+  - Auth/onboarding.
+  - Event idempotency.
+  - Task lifecycle.
+  - Habit logging.
+  - Streak/accountability.
+  - Day close.
+  - Notifications.
+  - Coach safety.
+  - Suggestions.
+  - Goals/identity.
+  - Privacy/export/delete.
+- Backend:
+  - Firebase emulator tests for rules and functions.
+
+#### Dependencies
+
+- All implementation phases.
+
+#### How to verify
+
+- Run `flutter test`.
+- Run `flutter test integration_test` if configured.
+- Run `cd functions && npm test`.
+- Run Firebase emulator rules/functions tests.
+- Expected data: tests use isolated fake/emulator users.
+
+#### Estimate
+
+2 days
+
+#### Done Criteria
+
+- [ ] Service tests pass.
+- [ ] Widget tests pass.
+- [ ] Function tests pass.
+- [ ] Integration smoke test passes or documented blocker exists.
+
+### Task 11.2 — Production data migration and seed checklist
+
+#### Why
+
+Existing partial users may have older data shapes. Production launch must not break them.
+
+#### What to tell Antigravity
+
+- CREATE `docs/migration_checklist.md`.
+- CREATE `docs/seed_data_checklist.md`.
+- MODIFY `functions/jobs/schemaBackfill.js` if needed.
+- Include migrations for:
+  - User root fields.
+  - `profile/main`.
+  - `onboarding/state`.
+  - `routine/current`.
+  - Habits and flat habit logs.
+  - Tasks missing date/status fields.
+  - Streak docs.
+  - Events missing envelope fields.
+  - Notification path naming.
+  - Coach messages.
+  - Goals/identity.
+- Include seed users:
+  - New user.
+  - Existing partial onboarding user.
+  - Active routine user.
+  - Habit-heavy user.
+  - Ghost user.
+  - Safety-flag user.
+- UI:
+  - No direct UI unless migration status screen is desired for internal builds.
+- Backend:
+  - Backfill must support dry-run.
+
+#### Dependencies
+
+- Task 10.3.
+
+#### How to verify
+
+- Emulator: run migration dry-run on seed users.
+- Logs: checklist records every path touched.
+- UI behavior: all seed users can open app without crash.
+- Expected data: migrated docs match schema.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] Routine schema is versioned.
-- [ ] Existing routine users migrate safely.
-- [ ] Routine updates emit events.
+#### Done Criteria
 
-#### Task 6.2 - Sync Routine to Tasks Without Duplication
+- [ ] Migration checklist exists.
+- [ ] Seed checklist exists.
+- [ ] Dry-run migration works.
+- [ ] Seed users cover major flows.
 
-##### Why
-Generated tasks must not duplicate on every app open.
+### Task 11.3 — Final completeness audit
 
-##### What to tell Antigravity
-MODIFY `lib/services/task_service.dart`, `lib/services/routine_service.dart`, and `lib/repositories/routine_repository.dart`. Generate routine tasks for today and tomorrow using deterministic ids or generation keys. Store generated tasks in `/tasks`. Emit `task_scheduled` only for new tasks. Update changed future generated tasks safely.
+#### Why
 
-##### Dependencies
-Tasks 5.1 and 6.1.
+The final goal is 100% implementation from all seven documents.
 
-##### How to verify
-Open app three times. Firebase console: generated task count does not multiply. Changed routine updates future tasks.
+#### What to tell Antigravity
 
-##### Estimate
+- MODIFY `docs/feature_matrix.md`.
+- CREATE `docs/release_readiness_report.md`.
+- For every feature row, confirm:
+  - UI exists.
+  - State management exists.
+  - Firestore path exists.
+  - Backend/Cloud Function exists if needed.
+  - Event triggers exist.
+  - AI integration exists if applicable.
+  - Notifications exist if applicable.
+  - Analytics exists if applicable.
+  - Verification exists.
+  - User-visible path exists.
+- Run manual flows:
+  - Signup -> onboarding -> AI plan -> Home.
+  - First day routine start/complete/skip.
+  - Habit good log and bad slip.
+  - Streak milestone.
+  - Notification tap.
+  - Coach chat and proactive suggestion.
+  - Goal creation and milestone.
+  - Profile settings edit.
+  - Export/delete request.
+  - Ghost comeback.
+- Do not mark release ready while any row is partial/missing.
+
+#### Dependencies
+
+- Tasks 0.1 through 11.2.
+
+#### How to verify
+
+- UI behavior: all manual flows complete.
+- Firebase console: all required paths contain expected data.
+- Logs: no unhandled exceptions.
+- Tests: all automated suites pass.
+- Expected data: `docs/release_readiness_report.md` has no unresolved critical gaps.
+
+#### Estimate
+
 1 day
 
-##### Done Criteria
-- [ ] Task generation is idempotent.
-- [ ] User-edited tasks are not overwritten unexpectedly.
-- [ ] Events are not duplicated.
-
-#### Task 6.3 - Complete Routine UI Paths
-
-##### Why
-Routine is one of the main user-visible product pillars.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/routine_tab.dart` and routine setup screens/widgets. Ensure users can view today timeline, current block, next task, setup fixed schedule, setup meals, setup classes, setup skincare, edit routine, and see routine completion. Use real `/routine/current` and `/tasks` data only.
-
-##### Dependencies
-Tasks 6.1 and 6.2.
-
-##### How to verify
-UI: from Routine tab, every routine setting is reachable and persists. Firebase console: edits update `/routine/current` and generated tasks.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] All routine entry points work.
-- [ ] Empty states guide setup.
-- [ ] No fake routine rows appear.
-
-### Phase 7 - Habit Core
-
-#### Task 7.1 - Complete Habit CRUD and Events
-
-##### Why
-Habit creation, editing, pausing, archiving, and deleting must be explicit and auditable.
-
-##### What to tell Antigravity
-MODIFY `lib/models/habit_model.dart`, `lib/services/habit_service.dart`, `lib/views/tabs/tracker_tab.dart`, and habit widgets/sheets. Store habits at `/users/{uid}/habits/{habitId}` with name, type, trackerType, target, unit, frequency, reminder settings, status, createdAt, updatedAt, archivedAt. Emit `habit_created`, `habit_updated`, `habit_paused`, `habit_resumed`, `habit_archived`, and `habit_deleted`.
-
-##### Dependencies
-Phase 4.
-
-##### How to verify
-UI: create, edit, pause, resume, archive a habit. Firebase console: habit status changes and events exist.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] CRUD actions are user-visible.
-- [ ] Destructive delete is confirmed.
-- [ ] Archive is the default non-destructive removal.
-
-#### Task 7.2 - Standardize Habit Logs
-
-##### Why
-Streaks, trackers, summaries, and AI depend on reliable logs.
-
-##### What to tell Antigravity
-MODIFY `lib/services/habit_service.dart`, `lib/models/habit_log_model.dart`, `lib/core/providers.dart`, and logging sheets. Use `/users/{uid}/habit_logs/{logId}` as the canonical query path. Keep nested habit logs only if needed for UI convenience. Required fields: habitId, habitName, habitType, trackerType, amount, unit, mood, note, ts, localDate, source, createdAt. Emit `good_habit_logged` or `bad_habit_slip_logged`.
-
-##### Dependencies
-Task 7.1.
-
-##### How to verify
-Log good and bad habits. Firebase console: flat logs contain complete fields and events reference the same logId.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] Logs are consistent.
-- [ ] Providers read canonical logs.
-- [ ] Bad habit slips and good habit completions are distinct.
-
-### Phase 8 - Tracker Feature Set
-
-#### Task 8.1 - Build Tracker Home and Detail Navigation
-
-##### Why
-Each tracker needs a user-visible path and real data.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/tracker_tab.dart`. CREATE tracker detail widgets under `lib/views/tabs/tracker/` if that folder does not exist. Tracker home must show active trackers from `/habits`, today's logs from `/habit_logs`, and detail navigation for smoking, screen time, junk food, procrastination, water, meditation, reading, exercise, money saving, and routine completion.
-
-##### Dependencies
-Phase 7.
-
-##### How to verify
-UI: every active tracker opens a detail screen. New user sees setup empty state. Firebase console reads come from `/habits` and `/habit_logs`.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] All tracker entry points exist.
-- [ ] Detail screens use real data.
-- [ ] Empty/error/loading states exist.
-
-#### Task 8.2 - Complete Smoking and Addiction Tracker
-
-##### Why
-Smoking is a core bad-habit tracker with money saved and recovery loops.
-
-##### What to tell Antigravity
-MODIFY `lib/services/habit_service.dart`, `lib/views/tabs/tracker/smoking_tracker_detail.dart`, and related models. Store slips in `/habit_logs` and optional addiction-specific detail in `/addiction_logs`. Fields: addictionType, amount, trigger, mood, cost, location optional, note, ts. Emit `bad_habit_slip_logged` and `addiction_log_created`. Update money saved and streak context.
-
-##### Dependencies
-Task 8.1.
-
-##### How to verify
-UI: log a cigarette slip with trigger and cost. Firebase console: log appears and coach/streak context updates.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Slip logging is fast.
-- [ ] Trigger/mood/cost are stored.
-- [ ] Recovery coach can react.
-
-#### Task 8.3 - Complete Screen Time Tracker
-
-##### Why
-Android system data is a first-class production input.
-
-##### What to tell Antigravity
-MODIFY existing screen time bridge/importer files, `lib/views/tabs/tracker/screen_time_tracker_detail.dart`, and Cloud Functions if needed. Store daily screen time at `/users/{uid}/screen_time_logs/{date}` with totalMinutes, unlockCount, topApps, source, importedAt. Emit `screen_time_imported` and `screen_time_spike_detected` when threshold rules fire. Add permission/error states.
-
-##### Dependencies
-Task 8.1 and Phase 4.
-
-##### How to verify
-Android UI: permission request appears, import works or shows unsupported state. Firebase console: `/screen_time_logs/{date}` exists.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Android permission flow is clear.
-- [ ] Unsupported platforms are handled.
-- [ ] Spike events are emitted.
-
-#### Task 8.4 - Complete Junk Food and Mindful Eating Tracker
-
-##### Why
-The docs require safe handling for food behavior.
-
-##### What to tell Antigravity
-CREATE or MODIFY `lib/views/tabs/tracker/junk_food_tracker_detail.dart`, habit log models, and coach safety rules. Store logs in `/habit_logs` with foodType, quantity, trigger, hungerLevel, mood, note. Use neutral language and avoid shame. If sensitive eating-disorder flags are set in `/profile/main`, disable weight-loss framing and aggressive coaching. Emit `junk_food_logged`.
-
-##### Dependencies
-Tasks 3.1 and 8.1.
-
-##### How to verify
-UI: log junk food without judgmental wording. Firebase console: log includes safe fields. Coach does not shame or prescribe extreme restriction.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] ED-sensitive behavior exists.
-- [ ] Logs are stored.
-- [ ] Coach uses safe language.
-
-#### Task 8.5 - Complete Procrastination Tracker
-
-##### Why
-Procrastination connects tasks, routine, and coaching.
-
-##### What to tell Antigravity
-CREATE or MODIFY `lib/views/tabs/tracker/procrastination_tracker_detail.dart`, `lib/services/task_service.dart`, and rule engine. Detect procrastination from repeated task delays, skips, and abandons. Allow manual log with trigger, taskId, durationMinutes, note. Store at `/habit_logs` or `/addiction_logs` according to final model. Emit `procrastination_logged`.
-
-##### Dependencies
-Tasks 5.1 and 8.1.
-
-##### How to verify
-Skip or delay tasks. UI shows procrastination pattern. Firebase console: event and log exist.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] Manual and event-derived cases work.
-- [ ] Coach can suggest a small next action.
-- [ ] Data is visible in tracker detail.
-
-#### Task 8.6 - Complete Good Habit Trackers
-
-##### Why
-Water, meditation, reading, exercise, and money saving need complete user paths.
-
-##### What to tell Antigravity
-CREATE or MODIFY tracker detail files for water, meditation, reading, exercise, and money saving under `lib/views/tabs/tracker/`. Use `/habits` for configuration and `/habit_logs` for logs. Add fields specific to each tracker: water amount/unit; meditation duration; reading book/title/pages/minutes; exercise type/duration/intensity; money amount/category. Emit `water_logged`, `meditation_completed`, `reading_logged`, `exercise_logged`, and `money_saved_logged`.
-
-##### Dependencies
-Task 8.1.
-
-##### How to verify
-UI: each tracker can create at least one valid log. Firebase console: logs and events contain tracker-specific fields.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Each tracker has a detail path.
-- [ ] Each tracker writes real logs.
-- [ ] Empty states and validation exist.
-
-### Phase 9 - Streaks and Day Close
-
-#### Task 9.1 - Implement Canonical Streak Rules
-
-##### Why
-Streaks are retention-critical and must match documented behavior.
-
-##### What to tell Antigravity
-MODIFY `lib/services/streak_service.dart`, `lib/models/streak_model.dart`, and Cloud Function day-close logic. Use `/users/{uid}/streaks/{habitId}`. Implement currentStreak, longestStreak, lastCompletedDate, status, graceUsed, pausedDates, milestones, and updatedAt. Emit `streak_extended`, `streak_broken`, `streak_milestone_reached`, `ghost_day_detected`, and `comeback_detected`.
-
-##### Dependencies
-Phases 4 and 7.
-
-##### How to verify
-Seed logs across multiple days. Run day close. Firebase console: streak values and milestone events are correct.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Good and bad habit streak semantics are correct.
-- [ ] Milestones are not duplicated.
-- [ ] Grace/pause rules are tested.
-
-#### Task 9.2 - Make Day Close Idempotent and Canonical
-
-##### Why
-Client and Cloud Functions currently overlap; production needs one truth.
-
-##### What to tell Antigravity
-MODIFY `lib/services/routine_service.dart`, `functions/jobs/dayClose.js`, `functions/index.js`, and `lib/core/providers.dart`. Choose Cloud Function as canonical production day close, with client fallback for offline/local catch-up. Write summaries to `/users/{uid}/dailySummaries/{yyyy-MM-dd}`. Include tasks, habit logs, streak changes, routine completion, identity progress, screen time, addiction logs, mood, and coach summary. Emit `day_closed` once.
-
-##### Dependencies
-Tasks 5.1, 7.2, 9.1.
-
-##### How to verify
-Run day close twice for same date. Firebase console: one summary and one `day_closed` event. UI: Home shows closed day summary.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Day close is idempotent.
-- [ ] Missed days are caught up.
-- [ ] Client and server do not fight.
-
-### Phase 10 - Home Dashboard
-
-#### Task 10.1 - Build Mission Ring from Real Aggregates
-
-##### Why
-Home must reflect actual behavior, not presentation-only stats.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/home_tab.dart`, `lib/core/providers.dart`, and summary models. Read today's tasks, habit logs, routine progress, streaks, and goals. Compute mission ring from documented weights or from `/dailySummaries` when the day is closed. Show loading, empty, and error states.
-
-##### Dependencies
-Phase 9.
-
-##### How to verify
-Complete tasks and log habits. UI mission ring changes. Firebase console data explains every visible number.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] No fake dashboard numbers.
-- [ ] Home updates after logs.
-- [ ] Day-closed state is shown.
-
-#### Task 10.2 - Complete Home Entry Points
-
-##### Why
-Home is the daily command center.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/home_tab.dart` and navigation helpers. Home must provide visible paths to start next task, log a habit, open routine, open tracker detail, read latest coach message, view streaks, and close/review day. All paths must use existing services and Firestore paths.
-
-##### Dependencies
-Task 10.1.
-
-##### How to verify
-From Home only, complete a task, log a habit, open a tracker, and read a coach message. Firebase console: expected writes occur.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] Main daily actions are reachable.
-- [ ] Navigation returns cleanly.
-- [ ] Error states do not trap the user.
-
-### Phase 11 - Goals and Identity
-
-#### Task 11.1 - Complete Goal and Identity Schema
-
-##### Why
-Identity is a core product pillar and drives coaching.
-
-##### What to tell Antigravity
-MODIFY `lib/models/goal_model.dart`, `lib/providers/goals_provider.dart`, `lib/views/tabs/goals_tab.dart`, and `lib/services/state_aggregator_service.dart`. Use `/users/{uid}/goals/{goalId}` for v1. Fields: title, identityStatement, why, category, linkedHabitIds, linkedTaskTags, milestones, progressScore, confidenceScore, status, createdAt, updatedAt. Emit `goal_created`, `goal_updated`, `goal_milestone_completed`, and `identity_progress_updated`.
-
-##### Dependencies
-Phases 4 and 7.
-
-##### How to verify
-Create a goal, link a habit, log the habit. Firebase console: goal progress updates and events appear.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Goals are editable.
-- [ ] Goals link to habits/tasks.
-- [ ] Progress is derived from real behavior.
-
-#### Task 11.2 - Build Goal Detail and Milestone UI
-
-##### Why
-The user must see why goals matter and what action advances them.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/goals_tab.dart` and create goal detail widgets if needed. Show identity statement, why, linked habits, linked tasks, milestones, progress, proof history, and next action. Use `/goals`, `/habit_logs`, `/tasks`, and `/events_recent`.
-
-##### Dependencies
-Task 11.1.
-
-##### How to verify
-UI: open a goal detail, complete linked habit/task, progress changes. Firebase console: progress is explainable.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Every goal has a detail path.
-- [ ] Progress is not manually faked.
-- [ ] Empty states guide linking habits.
-
-### Phase 12 - Notifications and Alarms
-
-#### Task 12.1 - Complete Notification Preferences
-
-##### Why
-Notifications must be user-controlled.
-
-##### What to tell Antigravity
-MODIFY `lib/services/notification_service.dart`, `lib/views/tabs/profile_tab.dart`, onboarding notification page, and `/profile/main` writes. Store permission status, quiet hours, categories enabled, daily budget, alarm type, timezone, and updatedAt. Emit `notification_preferences_updated`.
-
-##### Dependencies
-Phase 3.
-
-##### How to verify
-UI: change notification settings and restart app. Firebase console: `/profile/main` updates. Notifications respect settings.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] Settings are visible in Profile.
-- [ ] Onboarding saves initial preferences.
-- [ ] Quiet hours are enforced.
-
-#### Task 12.2 - Persist, Re-register, and Track Notifications
-
-##### Why
-Scheduled reminders must survive app restarts.
-
-##### What to tell Antigravity
-MODIFY `lib/services/notification_service.dart`, `lib/main.dart`, and app lifecycle handlers. Store notifications at `/users/{uid}/scheduled_notifications/{notificationId}` with type, sourceId, scheduledFor, status, payload, createdAt, deliveredAt, openedAt, dismissedAt. On app start, re-register pending local notifications. Emit `notification_scheduled`, `notification_delivered`, `notification_opened`, `notification_dismissed`, and `notification_suppressed`.
-
-##### Dependencies
-Task 12.1.
-
-##### How to verify
-Schedule a task reminder, kill app, reopen. Notification remains scheduled. Firebase console: status changes after open/dismiss.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Re-registration works.
-- [ ] Tap opens correct screen.
-- [ ] Suppression is logged.
-
-#### Task 12.3 - Add FCM Device Registry and Server Push
-
-##### Why
-Cloud Functions need a supported way to notify users.
-
-##### What to tell Antigravity
-MODIFY `lib/services/notification_service.dart`, `functions/index.js`, and create or modify device-token helpers. Store tokens at `/users/{uid}/devices/{deviceId}` with fcmToken, platform, appVersion, timezone, lastSeenAt, notificationPermission. Cloud Functions should send pushes for eligible server events and update notification status.
-
-##### Dependencies
-Task 12.2.
-
-##### How to verify
-Firebase console: device token exists. Emulator or staging function sends a push. Logs show scheduled and delivered attempts.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Tokens are stored and refreshed.
-- [ ] Invalid tokens are cleaned.
-- [ ] Server pushes respect preferences.
-
-### Phase 13 - Coach Foundation
-
-#### Task 13.1 - Make Coach Tab Use Canonical Messages
-
-##### Why
-Coach UI must show the same messages produced by rules and functions.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/coach_tab.dart`, `lib/services/coach_service.dart`, and `lib/core/providers.dart`. Use `/users/{uid}/coach_messages` as the canonical feed. Keep chat turns under `/users/{uid}/coach_chats/{threadId}/turns` if needed. User replies emit `coach_message_replied`; proactive messages emit `coach_message_sent`.
-
-##### Dependencies
-Phase 4.
-
-##### How to verify
-Create a proactive message from an event and send a chat reply. Firebase console: both canonical feed and chat thread are consistent.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Coach feed is real.
-- [ ] Messages paginate.
-- [ ] No fake coach history appears.
-
-#### Task 13.2 - Complete Rule Engine Coverage
-
-##### Why
-AI decisions must be rule-first and explainable.
-
-##### What to tell Antigravity
-MODIFY `lib/services/rule_engine_service.dart`, `lib/core/event_orchestrator.dart`, and create tests. Implement rules from AI Master Engine for slips, repeated misses, bad day, streaks, comeback, ghost day, day close, morning brief, screen time spikes, identity progress, and notification suppression. Add priority, cooldown, speak budget, coachEnabled gate, and reason codes.
-
-##### Dependencies
-Tasks 4.1, 9.2, 12.1.
-
-##### How to verify
-Seed event scenarios. Rule engine selects expected rule or suppresses with reason. Firebase console: `coach_speak_log` records decisions.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Rules are deterministic.
-- [ ] Suppression reasons are logged.
-- [ ] Cooldowns and budgets work.
-
-#### Task 13.3 - Build Context Snapshot and Output Validator
-
-##### Why
-LLM output must be safe, short, and grounded in real data.
-
-##### What to tell Antigravity
-MODIFY `lib/services/state_aggregator_service.dart`, `lib/services/gemini_service.dart`, `lib/services/coach_service.dart`, and Cloud Function `aiGenerate`. ContextSnapshot must include only derived data needed for the selected rule. Add output validator for length, repetition, unsafe advice, shame language, medical claims, and crisis terms. Store snapshots in `/users/{uid}/ai_context_snapshots/{snapshotId}` only when user-readable and deleteable.
-
-##### Dependencies
-Task 13.2.
-
-##### How to verify
-Run coach scenarios with sensitive inputs. Unsafe outputs are blocked or replaced with safe templates. Firebase console: snapshots contain no raw full database dumps.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] AI never receives raw DB history.
-- [ ] Validator blocks unsafe output.
-- [ ] User can inspect/delete memory later.
-
-### Phase 14 - AI Backend, Safety, and Memory
-
-#### Task 14.1 - Harden AI Cloud Function
-
-##### Why
-AI cost, latency, and safety cannot depend on the client.
-
-##### What to tell Antigravity
-MODIFY `functions/index.js`, `functions/package.json`, and AI helper modules. Keep Gemini API key server-side only. Add auth validation, App Check where supported, rate limits, per-user daily budget, timeout handling, fallback templates, model config, and structured response schema.
-
-##### Dependencies
-Phase 13.
-
-##### How to verify
-Call function unauthenticated and authenticated. Unauth fails. Over-budget calls are suppressed. Valid calls return structured output.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] API key is not in Flutter.
-- [ ] Rate/cost controls exist.
-- [ ] Fallback works.
-
-#### Task 14.2 - Implement Crisis and Sensitive Safety SOP
-
-##### Why
-The AI Master Engine requires strict handling of crisis language.
-
-##### What to tell Antigravity
-MODIFY `lib/services/rule_engine_service.dart`, `lib/services/coach_service.dart`, `functions/index.js`, and create `/crisis_handoffs` support if needed. Detect crisis tiers, self-harm language, dangerous medical content, and eating-disorder risk. Show safe support copy and emergency guidance where appropriate. Emit `crisis_detected` and `crisis_handoff_created` without exposing sensitive details unnecessarily.
-
-##### Dependencies
-Task 13.3.
-
-##### How to verify
-Use emulator test phrases. UI shows safe response. Firebase console: crisis event exists with minimal safe payload.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Crisis detection is tested.
-- [ ] Unsafe coaching is blocked.
-- [ ] Sensitive payloads are minimized.
-
-#### Task 14.3 - Add AI Memory Controls
-
-##### Why
-Users must understand and control coach memory.
-
-##### What to tell Antigravity
-MODIFY `lib/services/state_aggregator_service.dart`, `lib/views/tabs/profile_tab.dart`, `lib/views/tabs/coach_tab.dart`, and scheduled functions. Store weekly user-readable memory at `/users/{uid}/ai_context_snapshots/{snapshotId}` with summary, sourceDateRange, createdAt, expiresAt, and userDeleted flag. Add Profile path to view/delete memory.
-
-##### Dependencies
-Task 13.3.
-
-##### How to verify
-Generate weekly memory. UI: user can view and delete. Firebase console: deleted memory is removed or marked deleted and not used.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Memory is user-readable.
-- [ ] User can delete memory.
-- [ ] Deleted memory is not used.
-
-### Phase 15 - Cloud Functions as Production Processors
-
-#### Task 15.1 - Make Scheduled Day Close Authoritative
-
-##### Why
-Production summaries should not rely on the app being opened.
-
-##### What to tell Antigravity
-MODIFY `functions/jobs/dayClose.js`, `functions/index.js`, and shared event utilities. Process users by timezone after local day end. Read `/tasks`, `/habit_logs`, `/routine/current`, `/streaks`, `/goals`, `/screen_time_logs`, and `/addiction_logs`. Write `/dailySummaries/{date}` and related events idempotently.
-
-##### Dependencies
-Phase 9.
-
-##### How to verify
-Run function in emulator for a seeded user. Summary matches expected counts and does not duplicate on rerun.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Function works without app open.
-- [ ] Missed days catch up.
-- [ ] Client fallback does not conflict.
-
-#### Task 15.2 - Replace Static Scheduled Coach Jobs with Rule Pipeline
-
-##### Why
-Morning, midday, and inactivity messages must be context-aware.
-
-##### What to tell Antigravity
-MODIFY `functions/jobs/morningBrief.js`, `functions/jobs/middayPulse.js`, `functions/jobs/inactivityCheck.js`, and shared AI/rule helpers. Jobs should emit or process events, build ContextSnapshot, run rules, respect budget/quiet hours, and write `/coach_messages` only when allowed.
-
-##### Dependencies
-Phase 13.
-
-##### How to verify
-Run jobs with different user states. Firebase console: messages are relevant or suppressed with reason.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] No static generic production coach messages.
-- [ ] Suppression is logged.
-- [ ] Notifications are scheduled when eligible.
-
-### Phase 16 - Analytics
-
-#### Task 16.1 - Build Analytics Events and Daily Metrics
-
-##### Why
-Product metrics and user insights need stable event-derived data.
-
-##### What to tell Antigravity
-MODIFY event catalog, `functions/jobs/dayClose.js`, and summary models. Add metrics for activation, onboarding completion, daily active use, habit logs, task completion, routine completion, coach engagement, notification opens, retention, and churn risk. Store user-facing metrics in `/dailySummaries` and internal aggregates in analytics-safe destinations.
-
-##### Dependencies
-Phases 4 and 15.
-
-##### How to verify
-Run seeded flows. Metrics match raw events. User-facing summaries do not expose internal analytics-only fields.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Metrics are derived from events.
-- [ ] Analytics fields are documented.
-- [ ] No PII leaks into broad analytics.
-
-#### Task 16.2 - Add BigQuery Export and Dashboard Plan
-
-##### Why
-Production needs visibility into reliability and growth.
-
-##### What to tell Antigravity
-MODIFY Firebase project configuration and create documentation under `docs/analytics.md`. Enable or document Firestore/Analytics export to BigQuery. Define dashboards for activation, retention, habit logging, task completion, coach engagement, notification performance, function errors, and cost.
-
-##### Dependencies
-Task 16.1.
-
-##### How to verify
-In staging, events appear in BigQuery or the documented export path. Dashboard queries return expected counts.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] Analytics export path is documented.
-- [ ] Dashboard metrics are named.
-- [ ] Privacy constraints are documented.
-
-### Phase 17 - Profile, Settings, and Privacy
-
-#### Task 17.1 - Complete Profile Real Data
-
-##### Why
-Profile should summarize the real user, not marketing placeholders.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/profile_tab.dart`, `lib/core/providers.dart`, and profile models. Show name, email, onboarding status, coach settings, accountability type, notification settings, About You summary, streak stats, goal stats, app version, export/delete, help, and sign out. Data must come from `/users/{uid}`, `/profile/main`, `/streaks`, `/goals`, and `/dailySummaries`.
-
-##### Dependencies
-Phases 2, 3, 9, 11, 12.
-
-##### How to verify
-UI: change settings and see Profile update. Firebase console: Profile values match Firestore.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] No fake profile stats.
-- [ ] All settings are reachable.
-- [ ] Sign out works safely.
-
-#### Task 17.2 - Add About You and Coach Settings Editors
-
-##### Why
-Users must update onboarding-derived preferences later.
-
-##### What to tell Antigravity
-MODIFY `lib/views/tabs/profile_tab.dart` and create settings screens/widgets as needed. Allow editing biometrics, lifestyle, sensitive flags, coach style/name, accountability, notification budget, quiet hours, and timezone. Write to `/profile/main`. Emit `profile_preferences_updated`, `biometrics_updated`, and `coach_preferences_updated`.
-
-##### Dependencies
-Task 17.1.
-
-##### How to verify
-UI: edit each setting and restart app. Firebase console: `/profile/main` updates and events exist.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] User can change all important preferences.
-- [ ] Sensitive fields are optional.
-- [ ] Events are recorded.
-
-#### Task 17.3 - Finalize Export and Delete
-
-##### Why
-Privacy/data ownership is a documented requirement.
-
-##### What to tell Antigravity
-MODIFY `lib/services/firestore_service.dart`, `lib/views/tabs/profile_tab.dart`, and supporting services. Export all final user-owned collections into structured JSON with metadata and generatedAt. Delete flow must require explicit confirmation, re-auth when needed, export suggestion, `account_deleted` event, Firestore deletion, and Firebase Auth deletion. Do not use destructive shortcuts.
-
-##### Dependencies
-Task 2.2 and final schema completion.
-
-##### How to verify
-UI: export downloads/shares valid JSON. Delete removes subtree only after confirmation. Logs show `account_deleted` before deletion or audit retention.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Export is complete.
-- [ ] Delete is complete.
-- [ ] Same Gmail signup after deletion is verified.
-
-### Phase 18 - Security, Privacy, and Compliance Hardening
-
-#### Task 18.1 - Enforce Firestore Least Privilege
-
-##### Why
-Security rules must match the final schema.
-
-##### What to tell Antigravity
-MODIFY `firestore.rules` and emulator tests. Users can only access their own `/users/{uid}` subtree. Public config is read-only. Event append rules must prevent cross-user writes and disallow client mutation of protected server-only fields where practical.
-
-##### Dependencies
-Final schema phases.
-
-##### How to verify
-Rules tests cover allowed own writes, denied other-user reads, denied event tampering, and allowed profile updates.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Rules tests pass.
-- [ ] Server-only fields are protected where possible.
-- [ ] No root user data collection is exposed.
-
-#### Task 18.2 - Enforce AI Privacy Boundaries
-
-##### Why
-The AI docs prohibit raw database dumps to the LLM.
-
-##### What to tell Antigravity
-MODIFY `lib/services/state_aggregator_service.dart`, `lib/services/gemini_service.dart`, `functions/index.js`, and AI tests. Only pass derived ContextSnapshot fields. Strip PII, sensitive raw notes, raw event history, and full profile data. Add tests that fail if raw Firestore documents are passed to AI generation.
-
-##### Dependencies
-Phase 14.
-
-##### How to verify
-Inspect AI function payloads in emulator logs. No raw user subtree or sensitive notes are included.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] AI context is minimal.
-- [ ] Sensitive fields are filtered.
-- [ ] Tests cover payload shape.
-
-### Phase 19 - QA and End-to-End Tests
-
-#### Task 19.1 - Add Unit Tests for Core Services
-
-##### Why
-Task, habit, event, streak, rule, and notification logic are high-risk.
-
-##### What to tell Antigravity
-CREATE tests under `test/services/` for `EventService`, `TaskService`, `HabitService`, `StreakService`, `RoutineService`, `NotificationService`, `RuleEngineService`, and `StateAggregatorService`. Use fake Firebase or emulator abstractions already compatible with the project.
-
-##### Dependencies
-Phases 4 through 14.
-
-##### How to verify
-Run `flutter test`. Tests cover happy path, invalid transitions, idempotency, and error states.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Core service tests exist.
-- [ ] Event idempotency is tested.
-- [ ] Rule suppression is tested.
-
-#### Task 19.2 - Add Widget Tests for Core Screens
-
-##### Why
-The user-visible flows must not regress.
-
-##### What to tell Antigravity
-CREATE tests under `test/views/` for signup, login, onboarding, home, routine, tracker, coach, goals, and profile. Mock providers or use emulator-backed providers. Verify loading, empty, error, and success states.
-
-##### Dependencies
-Phase 17.
-
-##### How to verify
-Run widget tests. Every core tab renders without fake production data.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] Core screens have widget tests.
-- [ ] Empty states are tested.
-- [ ] Navigation paths are tested.
-
-#### Task 19.3 - Add Integration Test for First-Run to Day Close
-
-##### Why
-This is the critical product loop.
-
-##### What to tell Antigravity
-CREATE `integration_test/first_run_day_close_test.dart`. Test signup, onboarding completion, home load, routine task start/complete, habit log, tracker detail log, coach message generation or safe suppression, day close, profile export, and sign out. Use Firebase emulator.
-
-##### Dependencies
-All prior product phases.
-
-##### How to verify
-Run integration test against emulator. Firebase console/emulator data shows expected collections and events.
-
-##### Estimate
-1 day
-
-##### Done Criteria
-- [ ] First-run loop passes.
-- [ ] Major user actions write expected collections.
-- [ ] Day close writes summary.
-
-### Phase 20 - Release Hardening
-
-#### Task 20.1 - Production Configuration Checklist
-
-##### Why
-Release requires correct environment and observability.
-
-##### What to tell Antigravity
-MODIFY or CREATE docs under `docs/release_checklist.md`. Verify Firebase project ids, Android package, App Check production provider, Crashlytics, Performance, Remote Config defaults, notification channels, Firestore indexes, rules deployment, Functions secrets, and Play Console requirements.
-
-##### Dependencies
-All implementation phases.
-
-##### How to verify
-Run staging build. Confirm app connects to staging/prod intentionally and no emulator/demo config is shipped.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] Release checklist exists.
-- [ ] Secrets are server-side.
-- [ ] Production build starts cleanly.
-
-#### Task 20.2 - Production Smoke Test
-
-##### Why
-The app is only production-ready if the end-to-end loop works on a real device.
-
-##### What to tell Antigravity
-CREATE `docs/production_smoke_test.md`. Include exact manual steps: install app, sign up, complete onboarding, start task, complete task, log good habit, log bad slip, import screen time if Android, receive notification, read coach message, close day, export data, delete account, re-create account with same Gmail. Include Firebase console paths to verify at each step.
-
-##### Dependencies
-Task 20.1.
-
-##### How to verify
-Run the smoke test on a physical Android device and record pass/fail.
-
-##### Estimate
-4h
-
-##### Done Criteria
-- [ ] Smoke test doc exists.
-- [ ] Every core collection is verified.
-- [ ] Account deletion and same Gmail re-signup are verified.
+#### Done Criteria
+
+- [ ] Feature matrix has no missing rows.
+- [ ] Release report exists.
+- [ ] Manual flows pass.
+- [ ] Automated tests pass.
+- [ ] Every feature has UI/backend/Firestore/event/verification coverage.
 
 ## 8. Completeness Check
 
-Before calling the app production-ready, verify every row below:
+Use this checklist after every phase:
 
-| Feature Area | UI Exists | Backend Exists | Firestore Exists | Verification Exists | User Can Access |
-|---|---|---|---|---|---|
-| Signup/Login | Yes | Partial | Yes | Needed | Yes |
-| Onboarding | Partial | Partial | Partial | Needed | Yes |
-| Home | Partial | Partial | Partial | Needed | Yes |
-| Routine | Partial | Partial | Partial | Needed | Yes |
-| Tasks | Partial | Partial | Yes | Needed | Yes |
-| Habits | Partial | Partial | Yes | Needed | Yes |
-| Trackers | Partial | Partial | Partial | Needed | Partial |
-| Streaks | Partial | Partial | Yes | Needed | Partial |
-| Goals | Partial | Partial | Partial | Needed | Yes |
-| Events | No direct UI | Partial | Yes | Needed | Indirect |
-| Coach | Partial | Partial | Partial | Needed | Yes |
-| Notifications | Partial | Partial | Partial | Needed | Partial |
-| Profile | Partial | Partial | Partial | Needed | Yes |
-| Export/Delete | Partial | Partial | Partial | Needed | Yes |
-| Analytics | No | Partial | Partial | Needed | No |
-| Tests | No | No | No | Needed | No |
-
-If any row remains Partial, Needed, or No, continue implementation and verification before release.
+- [ ] Every feature touched has a user-visible UI path.
+- [ ] Every state-changing UI action writes Firestore.
+- [ ] Every state-changing UI action emits a canonical event.
+- [ ] Every Firestore path matches `OPTIVUS Docs/7_Optivus_Database_Schema.md`.
+- [ ] Every service method matches `OPTIVUS Docs/5_Optivus_ServiceContracts.md`.
+- [ ] Every AI behavior waits for event/context/rule prerequisites.
+- [ ] Every notification behavior records scheduled/sent/tapped/dismissed/suppressed when applicable.
+- [ ] Every feature has loading, error, and empty states.
+- [ ] Every feature has verification steps.
+- [ ] Existing working code was extended, not rewritten unnecessarily.
 
 ## 9. File Output
 
-This content is saved as:
+This file is the required output:
 
 `todo_V1_(fixed)_All_Features.md`
+
