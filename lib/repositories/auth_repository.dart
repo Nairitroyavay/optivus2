@@ -12,8 +12,19 @@ class AuthRepository {
     return _authService.signIn(email, password);
   }
 
-  Future<UserCredential> signUp(String email, String password) {
-    return _authService.signUp(email, password);
+  /// Signs up a new user. Forwards optional [name] and [timezone] so that
+  /// the full schema document is written to Firestore on first registration.
+  Future<UserCredential> signUp(
+    String email,
+    String password, {
+    String? name,
+    String? timezone,
+  }) {
+    return _authService.signUp(email, password, name: name, timezone: timezone);
+  }
+
+  Future<void> sendPasswordResetEmail(String email) {
+    return _authService.sendPasswordResetEmail(email);
   }
 
   Future<void> signOut() {

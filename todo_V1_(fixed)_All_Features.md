@@ -457,12 +457,16 @@ Every feature depends on a stable `/users/{uid}` document and auth lifecycle.
 
 2h
 
+#### Status
+
+Completed on 2026-05-01.
+
 #### Done Criteria
 
-- [ ] Signup works.
-- [ ] Login works.
-- [ ] Root user schema is complete.
-- [ ] `user_signed_up` is emitted once.
+- [x] Signup works.
+- [x] Login works.
+- [x] Root user schema is complete.
+- [x] `user_signed_up` is emitted once.
 
 ### Task 1.2 - Complete About You onboarding page
 

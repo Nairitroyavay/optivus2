@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import 'package:optivus2/repositories/auth_repository.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/widgets/liquid_glass_panel.dart';
 import 'package:optivus2/services/auth_service.dart';
@@ -82,7 +83,7 @@ class _SignupScreenState extends State<SignupScreen>
   Future<void>? _authOperation;
   bool _showRules = false; // shows rules panel once user starts typing password
   String? _errorMsg;
-  final AuthService _authService = AuthService();
+  final AuthRepository _authRepository = AuthRepository(AuthService());
 
   // Animation for rule panel sliding in
   late AnimationController _ruleCtrl;
@@ -154,7 +155,7 @@ class _SignupScreenState extends State<SignupScreen>
       return;
     }
 
-    final authCall = _authService.signUp(
+    final authCall = _authRepository.signUp(
       _emailCtrl.text.trim(),
       _passCtrl.text,
       name: _nameCtrl.text.trim(),
@@ -167,13 +168,10 @@ class _SignupScreenState extends State<SignupScreen>
     });
 
     try {
-      final credential = await authCall;
-
-      // Update display name
-      await credential.user?.updateDisplayName(_nameCtrl.text.trim());
-
+      await authCall;
       // GoRouter redirect handles navigation after auth state changes.
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         switch (e.code) {
@@ -194,6 +192,7 @@ class _SignupScreenState extends State<SignupScreen>
         }
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _errorMsg = 'Something went wrong. Please try again.';
@@ -361,6 +360,8 @@ class _SignupScreenState extends State<SignupScreen>
                         _ErrorBanner(message: _errorMsg!),
                       ],
 
+                      const SizedBox(height: 20),
+                      const _DisabledAuthProviders(),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -401,6 +402,73 @@ class _SignupScreenState extends State<SignupScreen>
                               fontWeight: FontWeight.w800, fontSize: 14)),
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DisabledAuthProviders extends StatelessWidget {
+  const _DisabledAuthProviders();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: const [
+        _DisabledProviderButton(
+          icon: Icons.g_mobiledata_rounded,
+          label: 'Continue with Google',
+        ),
+        SizedBox(height: 10),
+        _DisabledProviderButton(
+          icon: Icons.apple_rounded,
+          label: 'Continue with Apple',
+        ),
+      ],
+    );
+  }
+}
+
+class _DisabledProviderButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _DisabledProviderButton({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '$label is not configured yet.',
+      child: Opacity(
+        opacity: 0.48,
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.85),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: _kInk, size: 24),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: _kInk,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],

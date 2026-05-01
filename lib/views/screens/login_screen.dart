@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import 'package:optivus2/repositories/auth_repository.dart';
 import 'package:optivus2/widgets/glass_logo.dart';
 import 'package:optivus2/widgets/app_button.dart';
 import 'package:optivus2/widgets/liquid_glass_panel.dart';
@@ -37,9 +38,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _obscurePass = true;
   bool _loading = false;
+  bool _resetLoading = false;
   Future<void>? _authOperation;
   String? _errorMsg;
-  final AuthService _authService = AuthService();
+  String? _successMsg;
+  final AuthRepository _authRepository = AuthRepository(AuthService());
 
   @override
   void dispose() {
@@ -77,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final authCall = _authService.signIn(
+    final authCall = _authRepository.signIn(
       _emailCtrl.text.trim(),
       _passCtrl.text,
     );
@@ -85,6 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _loading = true;
       _errorMsg = null;
+      _successMsg = null;
       _authOperation = authCall.then((_) {});
     });
 
@@ -92,6 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await authCall;
       // GoRouter redirect handles navigation after auth state changes.
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         switch (e.code) {
@@ -118,6 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _errorMsg = 'Something went wrong. Please try again.';
@@ -128,6 +134,8 @@ class _LoginScreenState extends State<LoginScreen> {
   // ── Forgot password ───────────────────────────────────────────────────────
 
   Future<void> _forgotPassword() async {
+    if (_resetLoading) return;
+
     final email = _emailCtrl.text.trim();
 
     if (email.isEmpty) {
@@ -136,9 +144,25 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    if (!RegExp(r'^[\w\.\+\-]+@[\w\-]+\.[a-z]{2,}$', caseSensitive: false)
+        .hasMatch(email)) {
+      setState(() => _errorMsg = 'Please enter a valid email address.');
+      return;
+    }
+
+    setState(() {
+      _resetLoading = true;
+      _errorMsg = null;
+      _successMsg = null;
+    });
+
     try {
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      await _authRepository.sendPasswordResetEmail(email);
       if (!mounted) return;
+      setState(() {
+        _resetLoading = false;
+        _successMsg = 'Password reset email sent to $email.';
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Password reset email sent to $email'),
@@ -149,10 +173,25 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMsg = e.code == 'user-not-found'
-            ? 'No account found with this email.'
-            : 'Failed to send reset email. Try again.';
+        _resetLoading = false;
+        switch (e.code) {
+          case 'invalid-email':
+            _errorMsg = 'The email address is not valid.';
+            break;
+          case 'user-not-found':
+            _errorMsg = 'No account found with this email.';
+            break;
+          default:
+            _errorMsg = 'Failed to send reset email. Try again.';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _resetLoading = false;
+        _errorMsg = 'Failed to send reset email. Try again.';
       });
     }
   }
@@ -254,13 +293,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             Align(
                               alignment: Alignment.centerRight,
                               child: GestureDetector(
-                                onTap: _forgotPassword,
-                                child: const Text('Forgot Password?',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                      color: _kAmber,
-                                    )),
+                                onTap: _resetLoading ? null : _forgotPassword,
+                                child: Text(
+                                  _resetLoading
+                                      ? 'Sending reset email...'
+                                      : 'Forgot Password?',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: _kAmber,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -273,6 +316,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         _ErrorBanner(message: _errorMsg!),
                       ],
 
+                      if (_successMsg != null) ...[
+                        const SizedBox(height: 16),
+                        _SuccessBanner(message: _successMsg!),
+                      ],
+
+                      const SizedBox(height: 20),
+                      const _DisabledAuthProviders(),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -313,6 +363,73 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontWeight: FontWeight.w800, fontSize: 14)),
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DisabledAuthProviders extends StatelessWidget {
+  const _DisabledAuthProviders();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: const [
+        _DisabledProviderButton(
+          icon: Icons.g_mobiledata_rounded,
+          label: 'Continue with Google',
+        ),
+        SizedBox(height: 10),
+        _DisabledProviderButton(
+          icon: Icons.apple_rounded,
+          label: 'Continue with Apple',
+        ),
+      ],
+    );
+  }
+}
+
+class _DisabledProviderButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _DisabledProviderButton({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '$label is not configured yet.',
+      child: Opacity(
+        opacity: 0.48,
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.85),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: _kInk, size: 24),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: _kInk,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -368,6 +485,45 @@ class _ErrorBanner extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 13,
                     color: _kRed,
+                    fontWeight: FontWeight.w600,
+                  )),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _SuccessBanner extends StatelessWidget {
+  final String message;
+  const _SuccessBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF22C55E).withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFF22C55E).withValues(alpha: 0.35),
+              width: 1,
+            ),
+          ),
+          child: Row(children: [
+            const Icon(Icons.check_circle_outline_rounded,
+                color: Color(0xFF22C55E), size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(message,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF15803D),
                     fontWeight: FontWeight.w600,
                   )),
             ),
