@@ -55,6 +55,9 @@ abstract final class EventNames {
   // ── Routine ─────────────────────────────────────────────────────────────
   static const routineBlockCompleted = 'routine_block_completed';
   static const routineDaySummarized = 'routine_day_summarized';
+  static const routineTemplateCreated = 'routine_template_created';
+  static const routineTemplateUpdated = 'routine_template_updated';
+  static const routineTemplateDeleted = 'routine_template_deleted';
 
   // ── Coach ───────────────────────────────────────────────────────────────
   static const coachMessageSent = 'coach_message_sent';

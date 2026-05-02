@@ -3,27 +3,35 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class EventModel {
   final String eventId;
   final String eventName;
-  final DateTime ts;
-  final DateTime deviceLocalTs;
-  final String deviceId;
+  final String uid;
+  final DateTime timestamp;
   final String source;
-  final String priority;
+  final int schemaVersion;
   final int payloadVersion;
   final Map<String, dynamic> payload;
-  final int schemaVersion;
+  final String deviceId;
+  final String appVersion;
 
-  const EventModel({
+  EventModel({
     required this.eventId,
     required this.eventName,
-    required this.ts,
-    required this.deviceLocalTs,
-    required this.deviceId,
+    this.uid = '',
+    DateTime? timestamp,
+    DateTime? ts,
+    DateTime? deviceLocalTs,
     required this.source,
-    this.priority = 'normal',
+    this.schemaVersion = 1,
     this.payloadVersion = 1,
     required this.payload,
-    this.schemaVersion = 1,
-  });
+    required this.deviceId,
+    this.appVersion = '1.0.0',
+  }) : timestamp = timestamp ??
+            ts ??
+            deviceLocalTs ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+
+  DateTime get ts => timestamp;
+  DateTime get deviceLocalTs => timestamp;
 
   factory EventModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -32,15 +40,16 @@ class EventModel {
     return EventModel(
       eventId: data['eventId'] as String? ?? doc.id,
       eventName: data['eventName'] as String? ?? '',
-      ts: _asDateTime(data['ts']) ?? DateTime.fromMillisecondsSinceEpoch(0),
-      deviceLocalTs: _asDateTime(data['deviceLocalTs']) ??
+      uid: data['uid'] as String? ?? '',
+      timestamp: _asDateTime(data['timestamp']) ??
+          _asDateTime(data['ts']) ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      deviceId: data['deviceId'] as String? ?? '',
       source: data['source'] as String? ?? '',
-      priority: data['priority'] as String? ?? 'normal',
+      schemaVersion: data['schemaVersion'] as int? ?? 1,
       payloadVersion: data['payloadVersion'] as int? ?? 1,
       payload: Map<String, dynamic>.from(data['payload'] as Map? ?? const {}),
-      schemaVersion: data['schemaVersion'] as int? ?? 1,
+      deviceId: data['deviceId'] as String? ?? '',
+      appVersion: data['appVersion'] as String? ?? '1.0.0',
     );
   }
 
@@ -48,15 +57,16 @@ class EventModel {
     return EventModel(
       eventId: map['eventId'] as String? ?? '',
       eventName: map['eventName'] as String? ?? '',
-      ts: _asDateTime(map['ts']) ?? DateTime.fromMillisecondsSinceEpoch(0),
-      deviceLocalTs: _asDateTime(map['deviceLocalTs']) ??
+      uid: map['uid'] as String? ?? '',
+      timestamp: _asDateTime(map['timestamp']) ??
+          _asDateTime(map['ts']) ??
           DateTime.fromMillisecondsSinceEpoch(0),
-      deviceId: map['deviceId'] as String? ?? '',
       source: map['source'] as String? ?? '',
-      priority: map['priority'] as String? ?? 'normal',
+      schemaVersion: map['schemaVersion'] as int? ?? 1,
       payloadVersion: map['payloadVersion'] as int? ?? 1,
       payload: Map<String, dynamic>.from(map['payload'] as Map? ?? const {}),
-      schemaVersion: map['schemaVersion'] as int? ?? 1,
+      deviceId: map['deviceId'] as String? ?? '',
+      appVersion: map['appVersion'] as String? ?? '1.0.0',
     );
   }
 
@@ -64,14 +74,14 @@ class EventModel {
     return {
       'eventId': eventId,
       'eventName': eventName,
-      'ts': Timestamp.fromDate(ts),
-      'deviceLocalTs': Timestamp.fromDate(deviceLocalTs),
-      'deviceId': deviceId,
+      'uid': uid,
+      'timestamp': Timestamp.fromDate(timestamp),
       'source': source,
-      'priority': priority,
+      'schemaVersion': schemaVersion,
       'payloadVersion': payloadVersion,
       'payload': payload,
-      'schemaVersion': schemaVersion,
+      'deviceId': deviceId,
+      'appVersion': appVersion,
     };
   }
 
@@ -80,26 +90,26 @@ class EventModel {
   EventModel copyWith({
     String? eventId,
     String? eventName,
-    DateTime? ts,
-    DateTime? deviceLocalTs,
-    String? deviceId,
+    String? uid,
+    DateTime? timestamp,
     String? source,
-    String? priority,
+    int? schemaVersion,
     int? payloadVersion,
     Map<String, dynamic>? payload,
-    int? schemaVersion,
+    String? deviceId,
+    String? appVersion,
   }) {
     return EventModel(
       eventId: eventId ?? this.eventId,
       eventName: eventName ?? this.eventName,
-      ts: ts ?? this.ts,
-      deviceLocalTs: deviceLocalTs ?? this.deviceLocalTs,
-      deviceId: deviceId ?? this.deviceId,
+      uid: uid ?? this.uid,
+      timestamp: timestamp ?? this.timestamp,
       source: source ?? this.source,
-      priority: priority ?? this.priority,
+      schemaVersion: schemaVersion ?? this.schemaVersion,
       payloadVersion: payloadVersion ?? this.payloadVersion,
       payload: payload ?? this.payload,
-      schemaVersion: schemaVersion ?? this.schemaVersion,
+      deviceId: deviceId ?? this.deviceId,
+      appVersion: appVersion ?? this.appVersion,
     );
   }
 

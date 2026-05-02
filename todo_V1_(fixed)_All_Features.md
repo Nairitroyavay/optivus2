@@ -689,12 +689,16 @@ AI, notifications, analytics, streaks, and retention depend on reliable events.
 
 1 day
 
+#### Status
+
+Completed on 2026-05-02.
+
 #### Done Criteria
 
-- [ ] Event envelope is consistent.
-- [ ] Payload validation exists.
-- [ ] Idempotency exists.
-- [ ] Tests cover core events.
+- [x] Event envelope is consistent.
+- [x] Payload validation exists.
+- [x] Idempotency exists.
+- [x] Tests cover core events.
 
 ### Task 2.2 - Align Firestore schema, rules, and indexes
 
@@ -768,12 +772,16 @@ Client, services, and Cloud Functions must use the same paths.
 
 4h
 
+#### Status
+
+Completed on 2026-05-02.
+
 #### Done Criteria
 
-- [ ] Schema mapping exists.
-- [ ] Rules protect user data.
-- [ ] Indexes cover production queries.
-- [ ] Paths are consistent.
+- [x] Schema mapping exists.
+- [x] Rules protect user data.
+- [x] Indexes cover production queries.
+- [x] Paths are consistent.
 
 ## Phase 3 - Task, Routine, and Day Lifecycle
 

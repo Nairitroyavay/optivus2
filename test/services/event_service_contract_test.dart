@@ -1,155 +1,444 @@
 // test/services/event_service_contract_test.dart
-//
-// Contract tests for EventService.
-// All groups are skipped (TODO) — implement with fake Firestore / fake Auth
-// once the firebase_auth_mocks / fake_cloud_firestore packages are added as
-// dev-dependencies.
-//
-// Public surface under test:
-//   EventService.emit(...)
-//   EventService.on(eventName)
-//   EventService.onAny()
-//   EventService.replayRecentEvents()
-//   EventService.dispose()
-
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/core/errors/app_errors.dart';
+import 'package:optivus2/core/utils/uuid_generator.dart';
+import 'package:optivus2/services/event_service.dart';
+import 'package:optivus2/services/event_payload_validator.dart';
 
 void main() {
+  late FakeFirebaseFirestore firestore;
+  late MockFirebaseAuth auth;
+  late EventService service;
+  const uid = 'test_uid_123';
+
+  final validPayload = {
+    'email': 'test@example.com',
+    'signup_ts': DateTime.now().toUtc().toIso8601String(),
+    'signup_source': 'google',
+  };
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    firestore = FakeFirebaseFirestore();
+    final mockUser = MockUser(uid: uid);
+    auth = MockFirebaseAuth(mockUser: mockUser, signedIn: true);
+    service = EventService(firestore: firestore, auth: auth);
+  });
+
+  tearDown(() {
+    service.dispose();
+  });
+
   // ── emit ────────────────────────────────────────────────────────────────────
 
   group('EventService.emit — happy path', () {
-    test(
-      'TODO: writes doc to /users/{uid}/events/{eventId}',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('writes doc to /users/{uid}/events/{eventId}', () async {
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+        eventId: 'my_custom_event_id',
+      );
 
-    test(
-      'TODO: writes doc to /users/{uid}/events_recent/{eventId}',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      final doc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events')
+          .doc('my_custom_event_id')
+          .get();
 
-    test(
-      'TODO: publishes event on the local _eventBus stream',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      expect(doc.exists, isTrue);
+      expect(doc.data()!['eventName'], 'user_signed_up');
+      expect(doc.data()!['eventId'], 'my_custom_event_id');
+      expect(doc.data()!['uid'], uid);
+      expect(doc.data()!['timestamp'], isA<Timestamp>());
+      expect(doc.data()!['source'], 'ui');
+      expect(doc.data()!['schemaVersion'], 1);
+      expect(doc.data()!['payloadVersion'], 1);
+      expect(doc.data()!['payload'], validPayload);
+      expect(doc.data()!['deviceId'], isA<String>());
+      expect(doc.data()!['appVersion'], '1.0.0');
+    });
 
-    test(
-      'TODO: persists eventId to SharedPreferences processed-id cache',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('writes doc to /users/{uid}/events_recent/{eventId}', () async {
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+        eventId: 'my_custom_event_id',
+      );
+
+      final doc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events_recent')
+          .doc('my_custom_event_id')
+          .get();
+
+      expect(doc.exists, isTrue);
+      expect(doc.data()!['eventName'], 'user_signed_up');
+
+      final eventDoc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events')
+          .doc('my_custom_event_id')
+          .get();
+      expect(doc.data(), eventDoc.data());
+    });
+
+    test('publishes event on the local _eventBus stream', () async {
+      final futureEvent = service.on('user_signed_up').first;
+
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+        eventId: 'my_custom_event_id',
+      );
+
+      final event = await futureEvent;
+      expect(event.eventName, 'user_signed_up');
+      expect(event.eventId, 'my_custom_event_id');
+    });
+
+    test('persists eventId to SharedPreferences processed-id cache', () async {
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+        eventId: 'my_custom_event_id',
+      );
+
+      await Future.delayed(
+          const Duration(milliseconds: 50)); // Wait for unawaited persistence
+
+      final prefs = await SharedPreferences.getInstance();
+      final processedIds =
+          prefs.getStringList('optivus_processed_events') ?? [];
+      expect(processedIds, contains('my_custom_event_id'));
+    });
   });
 
   group('EventService.emit — idempotency / deduplication', () {
-    test(
-      'TODO: skips write when Firestore doc already exists for the same eventId',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('skips write when Firestore doc already exists for the same eventId',
+        () async {
+      await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events')
+          .doc('idempotent_id')
+          .set({'dummy': 'data'});
 
-    test(
-      'TODO: generates deterministic eventId from eventName + ts + payload',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      int eventsCountBefore = (await firestore
+              .collection('users')
+              .doc(uid)
+              .collection('events')
+              .get())
+          .docs
+          .length;
 
-    test(
-      'TODO: caller-supplied eventId overrides deterministic ID',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      // Should skip
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+        eventId: 'idempotent_id',
+      );
+
+      int eventsCountAfter = (await firestore
+              .collection('users')
+              .doc(uid)
+              .collection('events')
+              .get())
+          .docs
+          .length;
+
+      expect(eventsCountAfter, eventsCountBefore);
+    });
+
+    test('generates deterministic eventId from eventName + ts + payload',
+        () async {
+      final futureEvent = service.onAny().first;
+
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+      );
+
+      final emitted = await futureEvent;
+
+      final expectedId = generateDeterministicId(
+        eventName: 'user_signed_up',
+        timestamp: emitted.timestamp,
+        uid: uid,
+        source: 'ui',
+        payloadVersion: 1,
+        payload: validPayload,
+      );
+
+      expect(emitted.eventId, expectedId);
+    });
+
+    test('caller-supplied eventId overrides deterministic ID', () async {
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+        eventId: 'custom_123',
+      );
+
+      final doc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events')
+          .doc('custom_123')
+          .get();
+
+      expect(doc.exists, isTrue);
+    });
   });
 
   group('EventService.emit — WriteBatch passthrough', () {
-    test(
-      'TODO: when batch is provided, sets docs on batch instead of committing',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('when batch is provided, sets docs on batch instead of committing',
+        () async {
+      final batch = firestore.batch();
+
+      await service.emit(
+        eventName: 'user_signed_up',
+        payload: validPayload,
+        eventId: 'batched_event',
+        batch: batch,
+      );
+
+      // Doc shouldn't exist before commit
+      final docBefore = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events')
+          .doc('batched_event')
+          .get();
+      expect(docBefore.exists, isFalse);
+
+      await batch.commit();
+
+      // Doc should exist after commit
+      final docAfter = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events')
+          .doc('batched_event')
+          .get();
+      expect(docAfter.exists, isTrue);
+    });
   });
 
   group('EventService.emit — error cases', () {
-    test(
-      'TODO: throws NotAuthenticatedError when no user is signed in',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('throws NotAuthenticatedError when no user is signed in', () async {
+      final unauthAuth = MockFirebaseAuth(signedIn: false);
+      final unauthService =
+          EventService(firestore: firestore, auth: unauthAuth);
+
+      expect(
+        () => unauthService.emit(
+            eventName: 'user_signed_up', payload: validPayload),
+        throwsA(isA<NotAuthenticatedError>()),
+      );
+
+      unauthService.dispose();
+    });
+
+    test('throws FlutterError on invalid payload in debug builds', () async {
+      expect(
+        () => service
+            .emit(eventName: 'user_signed_up', payload: {'invalid': 'payload'}),
+        throwsA(isA<FlutterError>()),
+      );
+    });
+  });
+
+  group('EventPayloadValidator', () {
+    test('accepts routine template events after constants registration', () {
+      final payload = {
+        'templateId': 'template_1',
+        'routineType': 'fixed_schedule',
+      };
+
+      expect(
+        EventPayloadValidator.isValid(
+          EventNames.routineTemplateCreated,
+          payload,
+        ),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(
+          EventNames.routineTemplateUpdated,
+          payload,
+        ),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(
+          EventNames.routineTemplateDeleted,
+          payload,
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects unknown events', () {
+      expect(EventPayloadValidator.isValid('unknown_event', {}), isFalse);
+    });
   });
 
   // ── on / onAny ──────────────────────────────────────────────────────────────
 
   group('EventService.on', () {
-    test(
-      'TODO: returns stream that emits only events matching eventName',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('returns stream that emits only events matching eventName', () async {
+      final events = <String>[];
+      service.on('user_signed_up').listen((e) => events.add(e.eventName));
 
-    test(
-      'TODO: does not emit events with a different eventName',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.emit(
+          eventName: 'user_signed_up', payload: validPayload, eventId: '1');
+      await service.emit(
+          eventName: 'account_deleted',
+          payload: {
+            'user_id': 'test_uid_123',
+            'deleted_at': '123',
+            'scheduled_purge_at': '123'
+          },
+          eventId: '2');
+
+      await Future.delayed(Duration.zero);
+      expect(events, ['user_signed_up']);
+    });
   });
 
   group('EventService.onAny', () {
-    test(
-      'TODO: emits every event regardless of eventName',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('emits every event regardless of eventName', () async {
+      final events = <String>[];
+      service.onAny().listen((e) => events.add(e.eventName));
+
+      await service.emit(
+          eventName: 'user_signed_up', payload: validPayload, eventId: '1');
+      await service.emit(
+          eventName: 'account_deleted',
+          payload: {
+            'user_id': 'test_uid_123',
+            'deleted_at': '123',
+            'scheduled_purge_at': '123'
+          },
+          eventId: '2');
+
+      await Future.delayed(Duration.zero);
+      expect(events, ['user_signed_up', 'account_deleted']);
+    });
   });
 
   // ── replayRecentEvents ───────────────────────────────────────────────────────
 
   group('EventService.replayRecentEvents', () {
-    test(
-      'TODO: publishes unprocessed events from events_recent on the local bus',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('publishes unprocessed events from events_recent on the local bus',
+        () async {
+      await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events_recent')
+          .doc('past_1')
+          .set({
+        'eventId': 'past_1',
+        'eventName': 'user_signed_up',
+        'uid': uid,
+        'timestamp': DateTime.now()
+            .subtract(const Duration(minutes: 5))
+            .toUtc()
+            .toIso8601String(),
+        'source': 'ui',
+        'deviceId': 'test_dev',
+        'appVersion': '1.0.0',
+        'payload': validPayload,
+      });
 
-    test(
-      'TODO: skips events whose IDs are already in the processed cache',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      final events = <String>[];
+      service.onAny().listen((e) => events.add(e.eventId));
 
-    test(
-      'TODO: replays events in chronological (ascending ts) order',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.replayRecentEvents();
+      await Future.delayed(Duration.zero);
 
-    test(
-      'TODO: limits replay to the 50 most recent documents',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      expect(events, contains('past_1'));
+    });
 
-    test(
-      'TODO: does not throw when events_recent collection is empty',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('skips events whose IDs are already in the processed cache', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('optivus_processed_events', ['past_skipped']);
+
+      await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events_recent')
+          .doc('past_skipped')
+          .set({
+        'eventId': 'past_skipped',
+        'eventName': 'user_signed_up',
+        'uid': uid,
+        'timestamp': DateTime.now()
+            .subtract(const Duration(minutes: 5))
+            .toUtc()
+            .toIso8601String(),
+        'source': 'ui',
+        'deviceId': 'test_dev',
+        'appVersion': '1.0.0',
+        'payload': validPayload,
+      });
+
+      final events = <String>[];
+      service.onAny().listen((e) => events.add(e.eventId));
+
+      await service.replayRecentEvents();
+      await Future.delayed(Duration.zero);
+
+      expect(events, isNot(contains('past_skipped')));
+    });
+
+    test('limits replay to the 50 most recent documents', () async {
+      for (int i = 0; i < 55; i++) {
+        await firestore
+            .collection('users')
+            .doc(uid)
+            .collection('events_recent')
+            .doc('past_$i')
+            .set({
+          'eventId': 'past_$i',
+          'eventName': 'user_signed_up',
+          'uid': uid,
+          'timestamp': DateTime.now()
+              .subtract(Duration(minutes: 60 - i))
+              .toUtc()
+              .toIso8601String(),
+          'source': 'ui',
+          'deviceId': 'test_dev',
+          'appVersion': '1.0.0',
+          'payload': validPayload,
+        });
+      }
+
+      final events = <String>[];
+      service.onAny().listen((e) => events.add(e.eventId));
+
+      await service.replayRecentEvents();
+      await Future.delayed(Duration.zero);
+
+      expect(events.length, 50);
+    });
   });
 
   // ── dispose ─────────────────────────────────────────────────────────────────
 
   group('EventService.dispose', () {
-    test(
-      'TODO: closes the internal StreamController without error',
-      () {},
-      skip: 'Not yet implemented',
-    );
-
-    test(
-      'TODO: after dispose, emit does not publish on a closed sink',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('closes the internal StreamController without error', () {
+      expect(() => service.dispose(), returnsNormally);
+    });
   });
 }

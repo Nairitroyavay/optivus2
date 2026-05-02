@@ -1,15 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/errors/app_errors.dart';
 import '../core/utils/device_id.dart';
+import '../core/utils/uuid_generator.dart';
 import '../models/event_model.dart';
+import 'event_payload_validator.dart';
 
 const _kProcessedPrefix = 'optivus_processed_events';
 
@@ -49,55 +49,77 @@ class EventService {
     int payloadVersion = 1,
     WriteBatch? batch,
   }) async {
-    final now = DateTime.now();
-    final deviceId = await getDeviceId();
-
-    final generatedId = eventId ??
-        _generateDeterministicEventId(
-          eventName: eventName,
-          ts: now,
-          payload: payload,
-        );
-
-    final eventRef = _eventsRef.doc(generatedId);
-
-    // Check if the event doc ID already exists before creating it
-    final existingSnap = await eventRef.get();
-    if (existingSnap.exists) {
-      debugPrint(
-          '[EventService] Event $generatedId already exists. Skipping duplicate.');
+    final validation = EventPayloadValidator.validate(eventName, payload);
+    if (!validation.isValid) {
+      EventPayloadValidator.logFailure(validation);
+      assert(() {
+        throw FlutterError(validation.message!);
+      }());
       return;
     }
+
+    final now = DateTime.now();
+    final deviceId = await getDeviceId();
+    final uid = _uid;
+
+    final generatedId = eventId ??
+        generateDeterministicId(
+          eventName: eventName,
+          timestamp: now,
+          uid: uid,
+          source: source,
+          payloadVersion: payloadVersion,
+          payload: payload,
+        );
 
     final event = EventModel(
       eventId: generatedId,
       eventName: eventName,
-      ts: now,
-      deviceLocalTs: now,
-      deviceId: deviceId,
+      uid: uid,
+      timestamp: now,
       source: source,
-      priority: priority,
+      schemaVersion: 1,
       payloadVersion: payloadVersion,
       payload: Map<String, dynamic>.from(payload),
-      schemaVersion: 1,
+      deviceId: deviceId,
+      appVersion: '1.0.0', // Fallback or could be loaded dynamically
     );
 
+    final eventRef = _eventsRef.doc(generatedId);
     final eventDoc = event.toFirestore();
 
     if (batch != null) {
+      final existingSnap = await eventRef.get();
+      if (existingSnap.exists) {
+        debugPrint(
+            '[EventService] Event $generatedId already exists. Skipping duplicate.');
+        return;
+      }
       batch.set(eventRef, eventDoc);
       batch.set(_eventsRecentRef.doc(generatedId), eventDoc);
       _publishLocally(event);
+      _processedIds.add(generatedId);
+      unawaited(_persistProcessedId(generatedId));
     } else {
-      final writeBatch = _firestore.batch();
-      writeBatch.set(eventRef, eventDoc);
-      writeBatch.set(_eventsRecentRef.doc(generatedId), eventDoc);
-      await writeBatch.commit();
-      _publishLocally(event);
-    }
+      final wasInserted =
+          await _firestore.runTransaction<bool>((transaction) async {
+        final existingSnap = await transaction.get(eventRef);
+        if (existingSnap.exists) {
+          debugPrint(
+              '[EventService] Event $generatedId already exists. Skipping duplicate.');
+          return false;
+        }
+        transaction.set(eventRef, eventDoc);
+        transaction.set(_eventsRecentRef.doc(generatedId), eventDoc);
+        return true;
+      });
 
-    _processedIds.add(generatedId);
-    unawaited(_persistProcessedId(generatedId));
+      if (wasInserted) {
+        _publishLocally(event);
+        _processedIds.add(generatedId);
+        unawaited(_persistProcessedId(generatedId));
+      }
+    }
   }
 
   Stream<EventModel> on(String eventName) {
@@ -116,7 +138,7 @@ class EventService {
 
     try {
       final snap = await _eventsRecentRef
-          .orderBy('ts', descending: true)
+          .orderBy('timestamp', descending: true)
           .limit(50)
           .get();
 
@@ -143,44 +165,6 @@ class EventService {
     if (!_eventBus.isClosed) {
       _eventBus.add(event);
     }
-  }
-
-  String _generateDeterministicEventId({
-    required String eventName,
-    required DateTime ts,
-    required Map<String, dynamic> payload,
-  }) {
-    final canonicalPayload = _canonicalize(payload);
-    final seed = jsonEncode({
-      'eventName': eventName,
-      'ts': ts.toUtc().toIso8601String(),
-      'payload': canonicalPayload,
-    });
-    return sha256.convert(utf8.encode(seed)).toString();
-  }
-
-  Object? _canonicalize(Object? value) {
-    if (value is Map) {
-      final sortedKeys = value.keys.map((key) => key.toString()).toList()
-        ..sort();
-      return {
-        for (final key in sortedKeys) key: _canonicalize(value[key]),
-      };
-    }
-
-    if (value is List) {
-      return value.map(_canonicalize).toList();
-    }
-
-    if (value is DateTime) {
-      return value.toUtc().toIso8601String();
-    }
-
-    if (value is Timestamp) {
-      return value.toDate().toUtc().toIso8601String();
-    }
-
-    return value;
   }
 
   Future<void> _loadProcessedCache() async {

@@ -378,6 +378,7 @@ class NotificationService {
     final event = EventModel(
       eventId: eventId,
       eventName: EventNames.notificationSuppressed,
+      uid: uid,
       ts: now,
       deviceLocalTs: now,
       deviceId: await getDeviceId(),
