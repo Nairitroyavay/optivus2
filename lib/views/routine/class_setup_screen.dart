@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 
 String _formatTimeFromStart(double hoursFrom6AM) {
@@ -27,6 +28,7 @@ class ClassRoutineBlock {
   bool isAdd;
   bool hasTopTape;
   bool hasBottomTape;
+  bool reminderEnabled;
 
   String get displayStartTime => _formatTimeFromStart(start);
   String get displayEndTime => _formatTimeFromStart(start + duration);
@@ -43,6 +45,7 @@ class ClassRoutineBlock {
     this.isAdd = false,
     this.hasTopTape = false,
     this.hasBottomTape = false,
+    this.reminderEnabled = false,
   });
 }
 
@@ -69,6 +72,7 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
     const Color(0xFFF43F5E), // Rose
   ];
   int _colorIndex = 0;
+  Map<String, dynamic>? _pendingImportMetadata;
 
   @override
   void initState() {
@@ -204,6 +208,7 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
         TextEditingController(text: item.displayStartTime);
     TextEditingController endTimeCtrl =
         TextEditingController(text: item.displayEndTime);
+    bool tempReminder = item.reminderEnabled;
 
     await showDialog(
         context: context,
@@ -308,6 +313,14 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                             ),
                           ],
                         ),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Reminder'),
+                          value: tempReminder,
+                          onChanged: (value) {
+                            setDialogState(() => tempReminder = value);
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -344,6 +357,7 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                               : subjectCtrl.text;
                           item.room = roomCtrl.text;
                           item.professor = profCtrl.text;
+                          item.reminderEnabled = tempReminder;
 
                           double parsedStart =
                               _parseHoursFrom6AM(startTimeCtrl.text);
@@ -732,9 +746,10 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
     );
   }
 
-  void _save(WidgetRef ref) {
+  Future<void> _save(WidgetRef ref) async {
     final notifier = ref.read(routineProvider.notifier);
     final allClasses = <ClassItem>[];
+    final templates = <Map<String, dynamic>>[];
 
     String format24h(double hoursFrom6AM) {
       int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
@@ -762,11 +777,232 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
             weekday: weekday,
             colorHex: colorHex,
           ));
+          templates.add({
+            'templateId': 'class_${weekday}_${item.id}',
+            'title': item.subject,
+            'routineType': 'classes',
+            'startTime': format24h(item.start),
+            'endTime': format24h(item.start + item.duration),
+            'repeatRule': 'weekly:$weekday',
+            'room': item.room,
+            'professor': item.professor,
+            'colorHex': colorHex,
+            'reminderEnabled': item.reminderEnabled,
+            'isActive': true,
+            'createdAt': DateTime.now().toIso8601String(),
+            'updatedAt': DateTime.now().toIso8601String(),
+          });
         }
       }
     }
     notifier.setClasses(allClasses);
+    await notifier.setRoutineTemplates(
+      'classes',
+      templates,
+      importMetadata: _pendingImportMetadata,
+    );
     widget.onComplete();
+  }
+
+  Future<void> _showImportOptions() async {
+    final noteCtrl = TextEditingController();
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.of(ctx).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Upload timetable',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: noteCtrl,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Optional notes for the timetable image',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _loadGeneratedClasses(
+                  noteCtrl.text.trim(),
+                  imageMetadata: {
+                    'source': 'class_timetable_upload',
+                    'createdAt': DateTime.now().toIso8601String(),
+                  },
+                );
+              },
+              icon: const Icon(Icons.image_rounded),
+              label: const Text('Upload timetable image/screenshot'),
+            ),
+          ],
+        ),
+      ),
+    );
+    noteCtrl.dispose();
+  }
+
+  Future<void> _loadGeneratedClasses(
+    String sourceText, {
+    required Map<String, dynamic> imageMetadata,
+  }) async {
+    var generated = <Map<String, dynamic>>[];
+    try {
+      generated =
+          await ref.read(routineRepositoryProvider).previewRoutineImport(
+                routineType: 'classes',
+                mode: 'timetable_image',
+                sourceText: sourceText,
+                imageMetadata: imageMetadata,
+              );
+    } catch (e) {
+      debugPrint('[ClassSetup] routineImport preview failed: $e');
+    }
+    final blocks = generated.isNotEmpty
+        ? generated.map(_classBlockFromTemplate).toList()
+        : [
+            ClassRoutineBlock(
+              id: 'generated_${DateTime.now().microsecondsSinceEpoch}',
+              subject: sourceText.isEmpty ? 'Imported Class' : sourceText,
+              start: 3.0,
+              duration: 1.0,
+              icon: Icons.school_rounded,
+              color: const Color(0xFF378ADD),
+              hasTopTape: true,
+              hasBottomTape: true,
+            )
+          ];
+    _showClassReview(blocks, {
+      'mode': 'timetable_image',
+      if (sourceText.isNotEmpty) 'sourceText': sourceText,
+      'imageMetadata': imageMetadata,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  ClassRoutineBlock _classBlockFromTemplate(Map<String, dynamic> template) {
+    final start =
+        _parseHoursFrom6AM(template['startTime']?.toString() ?? '9:00 AM');
+    final end =
+        _parseHoursFrom6AM(template['endTime']?.toString() ?? '10:00 AM');
+    return ClassRoutineBlock(
+      id: template['templateId']?.toString() ??
+          'generated_${DateTime.now().microsecondsSinceEpoch}',
+      subject: template['title']?.toString() ?? 'Imported Class',
+      room: template['room']?.toString() ?? '',
+      professor: template['professor']?.toString() ?? '',
+      start: start,
+      duration: (end > start ? end - start : 1.0).clamp(0.5, 4.0).toDouble(),
+      icon: Icons.school_rounded,
+      color: const Color(0xFF378ADD),
+      hasTopTape: true,
+      hasBottomTape: true,
+      reminderEnabled: template['reminderEnabled'] == true,
+    );
+  }
+
+  Future<void> _showClassReview(
+    List<ClassRoutineBlock> blocks,
+    Map<String, dynamic> importMetadata,
+  ) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final review = List<ClassRoutineBlock>.from(blocks);
+        return StatefulBuilder(builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              20,
+              20,
+              MediaQuery.of(ctx).viewInsets.bottom + 20,
+            ),
+            child: SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.72,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Review imported classes',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: review.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final item = review[index];
+                        return TextFormField(
+                          initialValue:
+                              '${item.subject}: ${item.room} ${item.professor}'
+                                  .trim(),
+                          decoration: const InputDecoration(
+                            labelText: 'Subject, room, professor',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            final parts = value.split(':');
+                            item.subject = parts.first.trim().isEmpty
+                                ? item.subject
+                                : parts.first.trim();
+                            if (parts.length > 1) {
+                              item.room = parts.sublist(1).join(':').trim();
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => setSheetState(() {
+                          if (review.isNotEmpty) review.removeLast();
+                        }),
+                        icon: const Icon(Icons.remove_circle_outline_rounded),
+                        label: const Text('Remove'),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _showImportOptions();
+                        },
+                        child: const Text('Regenerate'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () {
+                          setState(() {
+                            weeklyRoutines[_day]!.insertAll(0, review);
+                            _pendingImportMetadata = importMetadata;
+                          });
+                          Navigator.pop(ctx);
+                        },
+                        child: const Text('Accept all'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        });
+      },
+    );
   }
 
   @override
@@ -779,6 +1015,11 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showImportOptions,
+        icon: const Icon(Icons.image_rounded),
+        label: const Text('Upload'),
+      ),
       body: LiquidBg(
         child: Stack(children: [
           SafeArea(
@@ -807,8 +1048,9 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                       LiquidIconBtn(
                         icon: Icons.check_rounded,
                         size: 44,
-                        onTap: () {
-                          _save(ref);
+                        onTap: () async {
+                          await _save(ref);
+                          if (!context.mounted) return;
                           Navigator.pop(context);
                         },
                       ),

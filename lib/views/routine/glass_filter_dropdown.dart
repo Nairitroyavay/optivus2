@@ -10,11 +10,13 @@ class FilterMeta {
 }
 
 const filterMetaData = <RoutineFilter, FilterMeta>{
-  RoutineFilter.all:           FilterMeta('All',            '🗓️', kInk),
-  RoutineFilter.fixedSchedule: FilterMeta('Fixed Schedule', '📅', Color(0xFF8B5CF6)), // Purple
-  RoutineFilter.skinCare:      FilterMeta('Skin Care',      '🌿', kMint),
-  RoutineFilter.classes:       FilterMeta('Classes',        '🎓', kBlue),
-  RoutineFilter.eating:        FilterMeta('Eating',         '🍽️', kRose),
+  RoutineFilter.all: FilterMeta('All', '🗓️', kInk),
+  RoutineFilter.fixedSchedule:
+      FilterMeta('Fixed Schedule', '📅', Color(0xFF8B5CF6)), // Purple
+  RoutineFilter.skinCare: FilterMeta('Skin Care', '🌿', kMint),
+  RoutineFilter.supplements: FilterMeta('Supplements', '💊', Color(0xFF14B8A6)),
+  RoutineFilter.classes: FilterMeta('Classes', '🎓', kBlue),
+  RoutineFilter.eating: FilterMeta('Eating', '🍽️', kRose),
 };
 
 class GlassFilterDropdown extends StatefulWidget {
@@ -44,7 +46,8 @@ class _GlassFilterDropdownState extends State<GlassFilterDropdown>
   @override
   void initState() {
     super.initState();
-    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _anim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
     _fade = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
     _slide = Tween<Offset>(begin: const Offset(0, -0.05), end: Offset.zero)
         .animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic));
@@ -122,7 +125,8 @@ class _GlassFilterDropdownState extends State<GlassFilterDropdown>
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 child: Row(children: [
                   Text(m.emoji,
                       style: const TextStyle(
@@ -134,8 +138,8 @@ class _GlassFilterDropdownState extends State<GlassFilterDropdown>
                           fontSize: 13,
                           fontWeight:
                               isSelected ? FontWeight.w700 : FontWeight.w500,
-                          color: kInk.withValues(
-                              alpha: isSelected ? 1.0 : 0.80),
+                          color:
+                              kInk.withValues(alpha: isSelected ? 1.0 : 0.80),
                           letterSpacing: -0.1,
                           height: 1.2,
                           decoration: TextDecoration.none,
@@ -221,8 +225,6 @@ class _GlassFilterDropdownState extends State<GlassFilterDropdown>
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return CompositedTransformTarget(
@@ -245,14 +247,14 @@ class LiquidGlassPill extends StatelessWidget {
 
   // Tuned to match reference: thicker rim, rounded corners
   static const double outerR = 20.0;
-  static const double rim    = 7.0;
+  static const double rim = 7.0;
   static const double innerR = outerR - rim + 2; // 15
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: width,
-      height: 40,                            // ← shorter pill height
+      height: 40, // ← shorter pill height
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(outerR),
         boxShadow: [
@@ -273,12 +275,15 @@ class LiquidGlassPill extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.all(rim),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15), // Clear frosted glass
+                    color: Colors.white
+                        .withValues(alpha: 0.15), // Clear frosted glass
                     borderRadius: BorderRadius.circular(innerR),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.6), // matching _buildSheet
+                      color: Colors.white
+                          .withValues(alpha: 0.6), // matching _buildSheet
                       width: 1.0,
                     ),
                     boxShadow: [
@@ -335,22 +340,27 @@ class GlassHighlightPainter extends CustomPainter {
   final double innerR;
   final double rim;
 
-  const GlassHighlightPainter({required this.outerR, required this.innerR, required this.rim});
+  const GlassHighlightPainter(
+      {required this.outerR, required this.innerR, required this.rim});
 
   @override
   void paint(Canvas canvas, Size size) {
     final outerRect = Rect.fromLTWH(0, 0, size.width, size.height);
-    final outerRRect = RRect.fromRectAndRadius(outerRect, Radius.circular(outerR));
-    
-    final innerRect = Rect.fromLTWH(rim, rim, size.width - rim * 2, size.height - rim * 2);
-    final innerRRect = RRect.fromRectAndRadius(innerRect, Radius.circular(innerR));
+    final outerRRect =
+        RRect.fromRectAndRadius(outerRect, Radius.circular(outerR));
+
+    final innerRect =
+        Rect.fromLTWH(rim, rim, size.width - rim * 2, size.height - rim * 2);
+    final innerRRect =
+        RRect.fromRectAndRadius(innerRect, Radius.circular(innerR));
 
     // Outer Edge White Sweep (Top left)
     final outerSweepPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0
       ..shader = const LinearGradient(
-        begin: Alignment.topLeft, end: Alignment.bottomRight,
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
         colors: [Colors.white, Colors.transparent, Colors.white24],
         stops: [0.0, 0.4, 1.0],
       ).createShader(outerRect);
@@ -361,45 +371,78 @@ class GlassHighlightPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0
       ..shader = LinearGradient(
-        begin: Alignment.topLeft, end: Alignment.bottomRight,
-        colors: [Colors.white.withValues(alpha: 0.9), Colors.white.withValues(alpha: 0.1)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.9),
+          Colors.white.withValues(alpha: 0.1)
+        ],
       ).createShader(innerRect);
     canvas.drawRRect(innerRRect, innerSweepPaint);
 
     // Thick Glare inside the rim (top-left)
     final glarePath = Path()
-      ..addArc(Rect.fromLTWH(rim * 0.4, rim * 0.4, outerR * 2.5, outerR * 2.5), 3.14, 1.57);
-    canvas.drawPath(glarePath, Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = rim * 0.7
-      ..strokeCap = StrokeCap.round
-      ..color = Colors.white.withValues(alpha: 0.6)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
+      ..addArc(Rect.fromLTWH(rim * 0.4, rim * 0.4, outerR * 2.5, outerR * 2.5),
+          3.14, 1.57);
+    canvas.drawPath(
+        glarePath,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = rim * 0.7
+          ..strokeCap = StrokeCap.round
+          ..color = Colors.white.withValues(alpha: 0.6)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5));
 
     // The amazing rainbow prism base at the bottom right corner of the rim
-    final donut = Path.combine(PathOperation.difference, Path()..addRRect(outerRRect), Path()..addRRect(innerRRect));
+    final donut = Path.combine(PathOperation.difference,
+        Path()..addRRect(outerRRect), Path()..addRRect(innerRRect));
     canvas.save();
     canvas.clipPath(donut);
 
     // Vivid prism bursts mapped to the donut space
-    canvas.drawCircle(Offset(size.width - rim * 1.5, size.height - rim * 1.5), 25, Paint()..color = Colors.white.withValues(alpha: 0.9)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
-    canvas.drawCircle(Offset(size.width - 5, size.height - 15), 20, Paint()..color = const Color(0xFF60A5FA).withValues(alpha: 0.8)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
-    canvas.drawCircle(Offset(size.width - 25, size.height - 5), 20, Paint()..color = const Color(0xFFFBBF24).withValues(alpha: 0.8)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
-    canvas.drawCircle(Offset(size.width - 15, size.height - 30), 20, Paint()..color = const Color(0xFFF472B6).withValues(alpha: 0.6)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
+    canvas.drawCircle(
+        Offset(size.width - rim * 1.5, size.height - rim * 1.5),
+        25,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.9)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
+    canvas.drawCircle(
+        Offset(size.width - 5, size.height - 15),
+        20,
+        Paint()
+          ..color = const Color(0xFF60A5FA).withValues(alpha: 0.8)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
+    canvas.drawCircle(
+        Offset(size.width - 25, size.height - 5),
+        20,
+        Paint()
+          ..color = const Color(0xFFFBBF24).withValues(alpha: 0.8)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
+    canvas.drawCircle(
+        Offset(size.width - 15, size.height - 30),
+        20,
+        Paint()
+          ..color = const Color(0xFFF472B6).withValues(alpha: 0.6)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14));
 
     // Blackish inner shadow inside the bottom-right rim to create refraction depth
     canvas.drawRRect(
-      outerRRect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = rim * 1.8
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.35)],
-          stops: const [0.6, 1.0]
-        ).createShader(outerRect)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
-    );
+        outerRRect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = rim * 1.8
+          ..shader = LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.35)
+              ],
+              stops: const [
+                0.6,
+                1.0
+              ]).createShader(outerRect)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
 
     canvas.restore();
   }

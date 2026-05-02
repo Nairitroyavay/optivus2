@@ -15,6 +15,7 @@ import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
 import 'package:optivus2/services/routine_service.dart';
 import 'package:optivus2/services/coach_service.dart';
+import 'package:optivus2/services/state_aggregator_service.dart';
 import 'package:optivus2/services/remote_config_service.dart';
 import 'package:optivus2/services/screen_time_bridge.dart';
 import 'package:optivus2/services/screen_time_importer.dart';
@@ -72,6 +73,10 @@ final streakServiceProvider = Provider<StreakService>(
   ),
 );
 
+final stateAggregatorServiceProvider = Provider<StateAggregatorService>(
+  (_) => StateAggregatorService(),
+);
+
 /// Local and push notification scheduling service.
 final notificationServiceProvider = Provider<NotificationService>(
   (_) => NotificationService(),
@@ -97,6 +102,7 @@ final routineServiceProvider = Provider<RoutineService>(
   (ref) => RoutineService(
     eventService: ref.read(eventServiceProvider),
     streakService: ref.read(streakServiceProvider),
+    stateAggregatorService: ref.read(stateAggregatorServiceProvider),
   ),
 );
 
@@ -123,7 +129,33 @@ final routineRepositoryProvider = Provider<RoutineRepository>(
 /// Real-time stream of today's Firestore-backed tasks.
 final todayTasksProvider = StreamProvider<List<TaskModel>>((ref) {
   final taskService = ref.watch(taskServiceProvider);
-  return taskService.tasksFor(DateTime.now());
+  return taskService.watchTasksForDay(DateTime.now());
+});
+
+/// Selected Routine tab calendar day. Kept in core providers so the add sheet,
+/// timeline, and task stream agree on the active day.
+final selectedRoutineDateProvider = StateProvider<DateTime>((ref) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day);
+});
+
+final currentUserDocumentProvider =
+    StreamProvider<Map<String, dynamic>?>((ref) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(null);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .snapshots()
+      .map((snap) => snap.data());
+});
+
+/// Real-time stream for the selected Routine tab day.
+final selectedRoutineTasksProvider = StreamProvider<List<TaskModel>>((ref) {
+  final selected = ref.watch(selectedRoutineDateProvider);
+  final taskService = ref.watch(taskServiceProvider);
+  return taskService.watchTasksForDay(selected);
 });
 
 /// Real-time stream of tasks for the next 14-day routine window.
@@ -133,7 +165,7 @@ final todayTasksProvider = StreamProvider<List<TaskModel>>((ref) {
 /// from appearing alongside real task documents.
 final routineWindowTasksProvider = StreamProvider<List<TaskModel>>((ref) {
   final taskService = ref.watch(taskServiceProvider);
-  return taskService.tasksForWindow(DateTime.now(), days: 14);
+  return taskService.watchTasksForWindow(DateTime.now(), days: 14);
 });
 
 /// Real-time stream of all active habits.

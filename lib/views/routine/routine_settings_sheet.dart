@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:optivus2/providers/routine_provider.dart';
 
-const _kInk  = Color(0xFF0F111A);
-const _kSub  = Color(0xFF6B7280);
+const _kInk = Color(0xFF0F111A);
+const _kSub = Color(0xFF6B7280);
 const _kCard = Colors.white;
 const _kShad = Color(0x0D000000);
 
@@ -13,38 +13,52 @@ class _SettingsOption {
   final String subtitle;
   final RoutineFilter? filter; // null = non-setup option
   const _SettingsOption({
-    required this.emoji, required this.title,
-    required this.subtitle, this.filter,
+    required this.emoji,
+    required this.title,
+    required this.subtitle,
+    this.filter,
   });
 }
 
 const _options = [
   _SettingsOption(
-    emoji: '🌿', title: 'Skin Care Routine',
+    emoji: '🌿',
+    title: 'Skin Care Routine',
     subtitle: 'Set up morning, afternoon & night steps',
     filter: RoutineFilter.skinCare,
   ),
   _SettingsOption(
-    emoji: '🎓', title: 'Class Routine',
+    emoji: '🎓',
+    title: 'Class Routine',
     subtitle: 'Upload or enter your class timetable',
     filter: RoutineFilter.classes,
   ),
   _SettingsOption(
-    emoji: '🍽️', title: 'Eating Routine',
+    emoji: '💊',
+    title: 'Supplements',
+    subtitle: 'Plan dosage, timing rules, and reminders',
+    filter: RoutineFilter.supplements,
+  ),
+  _SettingsOption(
+    emoji: '🍽️',
+    title: 'Eating Routine',
     subtitle: 'Plan your daily meals',
     filter: RoutineFilter.eating,
   ),
   _SettingsOption(
-    emoji: '📅', title: 'Fixed Schedule',
+    emoji: '📅',
+    title: 'Fixed Schedule',
     subtitle: 'Base daily activities, sleep & work',
     filter: RoutineFilter.fixedSchedule,
   ),
   _SettingsOption(
-    emoji: '🔔', title: 'Notification Settings',
+    emoji: '🔔',
+    title: 'Notification Settings',
     subtitle: 'Reminders for each routine block',
   ),
   _SettingsOption(
-    emoji: '📤', title: 'Export Schedule',
+    emoji: '📤',
+    title: 'Export Schedule',
     subtitle: 'Save to calendar or share as PDF',
   ),
 ];
@@ -75,7 +89,8 @@ class RoutineSettingsSheet extends StatelessWidget {
           const SizedBox(height: 12),
           // Handle bar
           Container(
-            width: 36, height: 4,
+            width: 36,
+            height: 4,
             decoration: BoxDecoration(
               color: _kInk.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(2),
@@ -88,7 +103,8 @@ class RoutineSettingsSheet extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text('Routine Settings',
                   style: TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.w900,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
                     color: _kInk,
                   )),
             ),
@@ -106,18 +122,18 @@ class RoutineSettingsSheet extends StatelessWidget {
 
           // Option list
           ..._options.map((opt) {
-            final isDone = opt.filter != null &&
-                (setupDone[opt.filter] ?? false);
+            final isDone =
+                opt.filter != null && (setupDone[opt.filter] ?? false);
             return GestureDetector(
               onTap: () {
                 if (opt.filter != null) onSetup(opt.filter!);
               },
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF7F5F0),
                     borderRadius: BorderRadius.circular(16),
@@ -126,12 +142,15 @@ class RoutineSettingsSheet extends StatelessWidget {
                     children: [
                       // Icon
                       Container(
-                        width: 42, height: 42,
+                        width: 42,
+                        height: 42,
                         decoration: BoxDecoration(
                           color: _kCard,
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: const [
-                            BoxShadow(color: _kShad, blurRadius: 8,
+                            BoxShadow(
+                                color: _kShad,
+                                blurRadius: 8,
                                 offset: Offset(0, 2)),
                           ],
                         ),
@@ -165,12 +184,14 @@ class RoutineSettingsSheet extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF60D4A0).withValues(alpha: 0.18),
+                            color:
+                                const Color(0xFF60D4A0).withValues(alpha: 0.18),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text('Done',
                               style: TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w700,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
                                 color: Color(0xFF1A8A5A),
                               )),
                         )

@@ -6,6 +6,7 @@ import 'package:optivus2/views/routine/skin_care_setup_screen.dart';
 import 'package:optivus2/views/routine/eating_setup_screen.dart';
 import 'package:optivus2/views/routine/class_setup_screen.dart';
 import 'package:optivus2/views/routine/fixed_schedule_setup_screen.dart';
+import 'package:optivus2/views/routine/supplement_setup_screen.dart';
 
 class RoutineSettingsScreen extends ConsumerWidget {
   const RoutineSettingsScreen({super.key});
@@ -19,6 +20,9 @@ class RoutineSettingsScreen extends ConsumerWidget {
       Navigator.push(context, slideRoute(EatingSetupScreen(onComplete: () {})));
     } else if (f == RoutineFilter.classes) {
       Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {})));
+    } else if (f == RoutineFilter.supplements) {
+      Navigator.push(
+          context, slideRoute(SupplementSetupScreen(onComplete: () {})));
     } else if (f == RoutineFilter.fixedSchedule) {
       Navigator.push(
           context, slideRoute(FixedScheduleSetupScreen(onComplete: () {})));
@@ -95,6 +99,20 @@ class RoutineSettingsScreen extends ConsumerWidget {
                               isDone: s.eatingSetUp,
                               onTap: () =>
                                   _doSetup(context, ref, RoutineFilter.eating),
+                            ),
+                            _buildDivider(),
+                            _buildPrefTile(
+                              emoji: '💊',
+                              title: 'Supplements',
+                              subtitle: 'Plan dosage, timing and reminders',
+                              hasArrow: (s.routineTemplates['supplements'] ??
+                                      const [])
+                                  .isEmpty,
+                              isDone: (s.routineTemplates['supplements'] ??
+                                      const [])
+                                  .isNotEmpty,
+                              onTap: () => _doSetup(
+                                  context, ref, RoutineFilter.supplements),
                             ),
                             _buildDivider(),
                             _buildPrefTile(

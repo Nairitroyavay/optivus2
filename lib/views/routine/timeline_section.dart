@@ -73,7 +73,13 @@ int tlParseMin(String t) {
 
 String tlMealLabel(String t) {
   final h = int.tryParse(t.split(':')[0]) ?? 0;
-  return h < 10 ? 'Breakfast' : h < 14 ? 'Lunch' : h < 17 ? 'Snack' : 'Dinner';
+  return h < 10
+      ? 'Breakfast'
+      : h < 14
+          ? 'Lunch'
+          : h < 17
+              ? 'Snack'
+              : 'Dinner';
 }
 
 String tlNormalizeTime(String t) {
@@ -113,7 +119,11 @@ class TimelineRow extends StatefulWidget {
 
   // ── Task action callbacks (null when block has no taskId) ──
   final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onPause;
+  final ValueChanged<String>? onResume;
   final ValueChanged<String>? onComplete;
+  final ValueChanged<String>? onSkip;
+  final ValueChanged<String>? onAbandon;
 
   const TimelineRow({
     super.key,
@@ -122,7 +132,11 @@ class TimelineRow extends StatefulWidget {
     required this.isLast,
     this.index = 0,
     this.onStart,
+    this.onPause,
+    this.onResume,
     this.onComplete,
+    this.onSkip,
+    this.onAbandon,
   });
 
   @override
@@ -213,7 +227,8 @@ class _TimelineRowState extends State<TimelineRow>
             const SizedBox(width: 10),
             // ── Empty Space ─────────────────────────────────────────────────
             Expanded(
-              child: SizedBox(height: 60), // Fixed height to maintain scroll proportion
+              child: SizedBox(
+                  height: 60), // Fixed height to maintain scroll proportion
             ),
           ],
         ),
@@ -271,7 +286,11 @@ class _TimelineRowState extends State<TimelineRow>
                   _checked.contains(i) ? _checked.remove(i) : _checked.add(i);
                 }),
                 onStart: widget.onStart,
+                onPause: widget.onPause,
+                onResume: widget.onResume,
                 onComplete: widget.onComplete,
+                onSkip: widget.onSkip,
+                onAbandon: widget.onAbandon,
               ),
             ),
           ),
@@ -385,23 +404,31 @@ class _Rail extends StatelessWidget {
         const SizedBox(height: 20),
         // Dot
         Container(
-          width: isEmptyPlaceholder ? 8 : 12, // Smaller dot for empty placeholder
+          width:
+              isEmptyPlaceholder ? 8 : 12, // Smaller dot for empty placeholder
           height: isEmptyPlaceholder ? 8 : 12,
-          margin: isEmptyPlaceholder ? const EdgeInsets.only(left: 2, right: 2) : EdgeInsets.zero,
+          margin: isEmptyPlaceholder
+              ? const EdgeInsets.only(left: 2, right: 2)
+              : EdgeInsets.zero,
           decoration: BoxDecoration(
-            color: isEmptyPlaceholder ? kSub.withValues(alpha: 0.15) : accentColor,
+            color:
+                isEmptyPlaceholder ? kSub.withValues(alpha: 0.15) : accentColor,
             shape: BoxShape.circle,
-            border: isEmptyPlaceholder ? null : Border.all(
-              color: Colors.white.withValues(alpha: 0.85),
-              width: isNow ? 2.5 : 2.0,
-            ),
-            boxShadow: isEmptyPlaceholder ? null : [
-              BoxShadow(
-                color: accentColor.withValues(alpha: isNow ? 0.6 : 0.35),
-                blurRadius: isNow ? 10 : 6,
-                spreadRadius: isNow ? 2 : 0,
-              ),
-            ],
+            border: isEmptyPlaceholder
+                ? null
+                : Border.all(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    width: isNow ? 2.5 : 2.0,
+                  ),
+            boxShadow: isEmptyPlaceholder
+                ? null
+                : [
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: isNow ? 0.6 : 0.35),
+                      blurRadius: isNow ? 10 : 6,
+                      spreadRadius: isNow ? 2 : 0,
+                    ),
+                  ],
           ),
         ),
         // Line
@@ -414,7 +441,9 @@ class _Rail extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    isEmptyPlaceholder ? kSub.withValues(alpha: 0.1) : accentColor.withValues(alpha: 0.30),
+                    isEmptyPlaceholder
+                        ? kSub.withValues(alpha: 0.1)
+                        : accentColor.withValues(alpha: 0.30),
                     kSub.withValues(alpha: 0.08),
                   ],
                 ),
@@ -435,14 +464,22 @@ class _EventCard extends StatefulWidget {
   final Set<int> checked;
   final ValueChanged<int> onToggle;
   final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onPause;
+  final ValueChanged<String>? onResume;
   final ValueChanged<String>? onComplete;
+  final ValueChanged<String>? onSkip;
+  final ValueChanged<String>? onAbandon;
 
   const _EventCard({
     required this.block,
     required this.checked,
     required this.onToggle,
     this.onStart,
+    this.onPause,
+    this.onResume,
     this.onComplete,
+    this.onSkip,
+    this.onAbandon,
   });
 
   @override
@@ -531,9 +568,8 @@ class _EventCardState extends State<_EventCard>
                 // Accent bar
                 Container(
                   width: 3.5,
-                  height: b.subtasks.isEmpty
-                      ? 42
-                      : 42 + b.subtasks.length * 32.0,
+                  height:
+                      b.subtasks.isEmpty ? 42 : 42 + b.subtasks.length * 32.0,
                   margin: const EdgeInsets.only(right: 10, top: 2),
                   decoration: BoxDecoration(
                     color: b.accentColor,
@@ -567,8 +603,7 @@ class _EventCardState extends State<_EventCard>
                     ),
                   ),
                   child: Center(
-                    child: Text(b.emoji,
-                        style: const TextStyle(fontSize: 20)),
+                    child: Text(b.emoji, style: const TextStyle(fontSize: 20)),
                   ),
                 ),
                 const SizedBox(width: 11),
@@ -609,9 +644,7 @@ class _EventCardState extends State<_EventCard>
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        _to12h(b.time) == b.subtitle
-                            ? b.subtitle
-                            : b.subtitle,
+                        _to12h(b.time) == b.subtitle ? b.subtitle : b.subtitle,
                         style: TextStyle(
                           fontSize: 12,
                           color: kSub,
@@ -624,7 +657,11 @@ class _EventCardState extends State<_EventCard>
                         _TaskActionRow(
                           block: b,
                           onStart: widget.onStart,
+                          onPause: widget.onPause,
+                          onResume: widget.onResume,
                           onComplete: widget.onComplete,
+                          onSkip: widget.onSkip,
+                          onAbandon: widget.onAbandon,
                         ),
                       ],
                       // Subtasks
@@ -645,8 +682,7 @@ class _EventCardState extends State<_EventCard>
                                 const SizedBox(width: 9),
                                 Expanded(
                                   child: AnimatedDefaultTextStyle(
-                                    duration:
-                                        const Duration(milliseconds: 200),
+                                    duration: const Duration(milliseconds: 200),
                                     style: TextStyle(
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w500,
@@ -845,8 +881,7 @@ class TimelineEmptyState extends StatelessWidget {
                 ),
               ),
               child: Center(
-                child: Text(m.emoji,
-                    style: const TextStyle(fontSize: 38)),
+                child: Text(m.emoji, style: const TextStyle(fontSize: 38)),
               ),
             ),
             const SizedBox(height: 18),
@@ -854,24 +889,19 @@ class TimelineEmptyState extends StatelessWidget {
               'No ${m.label.toLowerCase()} today',
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: kInk),
+                  fontSize: 18, fontWeight: FontWeight.w800, color: kInk),
             ),
             const SizedBox(height: 8),
             Text(
               'Set up your ${m.label.toLowerCase()} routine\nand it will appear here automatically.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13.5, color: kSub, height: 1.55),
+              style: TextStyle(fontSize: 13.5, color: kSub, height: 1.55),
             ),
             const SizedBox(height: 26),
             SizedBox(
               width: 200,
               child: LiquidButton(
-                  label: 'Set up ${m.label}',
-                  color: m.color,
-                  onTap: onSetup),
+                  label: 'Set up ${m.label}', color: m.color, onTap: onSetup),
             ),
           ],
         ),
@@ -887,12 +917,20 @@ class TimelineEmptyState extends StatelessWidget {
 class _TaskActionRow extends StatelessWidget {
   final DisplayBlock block;
   final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onPause;
+  final ValueChanged<String>? onResume;
   final ValueChanged<String>? onComplete;
+  final ValueChanged<String>? onSkip;
+  final ValueChanged<String>? onAbandon;
 
   const _TaskActionRow({
     required this.block,
     this.onStart,
+    this.onPause,
+    this.onResume,
     this.onComplete,
+    this.onSkip,
+    this.onAbandon,
   });
 
   @override
@@ -902,30 +940,71 @@ class _TaskActionRow extends StatelessWidget {
 
     switch (state) {
       case TaskState.scheduled:
-        return _ActionPill(
-          label: '▶  Start',
-          colors: [const Color(0xFF60D4A0), const Color(0xFF4EC890)],
-          textColor: Colors.white,
-          onTap: () {
-            HapticFeedback.mediumImpact();
-            onStart?.call(taskId);
-          },
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ActionPill(
+              label: 'Start',
+              icon: Icons.play_arrow_rounded,
+              colors: const [Color(0xFF60D4A0), Color(0xFF4EC890)],
+              textColor: Colors.white,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onStart?.call(taskId);
+              },
+            ),
+            _ActionPill(
+              label: 'Skip',
+              icon: Icons.skip_next_rounded,
+              colors: [
+                kSub.withValues(alpha: 0.18),
+                kSub.withValues(alpha: 0.10)
+              ],
+              textColor: kSub,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onSkip?.call(taskId);
+              },
+            ),
+          ],
         );
       case TaskState.started:
-        return Row(
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             _ElapsedTimerChip(startedAt: block.actualStart ?? DateTime.now()),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _ActionPill(
-                label: '✓  Done',
-                colors: [const Color(0xFF34D399), const Color(0xFF10B981)],
-                textColor: Colors.white,
-                onTap: () {
-                  HapticFeedback.mediumImpact();
-                  onComplete?.call(taskId);
-                },
-              ),
+            _ActionPill(
+              label: 'Pause',
+              icon: Icons.pause_rounded,
+              colors: const [Color(0xFFFBBF24), Color(0xFFF59E0B)],
+              textColor: Colors.white,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onPause?.call(taskId);
+              },
+            ),
+            _ActionPill(
+              label: 'Complete',
+              icon: Icons.check_rounded,
+              colors: const [Color(0xFF34D399), Color(0xFF10B981)],
+              textColor: Colors.white,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onComplete?.call(taskId);
+              },
+            ),
+            _ActionPill(
+              label: 'Abandon',
+              icon: Icons.close_rounded,
+              colors: const [Color(0xFFFB7185), Color(0xFFE11D48)],
+              textColor: Colors.white,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onAbandon?.call(taskId);
+              },
             ),
           ],
         );
@@ -955,6 +1034,7 @@ class _TaskActionRow extends StatelessWidget {
           ),
         );
       case TaskState.abandoned:
+      case TaskState.skipped:
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
@@ -978,31 +1058,137 @@ class _TaskActionRow extends StatelessWidget {
           ),
         );
       case TaskState.paused:
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: const Color(0xFFFBBF24).withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.pause_circle_filled_rounded,
-                  size: 14, color: Color(0xFFF59E0B)),
-              const SizedBox(width: 5),
-              Text(
-                'Paused',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFFF59E0B),
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ],
-          ),
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _ActionPill(
+              label: 'Resume',
+              icon: Icons.play_arrow_rounded,
+              colors: const [Color(0xFF60D4A0), Color(0xFF4EC890)],
+              textColor: Colors.white,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onResume?.call(taskId);
+              },
+            ),
+            _ActionPill(
+              label: 'Complete',
+              icon: Icons.check_rounded,
+              colors: const [Color(0xFF34D399), Color(0xFF10B981)],
+              textColor: Colors.white,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onComplete?.call(taskId);
+              },
+            ),
+            _ActionPill(
+              label: 'Abandon',
+              icon: Icons.close_rounded,
+              colors: const [Color(0xFFFB7185), Color(0xFFE11D48)],
+              textColor: Colors.white,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                onAbandon?.call(taskId);
+              },
+            ),
+          ],
         );
     }
+  }
+}
+
+class TimelineStatusState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String message;
+
+  const TimelineStatusState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 44, 28, 80),
+      child: Column(
+        children: [
+          Icon(icon, size: 30, color: kSub),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            style: const TextStyle(
+              color: kInk,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: kSub.withValues(alpha: 0.82)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TimelineDayEmptyState extends StatelessWidget {
+  final VoidCallback onAdd;
+
+  const TimelineDayEmptyState({super.key, required this.onAdd});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 36, 28, 80),
+      child: Column(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: kPurple.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(Icons.add_task_rounded, color: kPurple, size: 34),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No tasks scheduled',
+            style: TextStyle(
+              color: kInk,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Add a one-off task or create a repeating template for this day.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: kSub.withValues(alpha: 0.82), height: 1.4),
+          ),
+          const SizedBox(height: 18),
+          FilledButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Task'),
+            style: FilledButton.styleFrom(
+              backgroundColor: kPurple,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1012,12 +1198,14 @@ class _TaskActionRow extends StatelessWidget {
 
 class _ActionPill extends StatefulWidget {
   final String label;
+  final IconData icon;
   final List<Color> colors;
   final Color textColor;
   final VoidCallback onTap;
 
   const _ActionPill({
     required this.label,
+    required this.icon,
     required this.colors,
     required this.textColor,
     required this.onTap,
@@ -1062,7 +1250,7 @@ class _ActionPillState extends State<_ActionPill>
             Transform.scale(scale: _scale.value, child: child),
         child: Container(
           height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(17),
             gradient: LinearGradient(
@@ -1078,16 +1266,22 @@ class _ActionPillState extends State<_ActionPill>
               ),
             ],
           ),
-          child: Center(
-            child: Text(
-              widget.label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800,
-                color: widget.textColor,
-                letterSpacing: 0.3,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, size: 15, color: widget.textColor),
+              const SizedBox(width: 4),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: widget.textColor,
+                  letterSpacing: 0.3,
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -1159,8 +1353,8 @@ class _ElapsedTimerChipState extends State<_ElapsedTimerChip>
           color: const Color(0xFF34D399).withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: Color(0xFF34D399)
-                .withValues(alpha: _glowOpacity.value * 0.5),
+            color:
+                Color(0xFF34D399).withValues(alpha: _glowOpacity.value * 0.5),
             width: 1.2,
           ),
           boxShadow: [

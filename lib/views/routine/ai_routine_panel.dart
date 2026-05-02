@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +57,9 @@ class AiRoutinePanel extends ConsumerStatefulWidget {
   final List<CustomTask> todayTasks;
   final Future<void> Function(CustomTask) onAddTask;
   final void Function(String taskId) onRemoveTask;
+  final Future<void> Function(AiSuggestion suggestion)? onSuggestionGenerated;
+  final Future<void> Function(AiSuggestion suggestion)? onSuggestionAccepted;
+  final Future<void> Function(AiSuggestion suggestion)? onSuggestionDismissed;
 
   const AiRoutinePanel({
     super.key,
@@ -63,6 +67,9 @@ class AiRoutinePanel extends ConsumerStatefulWidget {
     required this.todayTasks,
     required this.onAddTask,
     required this.onRemoveTask,
+    this.onSuggestionGenerated,
+    this.onSuggestionAccepted,
+    this.onSuggestionDismissed,
   });
 
   @override
@@ -126,34 +133,39 @@ Give 3-5 suggestions. Be specific about times. Keep titles under 8 words.''',
       final parsed = jsonDecode(response) as Map<String, dynamic>;
       final list = (parsed['suggestions'] as List?) ?? [];
 
-      setState(() {
-        _suggestions = list.map((s) {
-          final action = s['action'] == 'remove'
-              ? SuggestionAction.remove
-              : SuggestionAction.add;
-          CustomTask? task;
-          if (action == SuggestionAction.add) {
-            task = CustomTask(
-              id: s['id'] ?? '${DateTime.now().millisecondsSinceEpoch}',
-              title: s['taskTitle'] ?? s['title'],
-              emoji: s['emoji'] ?? '📌',
-              time: s['time'] ?? '09:00',
-              date: DateTime.now(),
-              color: _kPurple,
-            );
-          }
-          return AiSuggestion(
+      final suggestions = list.map((s) {
+        final action = s['action'] == 'remove'
+            ? SuggestionAction.remove
+            : SuggestionAction.add;
+        CustomTask? task;
+        if (action == SuggestionAction.add) {
+          task = CustomTask(
             id: s['id'] ?? '${DateTime.now().millisecondsSinceEpoch}',
-            title: s['title'] ?? '',
-            reason: s['reason'] ?? '',
-            emoji: s['emoji'] ?? '✨',
-            action: action,
-            taskToAdd: task,
+            title: s['taskTitle'] ?? s['title'],
+            emoji: s['emoji'] ?? '📌',
+            time: s['time'] ?? '09:00',
+            date: DateTime.now(),
+            color: _kPurple,
           );
-        }).toList();
+        }
+        return AiSuggestion(
+          id: s['id'] ?? '${DateTime.now().millisecondsSinceEpoch}',
+          title: s['title'] ?? '',
+          reason: s['reason'] ?? '',
+          emoji: s['emoji'] ?? '✨',
+          action: action,
+          taskToAdd: task,
+        );
+      }).toList();
+      setState(() {
+        _suggestions = suggestions;
         _loading = false;
         _suggestionError = null;
       });
+      for (final suggestion in suggestions) {
+        final callback = widget.onSuggestionGenerated;
+        if (callback != null) unawaited(callback(suggestion));
+      }
     } catch (e) {
       setState(() {
         _suggestions = [];
@@ -184,10 +196,8 @@ Be literal — do exactly what they ask.''',
       final parsed = jsonDecode(response) as Map<String, dynamic>;
       final list = (parsed['suggestions'] as List?) ?? [];
 
-      setState(() {
-        _suggestions = [
-          ..._suggestions,
-          ...list.map((s) => AiSuggestion(
+      final suggestions = list
+          .map((s) => AiSuggestion(
                 id: s['id'] ?? '${DateTime.now().millisecondsSinceEpoch}',
                 title: s['title'] ?? '',
                 reason: s['reason'] ?? '',
@@ -201,11 +211,17 @@ Be literal — do exactly what they ask.''',
                   date: DateTime.now(),
                   color: _kPurple,
                 ),
-              )),
-        ];
+              ))
+          .toList();
+      setState(() {
+        _suggestions = [..._suggestions, ...suggestions];
         _loading = false;
         _suggestionError = null;
       });
+      for (final suggestion in suggestions) {
+        final callback = widget.onSuggestionGenerated;
+        if (callback != null) unawaited(callback(suggestion));
+      }
     } catch (e) {
       setState(() {
         _loading = false;
@@ -391,10 +407,13 @@ Be literal — do exactly what they ask.''',
                       if (visible[i].taskToAdd != null) {
                         await widget.onAddTask(visible[i].taskToAdd!);
                       }
+                      await widget.onSuggestionAccepted?.call(visible[i]);
                       setState(() => _dismissed.add(visible[i].id));
                     },
-                    onDismiss: () =>
-                        setState(() => _dismissed.add(visible[i].id)),
+                    onDismiss: () async {
+                      await widget.onSuggestionDismissed?.call(visible[i]);
+                      setState(() => _dismissed.add(visible[i].id));
+                    },
                   ),
                 ),
               ),

@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/task_model.dart';
+import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/services/task_service.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // MODELS
@@ -56,6 +59,85 @@ String _emojiForRoutineTitle(String title) {
   return '📌';
 }
 
+String _routineDateKey(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
+
+String _routineSlug(String value) {
+  final slug = value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  return slug.isEmpty ? 'template' : slug;
+}
+
+String _routineTaskId({
+  required String scheduledDate,
+  required String routineType,
+  required String templateId,
+}) =>
+    'routine_${scheduledDate}_${_routineSlug(routineType)}_${_routineSlug(templateId)}';
+
+DateTime _dateTimeFromRoutineTime(DateTime date, String value,
+    {required String fallback}) {
+  final minutes = _routineMinutesFromTime(
+    _normalizeRoutineTime(value, fallback: fallback),
+  );
+  return DateTime(date.year, date.month, date.day).add(
+    Duration(minutes: minutes),
+  );
+}
+
+DateTime _routineEndAfterStart(DateTime date, String start, String end,
+    {String fallbackEnd = '10:00'}) {
+  final plannedStart = _dateTimeFromRoutineTime(date, start, fallback: '09:00');
+  var plannedEnd = _dateTimeFromRoutineTime(date, end, fallback: fallbackEnd);
+  if (!plannedEnd.isAfter(plannedStart)) {
+    plannedEnd = plannedEnd.add(const Duration(days: 1));
+  }
+  return plannedEnd;
+}
+
+String _normalizeMealTime(String value) {
+  final raw = value.trim();
+  final match = RegExp(r'^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$').firstMatch(raw);
+  if (match != null) {
+    var hour = int.tryParse(match.group(1)!) ?? 12;
+    final minute = int.tryParse(match.group(2)!) ?? 0;
+    final suffix = match.group(3)!.toUpperCase();
+    if (suffix == 'PM' && hour != 12) hour += 12;
+    if (suffix == 'AM' && hour == 12) hour = 0;
+    return _normalizeRoutineTime('$hour:${minute.toString().padLeft(2, '0')}',
+        fallback: '12:00');
+  }
+  return _normalizeRoutineTime(raw, fallback: '12:00');
+}
+
+bool _repeatRuleMatchesDate(String repeatRule, DateTime date) {
+  final rule = repeatRule.trim().toLowerCase();
+  if (rule.isEmpty || rule == 'daily') return true;
+  if (rule == 'once') return false;
+
+  final weekly = RegExp(r'^weekly:(.+)$').firstMatch(rule);
+  if (weekly != null) {
+    final weekdays = weekly
+        .group(1)!
+        .split(',')
+        .map((part) => int.tryParse(part.trim()))
+        .whereType<int>()
+        .toSet();
+    return weekdays.contains(date.weekday);
+  }
+
+  final weekday =
+      RegExp(r'^(weekday|mess_menu_weekday):(\d)$').firstMatch(rule);
+  if (weekday != null) return int.parse(weekday.group(2)!) == date.weekday;
+
+  return true;
+}
+
 /// A fixed block template on the 24-hour schedule (from onboarding "Set Your Fixed Schedule")
 class FixedScheduleTemplate {
   final String templateId;
@@ -66,6 +148,8 @@ class FixedScheduleTemplate {
   final String repeatRule;
   final String category;
   final String notes;
+  final bool reminderEnabled;
+  final int reminderOffsetMinutes;
   final bool isActive;
   final String createdAt;
   final String updatedAt;
@@ -79,6 +163,8 @@ class FixedScheduleTemplate {
     this.repeatRule = 'daily',
     this.category = '',
     this.notes = '',
+    this.reminderEnabled = false,
+    this.reminderOffsetMinutes = 5,
     this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
@@ -90,6 +176,9 @@ class FixedScheduleTemplate {
     String? endTime,
     String? category,
     String? notes,
+    String? repeatRule,
+    bool? reminderEnabled,
+    int? reminderOffsetMinutes,
     bool? isActive,
     String? updatedAt,
   }) =>
@@ -99,9 +188,12 @@ class FixedScheduleTemplate {
         routineType: routineType,
         startTime: startTime ?? this.startTime,
         endTime: endTime ?? this.endTime,
-        repeatRule: repeatRule,
+        repeatRule: repeatRule ?? this.repeatRule,
         category: category ?? this.category,
         notes: notes ?? this.notes,
+        reminderEnabled: reminderEnabled ?? this.reminderEnabled,
+        reminderOffsetMinutes:
+            reminderOffsetMinutes ?? this.reminderOffsetMinutes,
         isActive: isActive ?? this.isActive,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -116,6 +208,8 @@ class FixedScheduleTemplate {
         'repeatRule': repeatRule,
         'category': category,
         'notes': notes,
+        'reminderEnabled': reminderEnabled,
+        'reminderOffsetMinutes': reminderOffsetMinutes,
         'isActive': isActive,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
@@ -131,6 +225,9 @@ class FixedScheduleTemplate {
         repeatRule: m['repeatRule'] ?? 'daily',
         category: _cleanRoutineString(m['category']),
         notes: _cleanRoutineString(m['notes']),
+        reminderEnabled: m['reminderEnabled'] == true,
+        reminderOffsetMinutes:
+            ((m['reminderOffsetMinutes'] as num?)?.toInt() ?? 5).clamp(0, 180),
         isActive: m['isActive'] ?? true,
         createdAt: _cleanRoutineString(m['createdAt']).isNotEmpty
             ? _cleanRoutineString(m['createdAt'])
@@ -149,6 +246,10 @@ class FixedBlock {
   final int startMinute;
   final int endMinute;
   final String colorHex;
+  final String repeatRule;
+  final String notes;
+  final bool reminderEnabled;
+  final int reminderOffsetMinutes;
 
   const FixedBlock({
     required this.id,
@@ -157,6 +258,10 @@ class FixedBlock {
     required this.startMinute,
     required this.endMinute,
     required this.colorHex,
+    this.repeatRule = 'daily',
+    this.notes = '',
+    this.reminderEnabled = false,
+    this.reminderOffsetMinutes = 5,
   });
 
   String get startLabel => _routineTimeLabel(startMinute);
@@ -169,6 +274,10 @@ class FixedBlock {
         'startMinute': startMinute,
         'endMinute': endMinute,
         'colorHex': colorHex,
+        'repeatRule': repeatRule,
+        'notes': notes,
+        'reminderEnabled': reminderEnabled,
+        'reminderOffsetMinutes': reminderOffsetMinutes,
       };
 
   FixedScheduleTemplate toTemplate() {
@@ -178,8 +287,11 @@ class FixedBlock {
       title: title,
       startTime: _routineTimeFromMinutes(startMinute),
       endTime: _routineTimeFromMinutes(endMinute),
+      repeatRule: repeatRule,
       category: '',
-      notes: '',
+      notes: notes,
+      reminderEnabled: reminderEnabled,
+      reminderOffsetMinutes: reminderOffsetMinutes,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -193,6 +305,10 @@ class FixedBlock {
         startMinute: _routineMinutesFromTime(template.startTime),
         endMinute: _routineMinutesFromTime(template.endTime),
         colorHex: '#CBD5E1',
+        repeatRule: template.repeatRule,
+        notes: template.notes,
+        reminderEnabled: template.reminderEnabled,
+        reminderOffsetMinutes: template.reminderOffsetMinutes,
       );
 
   factory FixedBlock.fromMap(Map<String, dynamic> m) => FixedBlock(
@@ -206,6 +322,13 @@ class FixedBlock {
         colorHex: _cleanRoutineString(m['colorHex']).isNotEmpty
             ? _cleanRoutineString(m['colorHex'])
             : '#CBD5E1',
+        repeatRule: _cleanRoutineString(m['repeatRule']).isNotEmpty
+            ? _cleanRoutineString(m['repeatRule'])
+            : 'daily',
+        notes: _cleanRoutineString(m['notes']),
+        reminderEnabled: m['reminderEnabled'] == true,
+        reminderOffsetMinutes:
+            ((m['reminderOffsetMinutes'] as num?)?.toInt() ?? 5).clamp(0, 180),
       );
 }
 
@@ -452,6 +575,10 @@ class RoutineState {
   // Long-Term Goals
   final List<LongTermGoal> longTermGoals;
 
+  // Raw v1 routine templates not yet represented by the legacy setup models
+  // above, e.g. supplements or custom one-off/repeating templates.
+  final Map<String, List<Map<String, dynamic>>> routineTemplates;
+
   const RoutineState({
     this.fixedScheduleTemplates = const [],
     this.fixedScheduleSetUp = false,
@@ -462,6 +589,7 @@ class RoutineState {
     this.classes = const [],
     this.classesSetUp = false,
     this.longTermGoals = const [],
+    this.routineTemplates = const {},
   })  : skinCarePlans = skinCarePlans ??
             const [
               DaySkinPlan(),
@@ -493,6 +621,7 @@ class RoutineState {
     List<ClassItem>? classes,
     bool? classesSetUp,
     List<LongTermGoal>? longTermGoals,
+    Map<String, List<Map<String, dynamic>>>? routineTemplates,
   }) =>
       RoutineState(
         fixedScheduleTemplates:
@@ -505,6 +634,7 @@ class RoutineState {
         classes: classes ?? this.classes,
         classesSetUp: classesSetUp ?? this.classesSetUp,
         longTermGoals: longTermGoals ?? this.longTermGoals,
+        routineTemplates: routineTemplates ?? this.routineTemplates,
       );
 
   // ── Convenience getters ──────────────────────────────────────────────────
@@ -526,23 +656,31 @@ class RoutineState {
 
   // ── Firestore serialization ─────────────────────────────────────────────
 
-  Map<String, dynamic> toMap() => {
-        'templates': {
-          'fixed_schedule':
-              fixedScheduleTemplates.map((e) => e.toMap()).toList(),
-        },
-        'fixedScheduleSetUp': fixedScheduleSetUp,
-        'skinCarePlans': skinCarePlans.map((e) => e.toMap()).toList(),
-        'skinCareSetUp': skinCareSetUp,
-        'mealPlans': mealPlans.map((e) => e.toMap()).toList(),
-        'eatingSetUp': eatingSetUp,
-        'classes': classes.map((e) => e.toMap()).toList(),
-        'classesSetUp': classesSetUp,
-        'longTermGoals': longTermGoals.map((e) => e.toMap()).toList(),
-      };
+  Map<String, dynamic> toMap() {
+    final templates = <String, dynamic>{
+      for (final entry in routineTemplates.entries)
+        entry.key:
+            entry.value.map((e) => Map<String, dynamic>.from(e)).toList(),
+      'fixed_schedule': fixedScheduleTemplates.map((e) => e.toMap()).toList(),
+    };
+
+    return {
+      'templates': templates,
+      'fixedScheduleSetUp': fixedScheduleSetUp,
+      'skinCarePlans': skinCarePlans.map((e) => e.toMap()).toList(),
+      'skinCareSetUp': skinCareSetUp,
+      'mealPlans': mealPlans.map((e) => e.toMap()).toList(),
+      'eatingSetUp': eatingSetUp,
+      'classes': classes.map((e) => e.toMap()).toList(),
+      'classesSetUp': classesSetUp,
+      'longTermGoals': longTermGoals.map((e) => e.toMap()).toList(),
+    };
+  }
 
   factory RoutineState.fromMap(Map<String, dynamic> m) {
-    final templates = m['templates'] as Map<String, dynamic>? ?? {};
+    final templates = m['templates'] is Map
+        ? Map<String, dynamic>.from(m['templates'] as Map)
+        : <String, dynamic>{};
     final fixedSchedule = templates['fixed_schedule'] ?? m['fixedSchedule'];
     final fixedScheduleTemplates = fixedSchedule is List
         ? fixedSchedule
@@ -553,6 +691,14 @@ class RoutineState {
             .map((e) => FixedBlock.fromMap(Map<String, dynamic>.from(e)))
             .map((block) => block.toTemplate())
             .toList();
+    final routineTemplates = <String, List<Map<String, dynamic>>>{
+      for (final entry in templates.entries)
+        if (entry.value is List)
+          entry.key: (entry.value as List)
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(),
+    };
     return RoutineState(
       fixedScheduleTemplates: fixedScheduleTemplates,
       fixedScheduleSetUp:
@@ -572,7 +718,352 @@ class RoutineState {
       longTermGoals: (m['longTermGoals'] as List? ?? [])
           .map((e) => LongTermGoal.fromMap(Map<String, dynamic>.from(e)))
           .toList(),
+      routineTemplates: routineTemplates,
     );
+  }
+}
+
+const _kTerminalTaskStates = {'completed', 'skipped', 'abandoned'};
+
+class _MaterializationCandidate {
+  final TaskModel task;
+  final Map<String, dynamic> configFields;
+  final Map<String, dynamic> materializationMeta;
+  final bool reminderEnabled;
+  final int reminderOffsetMinutes;
+
+  const _MaterializationCandidate({
+    required this.task,
+    required this.configFields,
+    required this.materializationMeta,
+    required this.reminderEnabled,
+    required this.reminderOffsetMinutes,
+  });
+}
+
+List<_MaterializationCandidate> _candidatesForDate(
+  RoutineState state,
+  DateTime date,
+) {
+  final scheduledDate = _routineDateKey(date);
+  final candidates = <_MaterializationCandidate>[];
+  final seenIds = <String>{};
+
+  void addCandidate({
+    required String routineType,
+    required String templateId,
+    required String title,
+    required TaskType taskType,
+    required DateTime plannedStart,
+    required DateTime plannedEnd,
+    required String repeatRule,
+    String? emoji,
+    String? color,
+    String? parentRoutine,
+    String notes = '',
+    bool reminderEnabled = false,
+    int reminderOffsetMinutes = 5,
+    List<Subtask> subtasks = const [],
+    List<String> identityTags = const [],
+  }) {
+    final cleanTitle = title.trim();
+    if (cleanTitle.isEmpty || !plannedEnd.isAfter(plannedStart)) return;
+
+    final id = _routineTaskId(
+      scheduledDate: scheduledDate,
+      routineType: routineType,
+      templateId: templateId,
+    );
+    if (!seenIds.add(id)) return;
+
+    final now = DateTime.now();
+    final task = TaskModel(
+      id: id,
+      type: taskType,
+      parentRoutine: parentRoutine ?? templateId,
+      title: cleanTitle,
+      emoji: emoji,
+      color: color,
+      identityTags: identityTags,
+      plannedStart: plannedStart,
+      plannedEnd: plannedEnd,
+      subtasks: subtasks,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    candidates.add(_MaterializationCandidate(
+      task: task,
+      configFields: {
+        'taskId': task.id,
+        'type': task.type.toJson(),
+        'parentRoutine': task.parentRoutine,
+        'title': task.title,
+        if (task.emoji != null) 'emoji': task.emoji,
+        if (task.color != null) 'color': task.color,
+        'identityTags': task.identityTags,
+        'alarmTier': task.alarmTier.name,
+        'plannedStart': Timestamp.fromDate(task.plannedStart),
+        'plannedEnd': Timestamp.fromDate(task.plannedEnd),
+        'subtasks': task.subtasks.map((s) => s.toMap()).toList(),
+        if (notes.trim().isNotEmpty) 'notes': notes.trim(),
+        'reminderEnabled': reminderEnabled,
+        'reminderOffsetMinutes': reminderOffsetMinutes.clamp(0, 180),
+        'schemaVersion': task.schemaVersion,
+      },
+      materializationMeta: {
+        'status': task.state.toJson(),
+        'sourceRoutineType': routineType,
+        'routineTemplateId': templateId,
+        'scheduledDate': scheduledDate,
+        'repeatRule': repeatRule,
+        'materializedFromTemplateAt': Timestamp.fromDate(now),
+      },
+      reminderEnabled: reminderEnabled,
+      reminderOffsetMinutes: reminderOffsetMinutes.clamp(0, 180),
+    ));
+  }
+
+  if (state.fixedScheduleSetUp) {
+    for (final template in state.fixedScheduleTemplates) {
+      if (!template.isActive) continue;
+      if (!_repeatRuleMatchesDate(template.repeatRule, date)) continue;
+      final plannedStart = _dateTimeFromRoutineTime(
+        date,
+        template.startTime,
+        fallback: '09:00',
+      );
+      addCandidate(
+        routineType: 'fixed_schedule',
+        templateId: template.templateId,
+        title: template.title,
+        taskType: TaskType.fixed,
+        plannedStart: plannedStart,
+        plannedEnd: _routineEndAfterStart(
+          date,
+          template.startTime,
+          template.endTime,
+        ),
+        repeatRule: template.repeatRule,
+        emoji: _emojiForRoutineTitle(template.title),
+        color: '#CBD5E1',
+        notes: template.notes,
+        reminderEnabled: template.reminderEnabled,
+        reminderOffsetMinutes: template.reminderOffsetMinutes,
+        identityTags: [
+          if (template.category.trim().isNotEmpty) template.category.trim(),
+        ],
+      );
+    }
+  }
+
+  final weekdayIndex = (date.weekday - 1).clamp(0, 6);
+  final hasSkinTemplates =
+      (state.routineTemplates['skin_care'] ?? const []).isNotEmpty;
+  final hasClassTemplates =
+      (state.routineTemplates['classes'] ?? const []).isNotEmpty;
+  final hasEatingTemplates =
+      (state.routineTemplates['eating'] ?? const []).isNotEmpty;
+
+  if (state.skinCareSetUp && !hasSkinTemplates) {
+    final plan = state.skinPlanForDay(weekdayIndex);
+    void addSkinSlot(
+      String slot,
+      String title,
+      String time,
+      String emoji,
+      List<SkinStep> steps,
+    ) {
+      if (steps.isEmpty) return;
+      final plannedStart = _dateTimeFromRoutineTime(date, time, fallback: time);
+      addCandidate(
+        routineType: 'skin_care',
+        templateId: 'skin_${date.weekday}_$slot',
+        title: title,
+        taskType: TaskType.skinCare,
+        plannedStart: plannedStart,
+        plannedEnd: plannedStart.add(const Duration(minutes: 15)),
+        repeatRule: 'weekday:${date.weekday}',
+        emoji: emoji,
+        color: slot == 'night' ? '#C084FC' : '#A1F094',
+        subtasks: steps
+            .map((step) =>
+                Subtask(id: _routineSlug(step.name), title: step.name))
+            .toList(),
+        identityTags: const ['skin_care'],
+      );
+    }
+
+    addSkinSlot('morning', 'Morning Skin Care', '07:30', '🌿', plan.morning);
+    addSkinSlot(
+        'afternoon', 'Afternoon Skin Care', '13:00', '💧', plan.afternoon);
+    addSkinSlot('night', 'Night Skin Care', '22:00', '🌙', plan.night);
+  }
+
+  if (state.classesSetUp && !hasClassTemplates) {
+    for (final item in state.classesForDay(date.weekday)) {
+      final plannedStart = _dateTimeFromRoutineTime(
+        date,
+        item.startTime,
+        fallback: '09:00',
+      );
+      addCandidate(
+        routineType: 'classes',
+        templateId:
+            'class_${date.weekday}_${_routineSlug(item.subject)}_${_routineSlug(item.startTime)}',
+        title: item.subject,
+        taskType: TaskType.classBlock,
+        plannedStart: plannedStart,
+        plannedEnd: _routineEndAfterStart(
+          date,
+          item.startTime,
+          item.endTime,
+        ),
+        repeatRule: 'weekly:${date.weekday}',
+        emoji: '🎓',
+        color: item.colorHex,
+        subtasks: [
+          if (item.room.trim().isNotEmpty)
+            Subtask(id: 'room', title: item.room.trim()),
+          if (item.professor.trim().isNotEmpty)
+            Subtask(id: 'professor', title: item.professor.trim()),
+        ],
+        identityTags: const ['classes'],
+      );
+    }
+  }
+
+  if (state.eatingSetUp && !hasEatingTemplates) {
+    for (final meal in state.mealPlanForDay(weekdayIndex).all) {
+      final startTime = _normalizeMealTime(meal.time);
+      final plannedStart =
+          _dateTimeFromRoutineTime(date, startTime, fallback: '12:00');
+      addCandidate(
+        routineType: 'eating',
+        templateId:
+            'meal_${date.weekday}_${_routineSlug(meal.name)}_${_routineSlug(startTime)}',
+        title: meal.name,
+        taskType: TaskType.eating,
+        plannedStart: plannedStart,
+        plannedEnd: plannedStart.add(const Duration(minutes: 30)),
+        repeatRule: 'mess_menu_weekday:${date.weekday}',
+        emoji: meal.emoji.isNotEmpty ? meal.emoji : '🍽️',
+        color: '#FF9560',
+        identityTags: const ['eating'],
+      );
+    }
+  }
+
+  for (final entry in state.routineTemplates.entries) {
+    final routineType = entry.key;
+    if (routineType == 'fixed_schedule') continue;
+
+    for (var i = 0; i < entry.value.length; i++) {
+      final template = entry.value[i];
+      if (template['isActive'] == false) continue;
+      final repeatRule = _cleanRoutineString(template['repeatRule']).isEmpty
+          ? 'daily'
+          : _cleanRoutineString(template['repeatRule']);
+      final targetDate = _cleanRoutineString(template['targetDate']);
+      final startDate = _cleanRoutineString(template['startDate']);
+      final endDate = _cleanRoutineString(template['endDate']);
+      if (targetDate.isNotEmpty && targetDate != scheduledDate) continue;
+      if (startDate.isNotEmpty && scheduledDate.compareTo(startDate) < 0) {
+        continue;
+      }
+      if (endDate.isNotEmpty && scheduledDate.compareTo(endDate) > 0) {
+        continue;
+      }
+      final repeatRuleKey = repeatRule.trim().toLowerCase();
+      final repeatsToday = repeatRuleKey == 'once'
+          ? targetDate == scheduledDate
+          : _repeatRuleMatchesDate(repeatRule, date);
+      if (!repeatsToday) continue;
+
+      final templateId = _cleanRoutineString(template['templateId']).isNotEmpty
+          ? _cleanRoutineString(template['templateId'])
+          : '${routineType}_$i';
+      final candidateRoutineType =
+          _cleanRoutineString(template['routineType']).isNotEmpty
+              ? _cleanRoutineString(template['routineType'])
+              : routineType;
+      final title = _cleanRoutineString(template['title']).isNotEmpty
+          ? _cleanRoutineString(template['title'])
+          : templateId;
+      final startTime = _normalizeRoutineTime(
+        template['startTime'],
+        fallback: '09:00',
+      );
+      final endTime = _normalizeRoutineTime(
+        template['endTime'],
+        fallback: '09:30',
+      );
+      final plannedStart =
+          _dateTimeFromRoutineTime(date, startTime, fallback: '09:00');
+      final subtasks = <Subtask>[
+        for (final step in (template['steps'] as List? ?? const []))
+          if (step is Map && _cleanRoutineString(step['name']).isNotEmpty)
+            Subtask(
+              id: _routineSlug(_cleanRoutineString(step['name'])),
+              title: _cleanRoutineString(step['name']),
+            )
+          else if (step is String && step.trim().isNotEmpty)
+            Subtask(id: _routineSlug(step), title: step.trim()),
+        if (_cleanRoutineString(template['dosage']).isNotEmpty)
+          Subtask(id: 'dosage', title: _cleanRoutineString(template['dosage'])),
+        if (_cleanRoutineString(template['room']).isNotEmpty)
+          Subtask(id: 'room', title: _cleanRoutineString(template['room'])),
+        if (_cleanRoutineString(template['professor']).isNotEmpty)
+          Subtask(
+            id: 'professor',
+            title: _cleanRoutineString(template['professor']),
+          ),
+      ];
+      addCandidate(
+        routineType: candidateRoutineType,
+        templateId: templateId,
+        title: title,
+        taskType: _taskTypeForRoutineType(candidateRoutineType),
+        plannedStart: plannedStart,
+        plannedEnd: _routineEndAfterStart(
+          date,
+          startTime,
+          endTime,
+          fallbackEnd: '09:30',
+        ),
+        repeatRule: repeatRule,
+        emoji: _cleanRoutineString(template['emoji']).isNotEmpty
+            ? _cleanRoutineString(template['emoji'])
+            : _emojiForRoutineTitle(title),
+        color: _cleanRoutineString(template['colorHex']).isNotEmpty
+            ? _cleanRoutineString(template['colorHex'])
+            : null,
+        notes: _cleanRoutineString(template['notes']),
+        reminderEnabled: template['reminderEnabled'] == true,
+        reminderOffsetMinutes:
+            ((template['reminderOffsetMinutes'] as num?)?.toInt() ?? 5)
+                .clamp(0, 180),
+        subtasks: subtasks,
+        identityTags: [candidateRoutineType],
+      );
+    }
+  }
+
+  return candidates;
+}
+
+TaskType _taskTypeForRoutineType(String routineType) {
+  switch (routineType) {
+    case 'fixed_schedule':
+      return TaskType.fixed;
+    case 'skin_care':
+      return TaskType.skinCare;
+    case 'classes':
+      return TaskType.classBlock;
+    case 'eating':
+      return TaskType.eating;
+    default:
+      return TaskType.custom;
   }
 }
 
@@ -583,9 +1074,11 @@ class RoutineState {
 class RoutineNotifier extends StateNotifier<RoutineState> {
   final RoutineRepository _repo;
   final TaskService _taskService;
+  final EventService _eventService;
   Timer? _debounce;
 
-  RoutineNotifier(this._repo, this._taskService) : super(const RoutineState()) {
+  RoutineNotifier(this._repo, this._taskService, this._eventService)
+      : super(const RoutineState()) {
     _loadRoutine();
   }
 
@@ -600,18 +1093,16 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   /// Load from Firestore. First-time users start with an empty routine until
   /// onboarding or setup screens save their actual schedule.
   ///
-  /// Always ends with a `_syncTasksToFirestore()` call so that task docs at
-  /// `/users/{uid}/tasks` are up-to-date after every app start — not just
-  /// after the user explicitly saves a routine change.
+  /// Bootstrap-materialises today + the next 13 days so the Routine tab and
+  /// any other consumer reading `/users/{uid}/tasks` immediately sees the
+  /// latest config — without ever overwriting completed/skipped/abandoned
+  /// historical tasks.
   Future<void> _loadRoutine() async {
     try {
       final saved = await _repo.loadRoutine();
       if (saved != null) {
         state = saved;
-        // Re-sync tasks on every app start so Firestore tasks always reflect
-        // the current config (idempotent: uses merge so in-progress tasks are
-        // never overwritten).
-        _syncTasksToFirestore();
+        unawaited(materializeForWindow(DateTime.now()));
       } else {
         state = const RoutineState();
       }
@@ -622,219 +1113,123 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   }
 
   /// Debounced save — collapses rapid mutations into a single Firestore write.
+  /// After the save, materialises **future days only** (tomorrow + 13 days)
+  /// so an in-flight day's tasks are never edited mid-stream.
   void _saveDebounced() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(seconds: 2), () {
       _repo.saveRoutine(state).then((_) {
-        _syncTasksToFirestore();
+        unawaited(materializeFutureFromTomorrow());
       }).catchError((e) {
         debugPrint('RoutineNotifier: failed to save routine: $e');
       });
     });
   }
 
-  void _syncTasksToFirestore() {
-    final tasks = <TaskModel>[];
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    for (int i = 0; i < 14; i++) {
-      final date = today.add(Duration(days: i));
-      final dateStr =
-          '${date.year}_${date.month.toString().padLeft(2, '0')}_${date.day.toString().padLeft(2, '0')}';
-      final dayIdx = (date.weekday - 1).clamp(0, 6);
-
-      // 1. Fixed Blocks (from Templates)
-      if (state.fixedScheduleSetUp) {
-        for (final tmpl in state.fixedScheduleTemplates) {
-          if (!tmpl.isActive) continue;
-
-          final startMinutes = _routineMinutesFromTime(tmpl.startTime);
-          final endMinutes = _routineMinutesFromTime(tmpl.endTime);
-
-          final plannedStart = date.add(Duration(minutes: startMinutes));
-          DateTime plannedEnd = date.add(Duration(minutes: endMinutes));
-          if (plannedEnd.isBefore(plannedStart)) {
-            plannedEnd =
-                plannedEnd.add(const Duration(days: 1)); // crosses midnight
-          }
-
-          tasks.add(TaskModel(
-            id: 'routine_${dateStr}_fixed_${tmpl.templateId}',
-            type: TaskType.fixed,
-            title: tmpl.title,
-            emoji: _emojiForRoutineTitle(tmpl.title),
-            color: '#CBD5E1', // Default grey, could be mapped by category
-            plannedStart: plannedStart,
-            plannedEnd: plannedEnd,
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-      }
-
-      // 2. Skin Care
-      if (state.skinCareSetUp) {
-        final p = state.skinPlanForDay(dayIdx);
-        if (p.morning.isNotEmpty) {
-          tasks.add(TaskModel(
-            id: 'routine_${dateStr}_skin_morning',
-            type: TaskType.skinCare,
-            title: 'Morning Skin Care',
-            emoji: '🌿',
-            color: '#A1F094', // kMint equiv
-            plannedStart: date.add(const Duration(hours: 7, minutes: 30)),
-            plannedEnd: date.add(const Duration(hours: 7, minutes: 45)),
-            subtasks: p.morning
-                .map((s) => Subtask(id: s.name, title: s.name))
-                .toList(),
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-        if (p.afternoon.isNotEmpty) {
-          tasks.add(TaskModel(
-            id: 'routine_${dateStr}_skin_afternoon',
-            type: TaskType.skinCare,
-            title: 'Afternoon Skin Care',
-            emoji: '💧',
-            color: '#A1F094',
-            plannedStart: date.add(const Duration(hours: 13, minutes: 0)),
-            plannedEnd: date.add(const Duration(hours: 13, minutes: 15)),
-            subtasks: p.afternoon
-                .map((s) => Subtask(id: s.name, title: s.name))
-                .toList(),
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-        if (p.night.isNotEmpty) {
-          tasks.add(TaskModel(
-            id: 'routine_${dateStr}_skin_night',
-            type: TaskType.skinCare,
-            title: 'Night Skin Care',
-            emoji: '🌙',
-            color: '#C084FC', // kPurple equiv
-            plannedStart: date.add(const Duration(hours: 22, minutes: 0)),
-            plannedEnd: date.add(const Duration(hours: 22, minutes: 15)),
-            subtasks:
-                p.night.map((s) => Subtask(id: s.name, title: s.name)).toList(),
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-      }
-
-      // 3. Eating
-      if (state.eatingSetUp) {
-        final mp = state.mealPlanForDay(dayIdx);
-        for (final meal in mp.meals) {
-          // parse HH:MM AM/PM
-          int hour = 0;
-          int min = 0;
-          try {
-            final parts = meal.time.split(' ');
-            if (parts.length == 2) {
-              final timeParts = parts[0].split(':');
-              hour = int.parse(timeParts[0]);
-              min = int.parse(timeParts[1]);
-              if (parts[1].toUpperCase() == 'PM' && hour != 12) hour += 12;
-              if (parts[1].toUpperCase() == 'AM' && hour == 12) hour = 0;
-            } else {
-              // Fallback to 24hr format
-              final timeParts = meal.time.split(':');
-              hour = int.parse(timeParts[0]);
-              min = int.parse(timeParts[1]);
-            }
-          } catch (_) {
-            hour = 12; // fallback
-          }
-          final mealStart = date.add(Duration(hours: hour, minutes: min));
-          tasks.add(TaskModel(
-            id: 'routine_${dateStr}_meal_${meal.name.replaceAll(' ', '_')}',
-            type: TaskType.eating,
-            title: meal.name,
-            emoji: meal.emoji,
-            color: '#FF9560', // kRose equiv
-            plannedStart: mealStart,
-            plannedEnd: mealStart.add(const Duration(minutes: 30)),
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-      }
-
-      // 4. Classes
-      if (state.classesSetUp) {
-        final classes = state.classesForDay(date.weekday);
-        for (final c in classes) {
-          int startH = 0, startM = 0;
-          try {
-            final sp = c.startTime.split(':');
-            startH = int.parse(sp[0]);
-            startM = int.parse(sp[1]);
-          } catch (_) {}
-          int endH = 0, endM = 0;
-          try {
-            final ep = c.endTime.split(':');
-            endH = int.parse(ep[0]);
-            endM = int.parse(ep[1]);
-          } catch (_) {}
-
-          tasks.add(TaskModel(
-            id: 'routine_${dateStr}_class_${c.subject.replaceAll(' ', '_')}',
-            type: TaskType.classBlock,
-            title: c.subject,
-            emoji: '🎓',
-            color: c.colorHex,
-            plannedStart: date.add(Duration(hours: startH, minutes: startM)),
-            plannedEnd: date.add(Duration(hours: endH, minutes: endM)),
-            subtasks: [
-              Subtask(id: 'room', title: c.room),
-              Subtask(id: 'prof', title: c.professor)
-            ],
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-      }
-
-      // 5. Long Term Goals
-      final targetDate = DateTime(date.year, date.month, date.day);
-      for (final g in state.longTermGoals) {
-        final gStart =
-            DateTime(g.startDate.year, g.startDate.month, g.startDate.day);
-        final gEnd = DateTime(g.endDate.year, g.endDate.month, g.endDate.day);
-        if (!targetDate.isBefore(gStart) && !targetDate.isAfter(gEnd)) {
-          int h = 0, m = 0;
-          try {
-            if (g.dailyTaskTime != null) {
-              final sp = g.dailyTaskTime!.split(':');
-              h = int.parse(sp[0]);
-              m = int.parse(sp[1]);
-            }
-          } catch (_) {}
-          final plannedStart = date.add(Duration(hours: h, minutes: m));
-          tasks.add(TaskModel(
-            id: 'routine_${dateStr}_goal_${g.id}',
-            type: TaskType.custom,
-            title: g.title,
-            emoji: g.emoji,
-            color: g.colorHex,
-            plannedStart: plannedStart,
-            plannedEnd: plannedStart.add(const Duration(minutes: 30)),
-            createdAt: now,
-            updatedAt: now,
-          ));
-        }
-      }
-    }
-
-    _taskService.syncRoutineTasks(tasks);
-  }
-
   /// Force an immediate save (e.g. before app goes to background).
   Future<void> saveNow() => _repo.saveRoutine(state);
+
+  // ── Materialisation ─────────────────────────────────────────────────────
+
+  /// Idempotently materialises every routine-derived task for [date].
+  ///
+  /// Per-task semantics:
+  ///   • new task → `taskService.createTask()` (emits `task_scheduled` once)
+  ///                  + a follow-up merge that adds materialisation metadata
+  ///   • existing & terminal (completed/skipped/abandoned) → skip — history is preserved
+  ///   • existing & non-terminal → merge config + metadata only (no event emitted)
+  ///
+  /// Used by the Routine tab when the user picks a date.
+  Future<void> materializeForDate(DateTime date) async {
+    final candidates = _candidatesForDate(state, date);
+    if (candidates.isEmpty) return;
+
+    final existing = await _repo.existingRoutineTaskStatesForDate(date);
+
+    for (final c in candidates) {
+      final existingState =
+          existing[c.task.id] ?? await _repo.taskState(c.task.id);
+
+      if (existingState != null &&
+          _kTerminalTaskStates.contains(existingState)) {
+        continue; // do not overwrite history
+      }
+
+      try {
+        if (existingState == null) {
+          await _taskService.createTask(c.task);
+          await _repo.mergeTaskFields(c.task.id, c.materializationMeta);
+        } else {
+          await _repo.mergeTaskFields(c.task.id, {
+            ...c.configFields,
+            ...c.materializationMeta,
+            'status': existingState,
+          });
+        }
+        if (c.reminderEnabled) {
+          await _scheduleRoutineReminder(c);
+        }
+      } catch (e) {
+        debugPrint('[RoutineNotifier] materialise failed for ${c.task.id}: $e');
+      }
+    }
+  }
+
+  Future<void> _scheduleRoutineReminder(_MaterializationCandidate c) async {
+    final notificationId = 'routine_notification_${c.task.id}';
+    final now = DateTime.now();
+    final requestedFireAt = c.task.plannedStart.subtract(
+      Duration(minutes: c.reminderOffsetMinutes),
+    );
+    final fireAt = requestedFireAt.isAfter(now)
+        ? requestedFireAt
+        : now.add(const Duration(minutes: 1));
+
+    await _repo.saveScheduledNotification(notificationId, {
+      'notificationId': notificationId,
+      'notifId': notificationId,
+      'taskId': c.task.id,
+      if (c.task.parentRoutine != null) 'templateId': c.task.parentRoutine,
+      'title': c.task.title,
+      'category': 'task_reminder',
+      'status': 'scheduled',
+      'source': 'routine_template',
+      'fireAt': Timestamp.fromDate(fireAt),
+      'scheduledFor': Timestamp.fromDate(fireAt),
+      'createdAt': Timestamp.fromDate(now),
+      'updatedAt': Timestamp.fromDate(now),
+    });
+    await _eventService.emit(
+      eventName: EventNames.notificationScheduled,
+      source: 'routine_materializer',
+      eventId: 'event_$notificationId',
+      payload: {
+        'notifId': notificationId,
+        'category': 'task_reminder',
+        'taskId': c.task.id,
+        'fireAt': fireAt.toIso8601String(),
+      },
+    );
+  }
+
+  /// Materialises [days] consecutive calendar days starting at [from].
+  /// Used on app start (today + 13 days) and after onboarding.
+  Future<void> materializeForWindow(DateTime from, {int days = 14}) async {
+    final start = DateTime(from.year, from.month, from.day);
+    for (int i = 0; i < days; i++) {
+      await materializeForDate(start.add(Duration(days: i)));
+    }
+  }
+
+  /// Materialises tomorrow + the following [days] days (default 13 → tomorrow
+  /// through day 14). Used after a routine edit so today's tasks are never
+  /// touched.
+  Future<void> materializeFutureFromTomorrow({int days = 13}) async {
+    final now = DateTime.now();
+    final tomorrow =
+        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    await materializeForWindow(tomorrow, days: days);
+  }
 
   // ── Fixed schedule templates ───────────────────────────────────────────────
 
@@ -961,6 +1356,67 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     );
     _saveDebounced();
   }
+
+  // ── Custom routine templates ─────────────────────────────────────────────
+
+  Future<void> addCustomRoutineTemplate(Map<String, dynamic> template) async {
+    final existing = state.routineTemplates['custom'] ?? const [];
+    final nextTemplates = {
+      ...state.routineTemplates,
+      'custom': [
+        ...existing,
+        Map<String, dynamic>.from(template),
+      ],
+    };
+    state = state.copyWith(routineTemplates: nextTemplates);
+    await _repo.saveRoutine(state);
+    await _emitTemplateCreated(template, fallbackRoutineType: 'custom');
+    await materializeFutureFromTomorrow(days: 30);
+  }
+
+  Future<void> setRoutineTemplates(
+    String routineType,
+    List<Map<String, dynamic>> templates, {
+    Map<String, dynamic>? importMetadata,
+    int materializeDays = 30,
+  }) async {
+    final normalized = templates
+        .map((item) => Map<String, dynamic>.from(item))
+        .where((item) => _cleanRoutineString(item['title']).isNotEmpty)
+        .toList();
+    final nextTemplates = {
+      ...state.routineTemplates,
+      routineType: normalized,
+    };
+    state = state.copyWith(routineTemplates: nextTemplates);
+    await _repo.saveRoutineTemplates(
+      routineType,
+      normalized,
+      importMetadata: importMetadata,
+    );
+    for (final template in normalized) {
+      await _emitTemplateCreated(template, fallbackRoutineType: routineType);
+    }
+    await materializeForWindow(DateTime.now(), days: materializeDays);
+  }
+
+  Future<void> _emitTemplateCreated(
+    Map<String, dynamic> template, {
+    required String fallbackRoutineType,
+  }) async {
+    final templateId = _cleanRoutineString(template['templateId']);
+    if (templateId.isEmpty) return;
+    await _eventService.emit(
+      eventName: EventNames.routineTemplateCreated,
+      source: 'routine_setup',
+      payload: {
+        'templateId': templateId,
+        'routineType': _cleanRoutineString(template['routineType']).isNotEmpty
+            ? _cleanRoutineString(template['routineType'])
+            : fallbackRoutineType,
+      },
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -971,6 +1427,7 @@ final routineProvider = StateNotifierProvider<RoutineNotifier, RoutineState>(
   (ref) => RoutineNotifier(
     ref.read(routineRepositoryProvider),
     ref.read(taskServiceProvider),
+    ref.read(eventServiceProvider),
   ),
 );
 
@@ -979,4 +1436,11 @@ final customTasksProvider =
 
 final isPremiumProvider = StateProvider<bool>((ref) => false);
 
-enum RoutineFilter { all, fixedSchedule, skinCare, classes, eating }
+enum RoutineFilter {
+  all,
+  fixedSchedule,
+  skinCare,
+  supplements,
+  classes,
+  eating
+}

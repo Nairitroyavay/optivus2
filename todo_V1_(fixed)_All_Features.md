@@ -846,12 +846,16 @@ Routine execution, notifications, day close, and AI learning depend on task corr
 
 1 day
 
+#### Status
+
+Completed on 2026-05-02.
+
 #### Done Criteria
 
-- [ ] Task methods exist.
-- [ ] State machine is enforced.
-- [ ] Subtasks persist.
-- [ ] Events match contracts.
+- [x] Task methods exist.
+- [x] State machine is enforced.
+- [x] Subtasks persist.
+- [x] Events match contracts.
 
 ### Task 3.2 - Fix daily routine materialization from reusable templates
 
@@ -904,12 +908,16 @@ Fixed schedule, skin care, supplements, classes, and eating must appear automati
 
 1 day
 
+#### Status
+
+Completed on 2026-05-02.
+
 #### Done Criteria
 
-- [ ] Fixed schedule repeats every day.
-- [ ] No duplicate tasks.
-- [ ] Future edits preserve history.
-- [ ] All routine types can materialize.
+- [x] Fixed schedule repeats every day.
+- [x] No duplicate tasks.
+- [x] Future edits preserve history.
+- [x] All routine types can materialize.
 
 ### Task 3.3 - Build Routine tab controls: Add button, AI button, selected day
 
@@ -962,12 +970,16 @@ Users need to add tasks to any day and access AI suggestions clearly.
 
 1 day
 
+#### Status
+
+Completed on 2026-05-02.
+
 #### Done Criteria
 
-- [ ] Add button exists.
-- [ ] Any selected day task creation works.
-- [ ] AI button exists.
-- [ ] Status-aware task controls work.
+- [x] Add button exists.
+- [x] Any selected day task creation works.
+- [x] AI button exists.
+- [x] Status-aware task controls work.
 
 ### Task 3.4 - Complete routine setup screens and new supplement setup
 
@@ -1023,14 +1035,18 @@ Routine setup must be fast and not require users to manually create too many tas
 
 2 days
 
+#### Status
+
+Completed on 2026-05-02.
+
 #### Done Criteria
 
-- [ ] Fixed schedule unlimited setup works.
-- [ ] Skin care has 3 setup modes.
-- [ ] Supplement setup exists with 2 modes.
-- [ ] Class setup supports upload mode.
-- [ ] Eating setup has 3 modes.
-- [ ] Review-before-save exists.
+- [x] Fixed schedule unlimited setup works.
+- [x] Skin care has 3 setup modes.
+- [x] Supplement setup exists with 2 modes.
+- [x] Class setup supports upload mode.
+- [x] Eating setup has 3 modes.
+- [x] Review-before-save exists.
 
 ### Task 3.5 - Implement day start, day close, and mission ring
 
@@ -1083,12 +1099,16 @@ Daily summaries, streaks, identity progress, AI, and analytics depend on day lif
 
 1 day
 
+#### Status
+
+Completed on 2026-05-02.
+
 #### Done Criteria
 
-- [ ] Day start is idempotent.
-- [ ] Day close handles missed days.
-- [ ] Mission ring works.
-- [ ] Summaries are complete.
+- [x] Day start is idempotent.
+- [x] Day close handles missed days.
+- [x] Mission ring works.
+- [x] Summaries are complete.
 
 ## Phase 4 - Habit and Tracker System
 

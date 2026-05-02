@@ -22,8 +22,10 @@ import 'package:flutter/foundation.dart';
 
 import '../core/constants/event_names.dart';
 import '../models/day_summary_model.dart';
+import '../models/task_model.dart';
 import '../models/user_model.dart';
 import 'event_service.dart';
+import 'state_aggregator_service.dart';
 import 'streak_service.dart';
 
 class RoutineService {
@@ -31,14 +33,17 @@ class RoutineService {
   final FirebaseAuth _auth;
   final EventService _eventService;
   final StreakService _streakService;
+  final StateAggregatorService _stateAggregatorService;
 
   RoutineService({
     required EventService eventService,
     required StreakService streakService,
+    required StateAggregatorService stateAggregatorService,
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
   })  : _eventService = eventService,
         _streakService = streakService,
+        _stateAggregatorService = stateAggregatorService,
         _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance;
 
@@ -59,81 +64,552 @@ class RoutineService {
       final lastDayClosed = userModel.lastDayClosed;
 
       final now = DateTime.now();
-      final yesterday = now.subtract(const Duration(days: 1));
-      final yesterdayStr = _formatDate(yesterday);
+      final todayStr = _formatDate(now);
+      final yesterdayStr = _formatDate(now.subtract(const Duration(days: 1)));
+
+      await runDayStartIfNeeded(now);
 
       if (lastDayClosed != null && lastDayClosed.compareTo(yesterdayStr) >= 0) {
         // Already closed — nothing to do.
         return;
       }
 
-      debugPrint(
-          '[RoutineService] Closing day $yesterdayStr (last: $lastDayClosed)');
+      var dateToClose = lastDayClosed == null
+          ? yesterdayStr
+          : _formatDate(_parseDate(lastDayClosed).add(const Duration(days: 1)));
 
-      // ── Step 1-3: Roll up habit logs and compute / write streak docs ──────
-      //
-      // Habit logs are already normalised in /users/{uid}/habit_logs by
-      // HabitService's dual-write.  StreakService reads exclusively from
-      // that canonical collection so streak computation is safe here.
-      final rollup = await _streakService.runDayCloseRollup(yesterdayStr);
-
-      // ── Step 4: Write dailySummaries/{date} with real metrics ─────────────
-      final summary = DaySummary(
-        date: yesterdayStr,
-        habitsCompleted: rollup.habitsCompleted,
-        habitsBadLogged: rollup.habitsBadLogged,
-        streaksActive: rollup.streaksActive,
-        streaksMilestonesHit: rollup.streaksMilestonesHit,
-        computedAt: now,
-      );
-
-      final batch = _firestore.batch();
-
-      // /users/{uid}/dailySummaries/{date}
-      final summaryRef = _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('dailySummaries')
-          .doc(yesterdayStr);
-      batch.set(summaryRef, summary.toFirestore());
-
-      // Advance lastDayClosed on the user document.
-      final userRef = _firestore.collection('users').doc(uid);
-      batch.update(userRef, {
-        'lastDayClosed': yesterdayStr,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      await batch.commit();
-
-      // ── Step 5-7: Emit day lifecycle events ───────────────────────────────
-      //
-      // Streak-level events (streakExtended, streakBroken, streakMilestoneReached)
-      // were already emitted atomically per-habit inside runDayCloseRollup.
-      // We emit only the day-scope events here.
-
-      await _eventService.emit(
-        eventName: EventNames.dayClosed,
-        payload: {
-          'date': yesterdayStr,
-          'habitsCompleted': rollup.habitsCompleted,
-          'streaksActive': rollup.streaksActive,
-        },
-      );
-
-      await _eventService.emit(
-        eventName: EventNames.routineDaySummarized,
-        payload: {
-          'date': yesterdayStr,
-          'habitsCompleted': rollup.habitsCompleted,
-          'streaksActive': rollup.streaksActive,
-          'milestonesHit': rollup.streaksMilestonesHit,
-        },
-      );
-
-      debugPrint('[RoutineService] Day $yesterdayStr closed successfully.');
+      while (dateToClose.compareTo(todayStr) < 0) {
+        await _closeDate(uid, dateToClose);
+        dateToClose = _formatDate(
+          _parseDate(dateToClose).add(const Duration(days: 1)),
+        );
+      }
     } catch (e, st) {
       debugPrint('[RoutineService] Error in runDayCloseIfNeeded: $e\n$st');
+    }
+  }
+
+  /// Starts today's lifecycle once per local date. Safe to call on app launch.
+  Future<void> runDayStartIfNeeded([DateTime? now]) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    final uid = user.uid;
+    final today = now ?? DateTime.now();
+    final dateStr = _formatDate(today);
+    final eventId = _eventId('day_started', uid, dateStr);
+
+    final eventRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('events')
+        .doc(eventId);
+    if ((await eventRef.get()).exists) return;
+
+    await _materializeTemplatesForDate(uid, today);
+    await _writeContextSnapshot(uid, dateStr, 'day_start');
+    await _eventService.emit(
+      eventName: EventNames.dayStarted,
+      source: 'routine_service',
+      eventId: eventId,
+      payload: {
+        'date': dateStr,
+        'source': 'client',
+      },
+    );
+  }
+
+  Future<void> _closeDate(String uid, String dateStr) async {
+    final summaryRef = _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('dailySummaries')
+        .doc(dateStr);
+    if ((await summaryRef.get()).exists) {
+      await _firestore.collection('users').doc(uid).set({
+        'lastDayClosed': dateStr,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return;
+    }
+
+    debugPrint('[RoutineService] Closing day $dateStr');
+
+    await _markOverdueTasks(uid, dateStr);
+    final rollup = await _streakService.runDayCloseRollup(dateStr);
+    final summary = await computeDailySummary(
+      uid: uid,
+      date: dateStr,
+      rollup: rollup,
+    );
+
+    final batch = _firestore.batch();
+    batch.set(summaryRef, summary.toFirestore());
+    batch.set(
+      _firestore.collection('users').doc(uid),
+      {
+        'lastDayClosed': dateStr,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+
+    await _emitRoutineBlockCompletedEvents(uid, dateStr);
+    await _eventService.emit(
+      eventName: EventNames.routineDaySummarized,
+      source: 'routine_service',
+      eventId: _eventId('routine_day_summarized', uid, dateStr),
+      payload: {
+        'date': dateStr,
+        'tasksCompleted': summary.tasksCompleted,
+        'tasksAbandoned': summary.tasksAbandoned,
+        'habitsCompleted': summary.habitsCompleted,
+        'habitsBadLogged': summary.habitsBadLogged,
+        'streaksActive': summary.streaksActive,
+        'milestonesHit': summary.streaksMilestonesHit,
+        'missionScore': summary.missionScore,
+        'overallPct': summary.overallPct,
+        'perRoutinePct': summary.perRoutinePct,
+      },
+    );
+    await _eventService.emit(
+      eventName: EventNames.dayClosed,
+      source: 'routine_service',
+      eventId: _eventId('day_closed', uid, dateStr),
+      payload: {
+        'date': dateStr,
+        'tasksCompleted': summary.tasksCompleted,
+        'tasksAbandoned': summary.tasksAbandoned,
+        'habitsCompleted': summary.habitsCompleted,
+        'habitsBadLogged': summary.habitsBadLogged,
+        'streaksActive': summary.streaksActive,
+        'missionScore': summary.missionScore,
+        'userState': summary.userState,
+      },
+    );
+    await _stateAggregatorService.updateIdentityProfile(uid);
+    await _writeContextSnapshot(uid, dateStr, 'day_close');
+    debugPrint('[RoutineService] Day $dateStr closed successfully.');
+  }
+
+  Future<DaySummary> computeDailySummary({
+    required String uid,
+    required String date,
+    required DayRollupResult rollup,
+  }) async {
+    final tasks = await _tasksForDate(uid, date);
+    final habitLogs = await _habitLogsForDate(uid, date);
+    final identityProfile = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('identity_profile')
+        .doc('main')
+        .get();
+    final identities = (identityProfile.data()?['identities'] as List? ?? [])
+        .map((item) => _normalizeTag(item.toString()))
+        .where((item) => item.isNotEmpty)
+        .toSet();
+    final identityProgress = <String, double>{
+      for (final identity
+          in (identityProfile.data()?['identities'] as List? ?? const []))
+        identity.toString():
+            ((identityProfile.data()?['progressPct'] as num?) ?? 0).toDouble(),
+    };
+
+    final perRoutine = <String, List<double>>{};
+    var tasksCompleted = 0;
+    var tasksAbandoned = 0;
+    var tasksSkipped = 0;
+    var focusMinutes = 0;
+    var alignedCompletedValue = 0.0;
+    var nonAlignedCompletedValue = 0.0;
+    var maxPossibleValue = 0.0;
+
+    for (final task in tasks) {
+      if (task.state == TaskState.completed) tasksCompleted++;
+      if (task.state == TaskState.abandoned) tasksAbandoned++;
+      if (task.state == TaskState.skipped) tasksSkipped++;
+      focusMinutes += task.actualDurationMin ?? 0;
+
+      final contribution = _routineContribution(task, DateTime.now());
+      if (contribution != null) {
+        perRoutine.putIfAbsent(_routineKey(task), () => []).add(contribution);
+      }
+
+      if (_excludedFromMission(task)) continue;
+      final aligned = task.identityTags
+          .map(_normalizeTag)
+          .any((tag) => identities.contains(tag));
+      final weight = aligned ? 1.0 : 0.5;
+      maxPossibleValue += weight;
+      if (task.state == TaskState.completed) {
+        if (aligned) {
+          alignedCompletedValue += weight;
+        } else {
+          nonAlignedCompletedValue += weight;
+        }
+      }
+    }
+
+    final perRoutinePct = <String, double>{
+      for (final entry in perRoutine.entries)
+        entry.key: entry.value.isEmpty
+            ? 0
+            : entry.value.reduce((a, b) => a + b) / entry.value.length,
+    };
+    final overallPct = perRoutinePct.isEmpty
+        ? 0.0
+        : perRoutinePct.values.reduce((a, b) => a + b) / perRoutinePct.length;
+    final missionPct = maxPossibleValue <= 0
+        ? 0.0
+        : ((alignedCompletedValue + nonAlignedCompletedValue) /
+                maxPossibleValue)
+            .clamp(0.0, 1.0);
+    final slipCounts = <String, int>{};
+    for (final log in habitLogs) {
+      if (log['logType'] != 'slip') continue;
+      final habitId = (log['habitId'] ?? '').toString();
+      if (habitId.isEmpty) continue;
+      slipCounts[habitId] = (slipCounts[habitId] ?? 0) + 1;
+    }
+
+    return DaySummary(
+      date: date,
+      missionScore: (missionPct * 100).round().clamp(0, 100),
+      missionPct: missionPct,
+      overallPct: overallPct,
+      perRoutinePct: perRoutinePct,
+      slipCounts: slipCounts,
+      identityProgress: identityProgress,
+      identityAlignedCompletedValue: alignedCompletedValue,
+      nonAlignedCompletedValue: nonAlignedCompletedValue,
+      maxPossibleValueToday: maxPossibleValue,
+      habitsCompleted: rollup.habitsCompleted,
+      habitsBadLogged: rollup.habitsBadLogged,
+      tasksCompleted: tasksCompleted,
+      tasksAbandoned: tasksAbandoned,
+      tasksSkipped: tasksSkipped,
+      tasksScheduled: tasks.length,
+      focusMinutes: focusMinutes,
+      routinesCompleted:
+          perRoutinePct.values.where((pct) => pct >= 0.999).length,
+      routinesMissed: perRoutinePct.values.where((pct) => pct <= 0).length,
+      streaksActive: rollup.streaksActive,
+      streaksMilestonesHit: rollup.streaksMilestonesHit,
+      addictionsLoggedCount: rollup.habitsBadLogged,
+      userState: _deriveUserState(
+        habitsCompleted: rollup.habitsCompleted,
+        habitsBadLogged: rollup.habitsBadLogged,
+        tasksCompleted: tasksCompleted,
+        tasksAbandoned: tasksAbandoned,
+      ),
+      computedAt: DateTime.now(),
+    );
+  }
+
+  Future<void> _markOverdueTasks(String uid, String dateStr) async {
+    final tasks = await _tasksForDate(uid, dateStr);
+    for (final task in tasks) {
+      if (task.state.isTerminal) continue;
+
+      final now = DateTime.now();
+      final updates = <String, dynamic>{
+        'updatedAt': FieldValue.serverTimestamp()
+      };
+      String outcome;
+      int actualDurationMin;
+      double driftPct;
+      if (task.state == TaskState.scheduled) {
+        outcome = 'skipped';
+        actualDurationMin = 0;
+        driftPct = task.plannedDurationMin > 0 ? -100 : 0;
+        updates.addAll({
+          'state': TaskState.skipped.toJson(),
+          'status': TaskState.skipped.toJson(),
+          'skippedAt': Timestamp.fromDate(now),
+          'actualDurationMin': actualDurationMin,
+          'driftPct': driftPct,
+          'reasonCategory': AbandonReason.autoNoStart.toJson(),
+          'reasonTag': 'day_close',
+        });
+      } else {
+        outcome = 'abandoned';
+        final activeMinutes = task.actualStart == null
+            ? 0
+            : now.difference(task.actualStart!).inMinutes.clamp(0, 100000);
+        actualDurationMin = activeMinutes;
+        driftPct = task.plannedDurationMin > 0
+            ? double.parse(
+                (((activeMinutes - task.plannedDurationMin) /
+                            task.plannedDurationMin) *
+                        100)
+                    .toStringAsFixed(1),
+              )
+            : 0;
+        updates.addAll({
+          'state': TaskState.abandoned.toJson(),
+          'status': TaskState.abandoned.toJson(),
+          'abandonedAt': Timestamp.fromDate(now),
+          'actualDurationMin': actualDurationMin,
+          'driftPct': driftPct,
+          'reasonCategory': AbandonReason.autoIdle.toJson(),
+          'reasonTag': 'day_close',
+        });
+      }
+
+      final batch = _firestore.batch();
+      batch.update(
+        _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('tasks')
+            .doc(task.id),
+        updates,
+      );
+      batch.set(
+        _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('task_outcomes')
+            .doc(task.id),
+        {
+          'taskId': task.id,
+          'outcome': outcome,
+          'plannedStart': Timestamp.fromDate(task.plannedStart),
+          'plannedEnd': Timestamp.fromDate(task.plannedEnd),
+          'plannedDurationMin': task.plannedDurationMin,
+          if (task.actualStart != null)
+            'actualStart': Timestamp.fromDate(task.actualStart!),
+          'actualEnd': Timestamp.fromDate(now),
+          'actualDurationMin': actualDurationMin,
+          'durationDriftPct': driftPct,
+          'subtasksPlanned': task.subtasks.length,
+          'subtasksCompleted': task.subtasks.where((s) => s.checked).length,
+          'reasonCategory': updates['reasonCategory'],
+          'reasonTag': 'day_close',
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      await batch.commit();
+    }
+  }
+
+  Future<void> _emitRoutineBlockCompletedEvents(
+      String uid, String dateStr) async {
+    for (final task in await _tasksForDate(uid, dateStr)) {
+      if (task.state != TaskState.completed || task.parentRoutine == null) {
+        continue;
+      }
+      await _eventService.emit(
+        eventName: EventNames.routineBlockCompleted,
+        source: 'routine_service',
+        eventId: _eventId('routine_block_completed', uid, dateStr, task.id),
+        payload: {
+          'taskId': task.id,
+          'routineType': _routineKey(task),
+          'routineId': task.parentRoutine,
+          'date': dateStr,
+        },
+      );
+    }
+  }
+
+  Future<List<TaskModel>> _tasksForDate(String uid, String dateStr) async {
+    final start = _parseDate(dateStr);
+    final end = start.add(const Duration(days: 1));
+    final snap = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('tasks')
+        .where('plannedStart',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('plannedStart', isLessThan: Timestamp.fromDate(end))
+        .get();
+    return snap.docs.map(TaskModel.fromFirestore).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _habitLogsForDate(
+      String uid, String dateStr) async {
+    final start = _parseDate(dateStr);
+    final end = start.add(const Duration(days: 1));
+    final snap = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('habit_logs')
+        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('occurredAt', isLessThan: Timestamp.fromDate(end))
+        .get();
+    return snap.docs.map((doc) => doc.data()).toList();
+  }
+
+  Future<void> _writeContextSnapshot(
+    String uid,
+    String dateStr,
+    String source,
+  ) async {
+    final snapshot = await _stateAggregatorService.buildSnapshot(uid);
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('ai_context_snapshots')
+        .doc('${dateStr}_$source')
+        .set({
+      ...snapshot.toMap(),
+      'date': dateStr,
+      'source': source,
+      'createdAt': FieldValue.serverTimestamp(),
+      'schemaVersion': 1,
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _materializeTemplatesForDate(String uid, DateTime date) async {
+    final routineSnap = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('routine')
+        .doc('current')
+        .get();
+    final templatesRoot = routineSnap.data()?['templates'];
+    if (templatesRoot is! Map) return;
+
+    final dateStr = _formatDate(date);
+    for (final entry in templatesRoot.entries) {
+      final routineType = entry.key.toString();
+      if (entry.value is! List) continue;
+      for (final raw in entry.value as List) {
+        if (raw is! Map || raw['isActive'] == false) continue;
+        final template = Map<String, dynamic>.from(raw);
+        final repeatRule = (template['repeatRule'] ?? 'daily').toString();
+        if (!_repeatRuleMatchesDate(repeatRule, date)) continue;
+
+        final title = (template['title'] ?? '').toString().trim();
+        if (title.isEmpty) continue;
+        final templateId = (template['templateId'] ?? title).toString();
+        final startTime = _normalizeTime(template['startTime'], '09:00');
+        final endTime = _normalizeTime(template['endTime'], '09:30');
+        final plannedStart = _dateTimeFromTime(date, startTime);
+        var plannedEnd = _dateTimeFromTime(date, endTime);
+        if (!plannedEnd.isAfter(plannedStart)) {
+          plannedEnd = plannedStart.add(const Duration(minutes: 30));
+        }
+
+        final taskId =
+            'routine_${dateStr}_${_slug(routineType)}_${_slug(templateId)}';
+        final taskRef = _firestore
+            .collection('users')
+            .doc(uid)
+            .collection('tasks')
+            .doc(taskId);
+        if ((await taskRef.get()).exists) continue;
+
+        final now = DateTime.now();
+        final task = TaskModel(
+          id: taskId,
+          type: _taskTypeForRoutineType(routineType),
+          parentRoutine: templateId,
+          title: title,
+          emoji: template['emoji']?.toString(),
+          color: template['colorHex']?.toString(),
+          identityTags: [routineType],
+          plannedStart: plannedStart,
+          plannedEnd: plannedEnd,
+          createdAt: now,
+          updatedAt: now,
+        );
+        final batch = _firestore.batch();
+        batch.set(taskRef, {
+          ...task.toFirestore(),
+          'status': TaskState.scheduled.toJson(),
+          'sourceRoutineType': routineType,
+          'routineTemplateId': templateId,
+          'scheduledDate': dateStr,
+          'repeatRule': repeatRule,
+          'materializedFromTemplateAt': FieldValue.serverTimestamp(),
+        });
+        await _eventService.emit(
+          eventName: EventNames.taskScheduled,
+          source: 'routine_service',
+          eventId: _eventId('task_scheduled', uid, taskId),
+          payload: _taskPayload(task),
+          batch: batch,
+        );
+        await batch.commit();
+      }
+    }
+  }
+
+  double? _routineContribution(TaskModel task, DateTime now) {
+    if (_excludedRoutineSkip(task)) return null;
+    switch (task.state) {
+      case TaskState.completed:
+        return 1;
+      case TaskState.started:
+      case TaskState.paused:
+        final elapsed = (task.state == TaskState.paused && task.pausedAt != null
+                ? task.pausedAt!
+                : now)
+            .difference(task.actualStart ?? task.plannedStart)
+            .inMinutes;
+        if (task.plannedDurationMin <= 0) return 0;
+        return (elapsed / task.plannedDurationMin).clamp(0, 0.95).toDouble();
+      case TaskState.abandoned:
+      case TaskState.skipped:
+      case TaskState.scheduled:
+        return 0;
+    }
+  }
+
+  bool _excludedRoutineSkip(TaskModel task) {
+    if (task.state != TaskState.skipped) return false;
+    final tag = (task.reasonTag ?? '').toLowerCase();
+    return tag == 'valid_reason' || tag == 'day_off' || tag == 'illness';
+  }
+
+  bool _excludedFromMission(TaskModel task) => _excludedRoutineSkip(task);
+
+  String _routineKey(TaskModel task) {
+    final type = task.type.toJson();
+    if (type == 'custom' && task.parentRoutine != null) {
+      return task.parentRoutine!;
+    }
+    return type;
+  }
+
+  String _deriveUserState({
+    required int habitsCompleted,
+    required int habitsBadLogged,
+    required int tasksCompleted,
+    required int tasksAbandoned,
+  }) {
+    final positives = habitsCompleted + tasksCompleted;
+    final negatives = habitsBadLogged + tasksAbandoned;
+    if (habitsBadLogged >= 3 && positives == 0) return 'relapsing';
+    if (negatives > 0 && positives > 0) return 'recovering';
+    if (negatives > 0) return 'slipping';
+    return 'on_track';
+  }
+
+  Map<String, dynamic> _taskPayload(TaskModel task) => {
+        'taskId': task.id,
+        'type': task.type.toJson(),
+        'plannedStart': task.plannedStart.toIso8601String(),
+        'plannedEnd': task.plannedEnd.toIso8601String(),
+        'plannedDurationMin': task.plannedDurationMin,
+      };
+
+  TaskType _taskTypeForRoutineType(String routineType) {
+    switch (routineType) {
+      case 'skin_care':
+        return TaskType.skinCare;
+      case 'eating':
+        return TaskType.eating;
+      case 'classes':
+        return TaskType.classBlock;
+      case 'fixed_schedule':
+        return TaskType.fixed;
+      default:
+        return TaskType.custom;
     }
   }
 
@@ -144,4 +620,66 @@ class RoutineService {
       '${dt.year.toString().padLeft(4, '0')}-'
       '${dt.month.toString().padLeft(2, '0')}-'
       '${dt.day.toString().padLeft(2, '0')}';
+
+  static DateTime _parseDate(String value) {
+    final parts = value.split('-').map(int.parse).toList();
+    return DateTime(parts[0], parts[1], parts[2]);
+  }
+
+  static String _eventId(String eventName, String uid, String date,
+          [String extra = '']) =>
+      [
+        'client',
+        eventName,
+        uid,
+        date,
+        if (extra.isNotEmpty) extra,
+      ].map(_slug).join('_');
+
+  static String _slug(String value) {
+    final slug = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return slug.isEmpty ? 'item' : slug;
+  }
+
+  static String _normalizeTag(String value) => value.trim().toLowerCase();
+
+  static String _normalizeTime(Object? value, String fallback) {
+    final match =
+        RegExp(r'^(\d{1,2}):(\d{2})').firstMatch(value?.toString() ?? '');
+    if (match == null) return fallback;
+    final hour = int.tryParse(match.group(1)!) ?? 0;
+    final minute = int.tryParse(match.group(2)!) ?? 0;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+    return '${hour.toString().padLeft(2, '0')}:'
+        '${minute.toString().padLeft(2, '0')}';
+  }
+
+  static DateTime _dateTimeFromTime(DateTime date, String hhmm) {
+    final normalized = _normalizeTime(hhmm, '09:00');
+    final parts = normalized.split(':').map(int.parse).toList();
+    return DateTime(date.year, date.month, date.day, parts[0], parts[1]);
+  }
+
+  static bool _repeatRuleMatchesDate(String repeatRule, DateTime date) {
+    final rule = repeatRule.trim().toLowerCase();
+    if (rule.isEmpty || rule == 'daily') return true;
+    final weekly = RegExp(r'^weekly:(.+)$').firstMatch(rule);
+    if (weekly != null) {
+      final days = weekly
+          .group(1)!
+          .split(',')
+          .map((part) => int.tryParse(part.trim()))
+          .whereType<int>()
+          .toSet();
+      return days.contains(date.weekday);
+    }
+    final weekday =
+        RegExp(r'^(weekday|mess_menu_weekday):(\d)$').firstMatch(rule);
+    if (weekday != null) return int.parse(weekday.group(2)!) == date.weekday;
+    return true;
+  }
 }

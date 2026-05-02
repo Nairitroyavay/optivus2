@@ -1,17 +1,21 @@
 // lib/Routine Screen/routine_tab_impl.dart
 
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/core/utils/uuid_generator.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/providers/routine_provider.dart';
+import 'add_task_sheet.dart';
 import 'skin_care_setup_screen.dart';
 import 'eating_setup_screen.dart';
 import 'class_setup_screen.dart';
+import 'supplement_setup_screen.dart';
 
 import 'fixed_schedule_setup_screen.dart';
 
@@ -37,8 +41,6 @@ class RoutineTab extends ConsumerStatefulWidget {
 class _RoutineTabState extends ConsumerState<RoutineTab> {
   late RoutineFilter _filter;
   bool _aiOpen = false;
-  bool _aiToggle = false;
-  bool _taskToggle = false;
 
   TimelineZoomLevel _zoomLevel = TimelineZoomLevel.day;
   bool _isZooming = false;
@@ -50,6 +52,22 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     final n = DateTime.now();
     return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
   }
+
+  String _dateKey(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  String _slug(String value) {
+    final slug = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return slug.isEmpty ? 'template' : slug;
+  }
+
+  String _hex(Color color) =>
+      '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 
   @override
   void initState() {
@@ -93,24 +111,20 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   Map<DateTime, List<DisplayBlock>> _buildAllBlocks(
     RoutineState s, {
     Map<DateTime, List<TaskModel>> tasksByDay = const {},
+    required DateTime selectedDate,
   }) {
-    Map<DateTime, List<DisplayBlock>> days = {};
-    DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
-
-    // Build blocks for the next 14 days.
-    for (int i = 0; i < 14; i++) {
-      DateTime d = today.add(Duration(days: i));
-      // Pass the Firestore tasks for this specific calendar day.
-      final tasksForDay = tasksByDay[d] ?? const <TaskModel>[];
-      List<DisplayBlock> b =
-          _buildBlocksForDay(s, d, firestoreTasks: tasksForDay);
-      if (b.isNotEmpty || i == 0) {
-        // always include today even if empty
-        days[d] = b;
-      }
-    }
-    return days;
+    final day = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+    );
+    return {
+      day: _buildBlocksForDay(
+        s,
+        day,
+        firestoreTasks: tasksByDay[day] ?? const <TaskModel>[],
+      ),
+    };
   }
 
   List<DisplayBlock> _buildBlocksForDay(
@@ -152,11 +166,17 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         case TaskType.fixed:
           accent = kPurple;
           emoji = task.emoji ?? '📌';
-          blockType = RoutineFilter.all;
+          blockType = RoutineFilter.fixedSchedule;
         default:
-          accent = kPurple;
-          emoji = task.emoji ?? '✨';
-          blockType = RoutineFilter.all;
+          if (task.identityTags.contains('supplements')) {
+            accent = const Color(0xFF14B8A6);
+            emoji = task.emoji ?? '💊';
+            blockType = RoutineFilter.supplements;
+          } else {
+            accent = kPurple;
+            emoji = task.emoji ?? '✨';
+            blockType = RoutineFilter.all;
+          }
       }
 
       if (_filter != RoutineFilter.all && _filter != blockType) continue;
@@ -179,7 +199,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     }
 
     // Fixed blocks repeat every day — include them for all days in the list
-    if (_filter == RoutineFilter.all) {
+    if (_filter == RoutineFilter.all ||
+        _filter == RoutineFilter.fixedSchedule) {
       for (final fb in s.fixedBlocks) {
         final timeStr = tlFmtMin(fb.startMinute);
         if (firestoreTaskTimes.contains('${timeStr}_${fb.title}')) continue;
@@ -366,6 +387,10 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {
         setState(() => _filter = RoutineFilter.classes);
       })));
+    } else if (f == RoutineFilter.supplements) {
+      Navigator.push(context, slideRoute(SupplementSetupScreen(onComplete: () {
+        setState(() => _filter = RoutineFilter.supplements);
+      })));
     } else if (f == RoutineFilter.fixedSchedule) {
       Navigator.push(context,
           slideRoute(FixedScheduleSetupScreen(onComplete: () {
@@ -382,8 +407,11 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       builder: (_) => RoutineSettingsSheet(
         setupDone: {
           RoutineFilter.skinCare: s.skinCareSetUp,
+          RoutineFilter.supplements:
+              (s.routineTemplates['supplements'] ?? const []).isNotEmpty,
           RoutineFilter.classes: s.classesSetUp,
           RoutineFilter.eating: s.eatingSetUp,
+          RoutineFilter.fixedSchedule: s.fixedScheduleSetUp,
         },
         onSetup: (f) {
           Navigator.pop(context);
@@ -501,6 +529,226 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     });
   }
 
+  void _selectDate(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    ref.read(selectedRoutineDateProvider.notifier).state = day;
+    setState(() => _activeDate = day);
+    ref.read(routineProvider.notifier).materializeForDate(day);
+  }
+
+  void _openAddTaskSheet(DateTime selectedDate) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AddTaskSheet(
+        initialDate: selectedDate,
+        onSubmit: _handleAddTask,
+      ),
+    );
+  }
+
+  Future<void> _handleAddTask(AddTaskRequest request) async {
+    if (request.mode == AddTaskMode.oneOff) {
+      await _createOneOffTask(request);
+    } else {
+      await _createRepeatingTemplate(request);
+    }
+    _selectDate(request.date);
+  }
+
+  Future<void> _createOneOffTask(AddTaskRequest request) async {
+    final now = DateTime.now();
+    final taskId = generateId();
+    final task = TaskModel(
+      id: taskId,
+      type: _taskTypeForRoutineType(request.routineType),
+      title: request.title,
+      emoji: request.emoji,
+      color: _hex(request.color),
+      identityTags: [request.category],
+      plannedStart: request.plannedStart,
+      plannedEnd: request.plannedEnd,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    await ref.read(taskServiceProvider).createTask(task);
+    await ref.read(firestoreServiceProvider).saveUserSubdocument(
+      'tasks',
+      taskId,
+      {
+        'scheduledDate': _dateKey(request.date),
+        'status': TaskState.scheduled.toJson(),
+        'sourceRoutineType': request.routineType,
+        'category': request.category,
+        'notes': request.notes,
+        'reminderEnabled': request.reminderEnabled,
+      },
+    );
+
+    if (request.reminderEnabled) {
+      await _scheduleReminder(
+        taskId: taskId,
+        title: request.title,
+        fireAt: request.plannedStart.subtract(const Duration(minutes: 5)),
+        source: 'manual_task',
+      );
+    }
+  }
+
+  Future<void> _createRepeatingTemplate(AddTaskRequest request) async {
+    final now = DateTime.now().toIso8601String();
+    final templateId = generateId();
+    final template = {
+      'templateId': templateId,
+      'title': request.title,
+      'routineType': request.routineType,
+      'startTime': request.startTime,
+      'endTime': request.endTime,
+      'repeatRule': 'daily',
+      'category': request.category,
+      'notes': request.notes,
+      'isActive': true,
+      'startDate': _dateKey(request.date),
+      'createdAt': now,
+      'updatedAt': now,
+    };
+
+    await ref.read(routineProvider.notifier).addCustomRoutineTemplate(template);
+    await ref.read(eventServiceProvider).emit(
+      eventName: EventNames.routineTemplateCreated,
+      source: 'routine_tab',
+      payload: {
+        'templateId': templateId,
+        'routineType': request.routineType,
+      },
+    );
+    await ref.read(routineProvider.notifier).materializeForDate(request.date);
+
+    if (request.reminderEnabled) {
+      final taskId =
+          'routine_${_dateKey(request.date)}_${_slug(request.routineType)}_${_slug(templateId)}';
+      await _scheduleReminder(
+        taskId: taskId,
+        title: request.title,
+        fireAt: request.plannedStart.subtract(const Duration(minutes: 5)),
+        source: 'routine_template',
+        templateId: templateId,
+      );
+    }
+  }
+
+  Future<void> _scheduleReminder({
+    required String taskId,
+    required String title,
+    required DateTime fireAt,
+    required String source,
+    String? templateId,
+  }) async {
+    final notificationId = generateId();
+    final now = DateTime.now();
+    final resolvedFireAt =
+        fireAt.isAfter(now) ? fireAt : now.add(const Duration(minutes: 1));
+    await ref.read(firestoreServiceProvider).saveScheduledNotification(
+      notificationId,
+      {
+        'notificationId': notificationId,
+        'notifId': notificationId,
+        'taskId': taskId,
+        if (templateId != null) 'templateId': templateId,
+        'title': title,
+        'category': 'task_reminder',
+        'status': 'scheduled',
+        'source': source,
+        'fireAt': Timestamp.fromDate(resolvedFireAt),
+        'scheduledFor': Timestamp.fromDate(resolvedFireAt),
+        'createdAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      },
+    );
+    await ref.read(eventServiceProvider).emit(
+      eventName: EventNames.notificationScheduled,
+      source: 'routine_tab',
+      payload: {
+        'notifId': notificationId,
+        'category': 'task_reminder',
+        'taskId': taskId,
+        'fireAt': resolvedFireAt.toIso8601String(),
+      },
+    );
+  }
+
+  Future<void> _saveSuggestion(AiSuggestion suggestion) async {
+    final now = DateTime.now();
+    await ref.read(firestoreServiceProvider).saveSuggestion(
+      suggestion.id,
+      {
+        'suggestionId': suggestion.id,
+        'title': suggestion.title,
+        'reason': suggestion.reason,
+        'emoji': suggestion.emoji,
+        'action': suggestion.action.name,
+        'status': 'generated',
+        'source': 'routine_ai_panel',
+        'createdAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      },
+    );
+    await ref.read(eventServiceProvider).emit(
+      eventName: EventNames.suggestionGenerated,
+      source: 'routine_ai_panel',
+      payload: {'suggestionId': suggestion.id},
+    );
+  }
+
+  Future<void> _acceptSuggestion(AiSuggestion suggestion) async {
+    await ref.read(firestoreServiceProvider).saveSuggestion(
+      suggestion.id,
+      {
+        'status': 'accepted',
+        'acceptedAt': Timestamp.fromDate(DateTime.now()),
+      },
+    );
+    await ref.read(eventServiceProvider).emit(
+      eventName: EventNames.suggestionAccepted,
+      source: 'routine_ai_panel',
+      payload: {'suggestionId': suggestion.id},
+    );
+  }
+
+  Future<void> _dismissSuggestion(AiSuggestion suggestion) async {
+    await ref.read(firestoreServiceProvider).saveSuggestion(
+      suggestion.id,
+      {
+        'status': 'dismissed',
+        'dismissedAt': Timestamp.fromDate(DateTime.now()),
+      },
+    );
+    await ref.read(eventServiceProvider).emit(
+      eventName: EventNames.suggestionDismissed,
+      source: 'routine_ai_panel',
+      payload: {'suggestionId': suggestion.id},
+    );
+  }
+
+  TaskType _taskTypeForRoutineType(String routineType) {
+    switch (routineType) {
+      case 'skin_care':
+        return TaskType.skinCare;
+      case 'classes':
+        return TaskType.classBlock;
+      case 'eating':
+        return TaskType.eating;
+      case 'fixed_schedule':
+        return TaskType.fixed;
+      case 'supplements':
+        return TaskType.custom;
+      default:
+        return TaskType.custom;
+    }
+  }
+
   Widget _buildDayHeaderSliver(DateTime date) {
     final now = DateTime.now();
     final isToday =
@@ -516,16 +764,24 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(routineProvider);
+    final selectedDate = ref.watch(selectedRoutineDateProvider);
+    final selectedDayAsync = ref.watch(selectedRoutineTasksProvider);
 
-    // Watch the 14-day window stream so every day in the timeline has live
-    // Firestore-backed task data, not just today.
+    // Watch the 14-day window stream so zoom views have live Firestore-backed
+    // task density. The day view below uses the selected day stream directly.
     final windowAsync = ref.watch(routineWindowTasksProvider);
     final windowTasks = windowAsync.valueOrNull ?? const <TaskModel>[];
+    final selectedTasks = selectedDayAsync.valueOrNull ?? const <TaskModel>[];
+    final isTimelineLoading =
+        selectedDayAsync.isLoading && selectedDayAsync.valueOrNull == null;
+    final timelineError = selectedDayAsync.hasError
+        ? (selectedDayAsync.error?.toString() ?? 'Could not load tasks.')
+        : null;
 
     // Group the flat task list into a map keyed by calendar day (midnight).
     // This lets _buildBlocksForDay look up tasks per day in O(1).
     final tasksByDay = <DateTime, List<TaskModel>>{};
-    for (final task in windowTasks) {
+    for (final task in [...windowTasks, ...selectedTasks]) {
       final day = DateTime(
         task.plannedStart.year,
         task.plannedStart.month,
@@ -534,11 +790,13 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       tasksByDay.putIfAbsent(day, () => []).add(task);
     }
 
-    final days = _buildAllBlocks(s, tasksByDay: tasksByDay);
+    final days = _buildAllBlocks(
+      s,
+      tasksByDay: tasksByDay,
+      selectedDate: selectedDate,
+    );
 
-    final displayDate = (_activeDate != null && days.containsKey(_activeDate))
-        ? _activeDate!
-        : (days.isNotEmpty ? days.keys.first : DateTime.now());
+    final displayDate = selectedDate;
 
     return LiquidBg(
       colors: const [Color(0xFFA3FF91), Color(0xFFEFFEEC)],
@@ -570,24 +828,18 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _GlassToggle(
-                                active: _aiToggle,
-                                baseColor: const Color(0xFF86EFAC),
-                                onChanged: (v) => setState(() {
-                                  _aiToggle = v;
-                                  _aiOpen = v;
-                                }),
-                                knobIcon: Icons.hub_rounded,
+                              _HeaderActionButton(
+                                icon: Icons.hub_rounded,
                                 label: 'AI',
+                                color: const Color(0xFF86EFAC),
+                                onTap: () => setState(() => _aiOpen = true),
                               ),
                               const SizedBox(width: 10),
-                              _GlassToggle(
-                                active: _taskToggle,
-                                baseColor: const Color(0xFFD8B4FE),
-                                onChanged: (v) =>
-                                    setState(() => _taskToggle = v),
-                                knobIcon: Icons.playlist_add_rounded,
-                                label: null,
+                              _HeaderActionButton(
+                                icon: Icons.add_rounded,
+                                label: 'Add',
+                                color: const Color(0xFFD8B4FE),
+                                onTap: () => _openAddTaskSheet(selectedDate),
                               ),
                               const SizedBox(width: 8),
                               _SettingsPill(onTap: () => _openSettings(s)),
@@ -618,6 +870,11 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      _DateStrip(
+                        selectedDate: selectedDate,
+                        onSelected: _selectDate,
+                      ),
                     ],
                   ),
                 ),
@@ -643,17 +900,20 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                           ? TimelineWeekView(
                               activeDate: displayDate,
                               routineState: s,
-                              filter: _filter)
+                              filter: _filter,
+                              tasksByDay: tasksByDay)
                           : _zoomLevel == TimelineZoomLevel.month
                               ? TimelineMonthView(
                                   activeDate: displayDate,
                                   routineState: s,
-                                  filter: _filter)
+                                  filter: _filter,
+                                  tasksByDay: tasksByDay)
                               : _zoomLevel == TimelineZoomLevel.year
                                   ? TimelineYearView(
                                       activeDate: displayDate,
                                       routineState: s,
-                                      filter: _filter)
+                                      filter: _filter,
+                                      tasksByDay: tasksByDay)
                                   // Default Day View
                                   : NotificationListener<ScrollNotification>(
                                       onNotification: (notif) {
@@ -663,68 +923,121 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                                       child: CustomScrollView(
                                         physics: const BouncingScrollPhysics(),
                                         slivers: [
-                                          for (final entry in days.entries) ...[
-                                            // Day anchor (used for scroll detection)
+                                          if (isTimelineLoading)
+                                            const SliverToBoxAdapter(
+                                              child: TimelineStatusState(
+                                                icon: Icons
+                                                    .hourglass_empty_rounded,
+                                                title: 'Loading timeline',
+                                                message:
+                                                    'Fetching tasks for this day.',
+                                              ),
+                                            )
+                                          else if (timelineError != null)
                                             SliverToBoxAdapter(
-                                              // Add key to SizedBox so it provides a RenderBox instead of RenderSliver
-                                              child: SizedBox(
-                                                  key: _getKeyFor(entry.key),
-                                                  height: 1),
-                                            ),
-                                            // Day header — skip for today (already shown in main header)
-                                            _buildDayHeaderSliver(entry.key),
-                                            // Only show empty state for filters when there's actually nothing scheduled
-                                            // (Filtering still drops blocks if they don't match, so if scheduled is empty we show 24 nulls)
-                                            if (entry.value.every((b) =>
-                                                    b.isEmptyPlaceholder) &&
-                                                _filter != RoutineFilter.all)
+                                              child: TimelineStatusState(
+                                                icon:
+                                                    Icons.error_outline_rounded,
+                                                title: 'Timeline unavailable',
+                                                message: timelineError,
+                                              ),
+                                            )
+                                          else
+                                            for (final entry
+                                                in days.entries) ...[
+                                              // Day anchor (used for scroll detection)
                                               SliverToBoxAdapter(
-                                                child: Padding(
+                                                // Add key to SizedBox so it provides a RenderBox instead of RenderSliver
+                                                child: SizedBox(
+                                                    key: _getKeyFor(entry.key),
+                                                    height: 1),
+                                              ),
+                                              // Day header — skip for today (already shown in main header)
+                                              _buildDayHeaderSliver(entry.key),
+                                              // Only show empty state for filters when there's actually nothing scheduled
+                                              // (Filtering still drops blocks if they don't match, so if scheduled is empty we show 24 nulls)
+                                              if (entry.value.every((b) =>
+                                                      b.isEmptyPlaceholder) &&
+                                                  _filter != RoutineFilter.all)
+                                                SliverToBoxAdapter(
+                                                  child: Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                            top: 20,
+                                                            bottom: 60),
+                                                    child: TimelineEmptyState(
+                                                        filter: _filter,
+                                                        onSetup: () =>
+                                                            _doSetup(_filter)),
+                                                  ),
+                                                )
+                                              else if (entry.value.every(
+                                                  (b) => b.isEmptyPlaceholder))
+                                                SliverToBoxAdapter(
+                                                  child: TimelineDayEmptyState(
+                                                    onAdd: () =>
+                                                        _openAddTaskSheet(
+                                                            entry.key),
+                                                  ),
+                                                )
+                                              else
+                                                SliverPadding(
                                                   padding:
                                                       const EdgeInsets.only(
-                                                          top: 20, bottom: 60),
-                                                  child: TimelineEmptyState(
-                                                      filter: _filter,
-                                                      onSetup: () =>
-                                                          _doSetup(_filter)),
-                                                ),
-                                              )
-                                            else
-                                              SliverPadding(
-                                                padding: const EdgeInsets.only(
-                                                    bottom: 24),
-                                                sliver: SliverList(
-                                                  delegate:
-                                                      SliverChildBuilderDelegate(
-                                                    (_, i) => TimelineRow(
-                                                      block: entry.value[i],
-                                                      index: i,
-                                                      showHourLabel: i == 0 ||
-                                                          entry.value[i].time
-                                                                  .split(
-                                                                      ':')[0] !=
-                                                              entry.value[i - 1]
-                                                                  .time
-                                                                  .split(
-                                                                      ':')[0],
-                                                      isLast: i ==
-                                                          entry.value.length -
-                                                              1,
-                                                      onStart: (taskId) => ref
-                                                          .read(
-                                                              taskServiceProvider)
-                                                          .startTask(taskId),
-                                                      onComplete: (taskId) => ref
-                                                          .read(
-                                                              taskServiceProvider)
-                                                          .completeTask(taskId),
+                                                          bottom: 24),
+                                                  sliver: SliverList(
+                                                    delegate:
+                                                        SliverChildBuilderDelegate(
+                                                      (_, i) => TimelineRow(
+                                                        block: entry.value[i],
+                                                        index: i,
+                                                        showHourLabel: i == 0 ||
+                                                            entry.value[i].time
+                                                                        .split(
+                                                                            ':')[
+                                                                    0] !=
+                                                                entry
+                                                                    .value[
+                                                                        i - 1]
+                                                                    .time
+                                                                    .split(
+                                                                        ':')[0],
+                                                        isLast: i ==
+                                                            entry.value.length -
+                                                                1,
+                                                        onStart: (taskId) => ref
+                                                            .read(
+                                                                taskServiceProvider)
+                                                            .startTask(taskId),
+                                                        onComplete: (taskId) => ref
+                                                            .read(
+                                                                taskServiceProvider)
+                                                            .completeTask(
+                                                                taskId),
+                                                        onPause: (taskId) => ref
+                                                            .read(
+                                                                taskServiceProvider)
+                                                            .pauseTask(taskId),
+                                                        onResume: (taskId) => ref
+                                                            .read(
+                                                                taskServiceProvider)
+                                                            .resumeTask(taskId),
+                                                        onSkip: (taskId) => ref
+                                                            .read(
+                                                                taskServiceProvider)
+                                                            .skipTask(taskId),
+                                                        onAbandon: (taskId) => ref
+                                                            .read(
+                                                                taskServiceProvider)
+                                                            .abandonTask(
+                                                                taskId),
+                                                      ),
+                                                      childCount:
+                                                          entry.value.length,
                                                     ),
-                                                    childCount:
-                                                        entry.value.length,
                                                   ),
                                                 ),
-                                              ),
-                                          ],
+                                            ],
                                           const SliverPadding(
                                               padding:
                                                   EdgeInsets.only(bottom: 120)),
@@ -756,20 +1069,24 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                   routineState: s,
                   todayTasks: (ref.read(customTasksProvider)[_todayKey] ?? []),
                   onAddTask: (t) async {
-                    final plannedStart = _dateTimeForCustomTask(t);
-                    await ref.read(taskServiceProvider).createTask(TaskModel(
-                          id: generateId(),
-                          type: TaskType.custom,
-                          title: t.title,
-                          emoji: t.emoji,
-                          color:
-                              '#${(t.color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}',
-                          plannedStart: plannedStart,
-                          plannedEnd:
-                              plannedStart.add(const Duration(minutes: 30)),
-                          createdAt: DateTime.now(),
-                          updatedAt: DateTime.now(),
-                        ));
+                    await _createOneOffTask(AddTaskRequest(
+                      mode: AddTaskMode.oneOff,
+                      title: t.title,
+                      date: t.date,
+                      time: TimeOfDay(
+                        hour: int.tryParse(t.time.split(':').first) ?? 9,
+                        minute: t.time.split(':').length > 1
+                            ? int.tryParse(t.time.split(':')[1]) ?? 0
+                            : 0,
+                      ),
+                      durationMinutes: 30,
+                      routineType: 'custom',
+                      category: 'Personal',
+                      notes: 'Added from AI suggestion.',
+                      reminderEnabled: false,
+                      emoji: t.emoji,
+                      color: t.color,
+                    ));
                     final map = Map<String, List<CustomTask>>.from(
                         ref.read(customTasksProvider));
                     map[_todayKey] = [...(map[_todayKey] ?? []), t];
@@ -783,6 +1100,9 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                         .toList();
                     ref.read(customTasksProvider.notifier).state = map;
                   },
+                  onSuggestionGenerated: _saveSuggestion,
+                  onSuggestionAccepted: _acceptSuggestion,
+                  onSuggestionDismissed: _dismissSuggestion,
                 )),
 
           // ─── Setup Popup Overlays ──────────────────────────────────
@@ -842,21 +1162,26 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                     .withValues(alpha: 0.20), // Slight deep amber/brown tint
               ),
             ),
+          if ((s.routineTemplates['supplements'] ?? const []).isEmpty &&
+              _filter == RoutineFilter.supplements)
+            Positioned.fill(
+              child: _buildSetupPopup(
+                emoji: '💊',
+                title: 'No supplements today',
+                subtitle:
+                    'Set up supplements\nand they will appear here automatically',
+                buttonText: 'Set up Supplements',
+                filter: RoutineFilter.supplements,
+                buttonColors: [
+                  const Color(0xFF5EEAD4),
+                  const Color(0xFF14B8A6)
+                ],
+                shadowColor: const Color(0xFF14B8A6).withValues(alpha: 0.4),
+                glassColor: const Color(0xFF021312).withValues(alpha: 0.20),
+              ),
+            ),
         ]),
       ),
-    );
-  }
-
-  DateTime _dateTimeForCustomTask(CustomTask task) {
-    final parts = task.time.split(':');
-    final hour = parts.isNotEmpty ? int.tryParse(parts[0]) ?? 9 : 9;
-    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-    return DateTime(
-      task.date.year,
-      task.date.month,
-      task.date.day,
-      hour.clamp(0, 23),
-      minute.clamp(0, 59),
     );
   }
 
@@ -1055,6 +1380,126 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
 // _TimelineRow, _EmptyState → now TimelineRow, TimelineEmptyState in timeline_section.dart
 
+class _HeaderActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _HeaderActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 17),
+      label: Text(label),
+      style: FilledButton.styleFrom(
+        backgroundColor: color.withValues(alpha: 0.9),
+        foregroundColor: const Color(0xFF0F172A),
+        elevation: 0,
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        textStyle: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+    );
+  }
+}
+
+class _DateStrip extends StatelessWidget {
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onSelected;
+
+  const _DateStrip({
+    required this.selectedDate,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final days = List.generate(14, (index) => today.add(Duration(days: index)));
+
+    return SizedBox(
+      height: 54,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: days.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final day = days[index];
+          final selected = DateUtils.isSameDay(day, selectedDate);
+          return InkWell(
+            onTap: () => onSelected(day),
+            borderRadius: BorderRadius.circular(14),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 62,
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFF0F111A)
+                    : Colors.white.withValues(alpha: 0.52),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: selected
+                      ? Colors.transparent
+                      : Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    index == 0
+                        ? 'TOD'
+                        : index == 1
+                            ? 'TMR'
+                            : [
+                                'MON',
+                                'TUE',
+                                'WED',
+                                'THU',
+                                'FRI',
+                                'SAT',
+                                'SUN'
+                              ][day.weekday - 1],
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: selected ? Colors.white70 : kSub,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: selected ? Colors.white : kInk,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SETTINGS PILL  — transparent liquid-drop glass bubble
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1125,219 +1570,6 @@ class _SettingsPill extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GLASS TOGGLE  — iOS-style glassmorphic toggle with stretch animation
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _GlassToggle extends StatefulWidget {
-  final bool active;
-  final Color baseColor;
-  final ValueChanged<bool> onChanged;
-  final IconData knobIcon;
-  final String? label; // shown inside knob when off if non-null
-
-  const _GlassToggle({
-    required this.active,
-    required this.baseColor,
-    required this.onChanged,
-    required this.knobIcon,
-    this.label,
-  });
-
-  @override
-  State<_GlassToggle> createState() => _GlassToggleState();
-}
-
-class _GlassToggleState extends State<_GlassToggle>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _slideAnim;
-  late Animation<double> _squishAnim;
-
-  // pill dimensions
-  static const double _trackW = 68.0;
-  static const double _trackH = 36.0;
-  static const double _knobSize = 30.0;
-  static const double _pad = 3.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    );
-    _slideAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic);
-    _squishAnim = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.18), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 1.18, end: 1.0), weight: 60),
-    ]).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
-
-    if (widget.active) _ctrl.value = 1.0;
-  }
-
-  @override
-  void didUpdateWidget(_GlassToggle old) {
-    super.didUpdateWidget(old);
-    if (widget.active != old.active) {
-      widget.active ? _ctrl.forward() : _ctrl.reverse();
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _onTap() => widget.onChanged(!widget.active);
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.baseColor;
-    final darkColor = HSLColor.fromColor(color)
-        .withLightness(
-            (HSLColor.fromColor(color).lightness - 0.10).clamp(0.0, 1.0))
-        .toColor();
-
-    return GestureDetector(
-      onTap: _onTap,
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (context, _) {
-          final t = _slideAnim.value;
-          final squish = _squishAnim.value;
-
-          // Max travel distance for knob
-          final maxTravel = _trackW - _knobSize - _pad * 2;
-          final knobX = _pad + t * maxTravel;
-
-          return SizedBox(
-            width: _trackW,
-            height: _trackH,
-            child: Stack(
-              children: [
-                // ── Track / pill body ───────────────────────────────────
-                Positioned.fill(
-                  child: Transform.scale(
-                    scaleX: squish,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(_trackH / 2),
-                        // Glassy fill: color at full opacity when on, muted when off
-                        color: Color.lerp(
-                          color.withValues(alpha: 0.45),
-                          color.withValues(alpha: 0.90),
-                          t,
-                        ),
-                        border: Border.all(
-                          color: Color.lerp(
-                            Colors.white.withValues(alpha: 0.60),
-                            Colors.white.withValues(alpha: 0.85),
-                            t,
-                          )!,
-                          width: 1.8,
-                        ),
-                        boxShadow: [
-                          // Outer glow (colour-tinted when on)
-                          BoxShadow(
-                            color: Color.lerp(
-                              Colors.black.withValues(alpha: 0.08),
-                              darkColor.withValues(alpha: 0.38),
-                              t,
-                            )!,
-                            blurRadius: 12,
-                            spreadRadius: 0,
-                            offset: const Offset(0, 4),
-                          ),
-                          // Inner top-edge highlight (glass rim)
-                          BoxShadow(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            blurRadius: 0,
-                            spreadRadius: -1,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      // Inner gloss layer
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: Container(
-                          height: _trackH * 0.45,
-                          margin:
-                              const EdgeInsets.only(top: 2, left: 6, right: 6),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withValues(alpha: 0.50),
-                                Colors.white.withValues(alpha: 0.0),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Knob ────────────────────────────────────────────────
-                Positioned(
-                  left: knobX,
-                  top: (_trackH - _knobSize) / 2,
-                  child: Container(
-                    width: _knobSize,
-                    height: _knobSize,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.18),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                        BoxShadow(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          blurRadius: 0,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: widget.label != null
-                          ? Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(widget.knobIcon,
-                                    size: 10, color: const Color(0xFF475569)),
-                                Text(
-                                  widget.label!,
-                                  style: const TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w900,
-                                    color: Color(0xFF1E293B),
-                                    height: 1.0,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Icon(widget.knobIcon,
-                              size: 16, color: const Color(0xFF475569)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
       ),
     );
   }

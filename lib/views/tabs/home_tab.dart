@@ -8,6 +8,7 @@ import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/streak_model.dart';
+import 'package:optivus2/providers/identity_provider.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,6 +108,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
               padding: EdgeInsets.only(top: headerH, bottom: 120),
               children: [
                 _missionCard(),
+                _endOfDayPrompt(),
                 _habitSection(),
                 _streakSection(),
                 _routinesSection(),
@@ -262,17 +264,36 @@ class _HomeTabState extends ConsumerState<HomeTab>
   // ── Today's Mission ────────────────────────────────────────────────────────
   Widget _missionCard() {
     final tasksAsync = ref.watch(todayTasksProvider);
+    final identity = ref.watch(identityProvider).valueOrNull;
     final tasks = tasksAsync.valueOrNull ?? [];
-    final totalTasks = tasks.length;
+    final identities = identity?.identities
+            .map((item) => item.trim().toLowerCase())
+            .where((item) => item.isNotEmpty)
+            .toSet() ??
+        const <String>{};
+    final scoredTasks =
+        tasks.where((task) => !_isValidReasonSkip(task)).toList();
+    final totalTasks = scoredTasks.length;
     final completedTasks =
-        tasks.where((t) => t.state == TaskState.completed).length;
+        scoredTasks.where((t) => t.state == TaskState.completed).length;
     final plannedMinutes =
-        tasks.fold<int>(0, (sum, task) => sum + task.plannedDurationMin);
-    final completedMinutes = tasks.fold<int>(
+        scoredTasks.fold<int>(0, (sum, task) => sum + task.plannedDurationMin);
+    final completedMinutes = scoredTasks.fold<int>(
       0,
       (sum, task) => sum + (task.actualDurationMin ?? 0),
     );
-    final progress = totalTasks > 0 ? completedTasks / totalTasks : 0.0;
+    var completedValue = 0.0;
+    var maxValue = 0.0;
+    for (final task in scoredTasks) {
+      final aligned = task.identityTags
+          .map((tag) => tag.trim().toLowerCase())
+          .any(identities.contains);
+      final weight = aligned ? 1.0 : 0.5;
+      maxValue += weight;
+      if (task.state == TaskState.completed) completedValue += weight;
+    }
+    final progress = maxValue > 0 ? completedValue / maxValue : 0.0;
+    final isLoading = tasksAsync.isLoading && tasks.isEmpty;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
@@ -300,10 +321,26 @@ class _HomeTabState extends ConsumerState<HomeTab>
             const SizedBox(height: 20),
             AnimatedBuilder(
               animation: _ringAnim,
-              builder: (context, child) =>
-                  _MissionRing(progress: progress * _ringAnim.value),
+              builder: (context, child) => _MissionRing(
+                progress: progress * _ringAnim.value,
+                isLoading: isLoading,
+              ),
             ),
             const SizedBox(height: 20),
+            if (isLoading)
+              const Text('Loading today...',
+                  style: TextStyle(fontSize: 13, color: _kSubtext))
+            else if (totalTasks == 0)
+              const Text('No mission tasks scheduled yet',
+                  style: TextStyle(fontSize: 13, color: _kSubtext))
+            else
+              Text(
+                maxValue == 0
+                    ? 'No identity-linked tasks yet'
+                    : 'Identity-weighted progress',
+                style: const TextStyle(fontSize: 13, color: _kSubtext),
+              ),
+            const SizedBox(height: 14),
             // Stat pills
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -317,6 +354,73 @@ class _HomeTabState extends ConsumerState<HomeTab>
         ),
       ),
     );
+  }
+
+  bool _isValidReasonSkip(TaskModel task) {
+    if (task.state != TaskState.skipped) return false;
+    final tag = (task.reasonTag ?? '').toLowerCase();
+    return tag == 'valid_reason' || tag == 'day_off' || tag == 'illness';
+  }
+
+  Widget _endOfDayPrompt() {
+    final tasks = ref.watch(todayTasksProvider).valueOrNull ?? const [];
+    final userData = ref.watch(currentUserDocumentProvider).valueOrNull;
+    final now = DateTime.now();
+    final configuredTime = _parseTodayTime(
+      userData?['endOfDayPromptTime'] ??
+          userData?['sleepTime'] ??
+          userData?['sleep_time'],
+    );
+    final afterSleepBlock = tasks.any((task) {
+      final title = task.title.toLowerCase();
+      return title.contains('sleep') && now.isAfter(task.plannedStart);
+    });
+    final showPrompt = afterSleepBlock ||
+        (configuredTime != null && now.isAfter(configuredTime)) ||
+        (configuredTime == null && now.hour >= 22);
+    if (!showPrompt) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      child: LiquidCard(
+        radius: 22,
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        child: Row(
+          children: [
+            const Icon(Icons.nightlight_round, color: _kRingDark),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'End-of-day check-in is ready',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: _kInk,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                ref.read(routineServiceProvider).runDayCloseIfNeeded();
+              },
+              child: const Text('Review'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  DateTime? _parseTodayTime(Object? value) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})')
+        .firstMatch(value?.toString().trim() ?? '');
+    if (match == null) return null;
+    final hour = int.tryParse(match.group(1)!);
+    final minute = int.tryParse(match.group(2)!);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, hour, minute);
   }
 
   Widget _statPill(String label, String value) {
@@ -790,7 +894,8 @@ class _TaskRow extends StatelessWidget {
 
 class _MissionRing extends StatelessWidget {
   final double progress;
-  const _MissionRing({required this.progress});
+  final bool isLoading;
+  const _MissionRing({required this.progress, this.isLoading = false});
 
   @override
   Widget build(BuildContext context) {
@@ -804,7 +909,7 @@ class _MissionRing extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '${(progress * 100).round()}%',
+                isLoading ? '--%' : '${(progress * 100).round()}%',
                 style: const TextStyle(
                     fontSize: 38,
                     fontWeight: FontWeight.w900,

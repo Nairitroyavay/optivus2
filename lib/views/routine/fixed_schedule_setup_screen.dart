@@ -16,6 +16,9 @@ class SetupBlockItem {
   bool isMini;
   bool hasTopTape;
   bool hasBottomTape;
+  String repeatRule;
+  String notes;
+  bool reminderEnabled;
 
   String get displayStartTime => _formatTime(start);
   String get displayEndTime => _formatTime(start + duration);
@@ -31,6 +34,9 @@ class SetupBlockItem {
     this.isMini = false,
     this.hasTopTape = false,
     this.hasBottomTape = false,
+    this.repeatRule = 'daily',
+    this.notes = '',
+    this.reminderEnabled = false,
   });
 
   static String _formatTime(double hour) {
@@ -62,6 +68,9 @@ class SetupBlockItem {
       startMinute: startMinute,
       endMinute: endMinute,
       colorHex: colorHex,
+      repeatRule: repeatRule,
+      notes: notes,
+      reminderEnabled: reminderEnabled,
     );
   }
 
@@ -93,6 +102,9 @@ class SetupBlockItem {
       hasTopTape: tape,
       hasBottomTape: tape,
       isMini: min,
+      repeatRule: b.repeatRule,
+      notes: b.notes,
+      reminderEnabled: b.reminderEnabled,
     );
   }
 }
@@ -188,9 +200,12 @@ class _FixedScheduleSetupScreenState
     final item = items[index];
 
     TextEditingController nameCtrl = TextEditingController(text: item.title);
+    TextEditingController notesCtrl = TextEditingController(text: item.notes);
 
     double tempStart = item.start;
     double tempDuration = item.isAdd ? 1.5 : item.duration;
+    String tempRepeatRule = item.repeatRule;
+    bool tempReminder = item.reminderEnabled;
 
     await showDialog(
         context: context,
@@ -226,6 +241,43 @@ class _FixedScheduleSetupScreenState
                       ),
                     ),
                     const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: tempRepeatRule,
+                      decoration: const InputDecoration(
+                        labelText: 'Repeat days',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'daily', child: Text('Daily')),
+                        DropdownMenuItem(
+                            value: 'weekly:1,2,3,4,5', child: Text('Weekdays')),
+                        DropdownMenuItem(
+                            value: 'weekly:6,7', child: Text('Weekends')),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => tempRepeatRule = value);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notesCtrl,
+                      minLines: 2,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        labelText: 'Notes',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Reminder'),
+                      value: tempReminder,
+                      onChanged: (value) =>
+                          setDialogState(() => tempReminder = value),
+                    ),
+                    const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -310,6 +362,9 @@ class _FixedScheduleSetupScreenState
                               : nameCtrl.text;
                           item.start = tempStart;
                           item.duration = tempDuration;
+                          item.repeatRule = tempRepeatRule;
+                          item.notes = notesCtrl.text.trim();
+                          item.reminderEnabled = tempReminder;
                           if (item.isAdd) {
                             item.isAdd = false;
                             item.hasTopTape = true;

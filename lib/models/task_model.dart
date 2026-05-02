@@ -7,12 +7,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Task lifecycle states.
+///
+/// State machine:
+///   scheduled → started → paused/resumed → completed
+///   scheduled → skipped
+///   started/paused → abandoned
+///   completed, skipped, abandoned are terminal.
 enum TaskState {
   scheduled,
   started,
   paused,
   completed,
-  abandoned;
+  abandoned,
+  skipped;
 
   static TaskState fromString(String? value) {
     switch (value) {
@@ -24,6 +31,8 @@ enum TaskState {
         return TaskState.completed;
       case 'abandoned':
         return TaskState.abandoned;
+      case 'skipped':
+        return TaskState.skipped;
       default:
         return TaskState.scheduled;
     }
@@ -31,6 +40,11 @@ enum TaskState {
 
   /// Serialises to the snake_case string stored in Firestore and events.
   String toJson() => name;
+
+  bool get isTerminal =>
+      this == TaskState.completed ||
+      this == TaskState.abandoned ||
+      this == TaskState.skipped;
 }
 
 /// Task type — which routine category this block belongs to.
@@ -174,6 +188,7 @@ class TaskModel {
   final DateTime? actualEnd;
   final DateTime? pausedAt;
   final DateTime? abandonedAt;
+  final DateTime? skippedAt;
   final int? actualDurationMin;
   final int? totalPauseDurationMin;
   final double? driftPct;
@@ -206,6 +221,7 @@ class TaskModel {
     this.actualEnd,
     this.pausedAt,
     this.abandonedAt,
+    this.skippedAt,
     this.actualDurationMin,
     this.totalPauseDurationMin,
     this.driftPct,
@@ -245,6 +261,7 @@ class TaskModel {
       actualEnd: _asDateTime(d['actualEnd']),
       pausedAt: _asDateTime(d['pausedAt']),
       abandonedAt: _asDateTime(d['abandonedAt']),
+      skippedAt: _asDateTime(d['skippedAt']),
       actualDurationMin: d['actualDurationMin'] as int?,
       totalPauseDurationMin: d['totalPauseDurationMin'] as int?,
       driftPct: (d['driftPct'] as num?)?.toDouble(),
@@ -283,6 +300,7 @@ class TaskModel {
       actualEnd: _asDateTime(map['actualEnd']),
       pausedAt: _asDateTime(map['pausedAt']),
       abandonedAt: _asDateTime(map['abandonedAt']),
+      skippedAt: _asDateTime(map['skippedAt']),
       actualDurationMin: map['actualDurationMin'] as int?,
       totalPauseDurationMin: map['totalPauseDurationMin'] as int?,
       driftPct: (map['driftPct'] as num?)?.toDouble(),
@@ -321,6 +339,7 @@ class TaskModel {
         'pausedAt': Timestamp.fromDate(pausedAt!),
       if (abandonedAt != null)
         'abandonedAt': Timestamp.fromDate(abandonedAt!),
+      if (skippedAt != null) 'skippedAt': Timestamp.fromDate(skippedAt!),
       if (actualDurationMin != null) 'actualDurationMin': actualDurationMin,
       if (totalPauseDurationMin != null)
         'totalPauseDurationMin': totalPauseDurationMin,
@@ -348,6 +367,9 @@ class TaskModel {
     /// Pass [clearAbandonedAt] = true to set abandonedAt to null.
     bool clearAbandonedAt = false,
     DateTime? abandonedAt,
+    /// Pass [clearSkippedAt] = true to set skippedAt to null.
+    bool clearSkippedAt = false,
+    DateTime? skippedAt,
     int? actualDurationMin,
     int? totalPauseDurationMin,
     double? driftPct,
@@ -372,6 +394,7 @@ class TaskModel {
       actualEnd: actualEnd ?? this.actualEnd,
       pausedAt: clearPausedAt ? null : (pausedAt ?? this.pausedAt),
       abandonedAt: clearAbandonedAt ? null : (abandonedAt ?? this.abandonedAt),
+      skippedAt: clearSkippedAt ? null : (skippedAt ?? this.skippedAt),
       actualDurationMin: actualDurationMin ?? this.actualDurationMin,
       totalPauseDurationMin:
           totalPauseDurationMin ?? this.totalPauseDurationMin,

@@ -10,10 +10,21 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class DaySummary {
   final String date; // "YYYY-MM-DD", also used as doc ID
   final int missionScore; // 0-100
+  final double missionPct; // 0.0-1.0, same value as missionScore / 100
+  final double overallPct; // 0.0-1.0 weighted/equal routine completion
+  final Map<String, double> perRoutinePct;
+  final Map<String, int> slipCounts;
+  final Map<String, double> identityProgress;
+  final double identityAlignedCompletedValue;
+  final double nonAlignedCompletedValue;
+  final double maxPossibleValueToday;
   final int habitsCompleted;
   final int habitsBadLogged;
   final int tasksCompleted;
   final int tasksAbandoned;
+  final int tasksSkipped;
+  final int tasksScheduled;
+  final int focusMinutes;
   final int routinesCompleted;
   final int routinesMissed;
   final int streaksActive;
@@ -28,10 +39,21 @@ class DaySummary {
   const DaySummary({
     required this.date,
     this.missionScore = 0,
+    double? missionPct,
+    this.overallPct = 0,
+    this.perRoutinePct = const {},
+    this.slipCounts = const {},
+    this.identityProgress = const {},
+    this.identityAlignedCompletedValue = 0,
+    this.nonAlignedCompletedValue = 0,
+    this.maxPossibleValueToday = 0,
     this.habitsCompleted = 0,
     this.habitsBadLogged = 0,
     this.tasksCompleted = 0,
     this.tasksAbandoned = 0,
+    this.tasksSkipped = 0,
+    this.tasksScheduled = 0,
+    this.focusMinutes = 0,
     this.routinesCompleted = 0,
     this.routinesMissed = 0,
     this.streaksActive = 0,
@@ -42,26 +64,38 @@ class DaySummary {
     this.userState = 'on_track',
     required this.computedAt,
     this.schemaVersion = 1,
-  });
+  }) : missionPct = missionPct ?? missionScore / 100;
 
-  factory DaySummary.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory DaySummary.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
+    final missionScore = _asInt(data['missionScore']);
     return DaySummary(
       date: data['date'] as String? ?? doc.id,
-      missionScore: data['missionScore'] as int? ?? 0,
-      habitsCompleted: data['habitsCompleted'] as int? ?? 0,
-      habitsBadLogged: data['habitsBadLogged'] as int? ?? 0,
-      tasksCompleted: data['tasksCompleted'] as int? ?? 0,
-      tasksAbandoned: data['tasksAbandoned'] as int? ?? 0,
-      routinesCompleted: data['routinesCompleted'] as int? ?? 0,
-      routinesMissed: data['routinesMissed'] as int? ?? 0,
-      streaksActive: data['streaksActive'] as int? ?? 0,
-      streaksMilestonesHit: List<String>.from(
-          data['streaksMilestonesHit'] as List? ?? []),
-      screenTimeMinutes: data['screenTimeMinutes'] as int? ?? 0,
-      addictionsLoggedCount: data['addictionsLoggedCount'] as int? ?? 0,
-      stressMarkersCount: data['stressMarkersCount'] as int? ?? 0,
+      missionScore: missionScore,
+      missionPct: _asDouble(data['missionPct'], fallback: missionScore / 100),
+      overallPct: _asDouble(data['overallPct']),
+      perRoutinePct: _asDoubleMap(data['perRoutinePct']),
+      slipCounts: _asIntMap(data['slipCounts']),
+      identityProgress: _asDoubleMap(data['identityProgress']),
+      identityAlignedCompletedValue:
+          _asDouble(data['identityAlignedCompletedValue']),
+      nonAlignedCompletedValue: _asDouble(data['nonAlignedCompletedValue']),
+      maxPossibleValueToday: _asDouble(data['maxPossibleValueToday']),
+      habitsCompleted: _asInt(data['habitsCompleted']),
+      habitsBadLogged: _asInt(data['habitsBadLogged']),
+      tasksCompleted: _asInt(data['tasksCompleted']),
+      tasksAbandoned: _asInt(data['tasksAbandoned']),
+      tasksSkipped: _asInt(data['tasksSkipped']),
+      tasksScheduled: _asInt(data['tasksScheduled']),
+      focusMinutes: _asInt(data['focusMinutes']),
+      routinesCompleted: _asInt(data['routinesCompleted']),
+      routinesMissed: _asInt(data['routinesMissed']),
+      streaksActive: _asInt(data['streaksActive']),
+      streaksMilestonesHit:
+          List<String>.from(data['streaksMilestonesHit'] as List? ?? []),
+      screenTimeMinutes: _asInt(data['screenTimeMinutes']),
+      addictionsLoggedCount: _asInt(data['addictionsLoggedCount']),
+      stressMarkersCount: _asInt(data['stressMarkersCount']),
       userState: data['userState'] as String? ?? 'on_track',
       computedAt: data['computedAt'] != null
           ? (data['computedAt'] as Timestamp).toDate()
@@ -74,10 +108,21 @@ class DaySummary {
     return {
       'date': date,
       'missionScore': missionScore,
+      'missionPct': missionPct,
+      'overallPct': overallPct,
+      'perRoutinePct': perRoutinePct,
+      'slipCounts': slipCounts,
+      'identityProgress': identityProgress,
+      'identityAlignedCompletedValue': identityAlignedCompletedValue,
+      'nonAlignedCompletedValue': nonAlignedCompletedValue,
+      'maxPossibleValueToday': maxPossibleValueToday,
       'habitsCompleted': habitsCompleted,
       'habitsBadLogged': habitsBadLogged,
       'tasksCompleted': tasksCompleted,
       'tasksAbandoned': tasksAbandoned,
+      'tasksSkipped': tasksSkipped,
+      'tasksScheduled': tasksScheduled,
+      'focusMinutes': focusMinutes,
       'routinesCompleted': routinesCompleted,
       'routinesMissed': routinesMissed,
       'streaksActive': streaksActive,
@@ -90,4 +135,31 @@ class DaySummary {
       'schemaVersion': schemaVersion,
     };
   }
+}
+
+int _asInt(Object? value, {int fallback = 0}) {
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return fallback;
+}
+
+double _asDouble(Object? value, {double fallback = 0}) {
+  if (value is num) return value.toDouble();
+  return fallback;
+}
+
+Map<String, double> _asDoubleMap(Object? value) {
+  if (value is! Map) return const {};
+  return {
+    for (final entry in value.entries)
+      entry.key.toString(): _asDouble(entry.value),
+  };
+}
+
+Map<String, int> _asIntMap(Object? value) {
+  if (value is! Map) return const {};
+  return {
+    for (final entry in value.entries)
+      entry.key.toString(): _asInt(entry.value),
+  };
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // WEEK VIEW — 7 horizontal columns representing Mon-Sun
@@ -9,12 +10,14 @@ class TimelineWeekView extends StatelessWidget {
   final RoutineState routineState;
   final RoutineFilter filter;
   final DateTime activeDate;
+  final Map<DateTime, List<TaskModel>> tasksByDay;
 
   const TimelineWeekView({
     super.key,
     required this.routineState,
     required this.filter,
     required this.activeDate,
+    this.tasksByDay = const {},
   });
 
   @override
@@ -98,7 +101,12 @@ class TimelineWeekView extends StatelessWidget {
   List<Color> _dayPills(DateTime day) {
     final dayIndex = (day.weekday - 1).clamp(0, 6);
     final colors = <Color>[];
+    final dayKey = DateTime(day.year, day.month, day.day);
 
+    colors.addAll((tasksByDay[dayKey] ?? const <TaskModel>[])
+        .where((task) =>
+            filter == RoutineFilter.all || _matchesFilter(task, filter))
+        .map(_colorForTask));
     if (filter == RoutineFilter.all || filter == RoutineFilter.fixedSchedule) {
       colors.addAll(routineState.fixedBlocks.map((_) => kSub));
     }
@@ -107,6 +115,10 @@ class TimelineWeekView extends StatelessWidget {
       if (plan.morning.isNotEmpty) colors.add(kMint);
       if (plan.afternoon.isNotEmpty) colors.add(kMint);
       if (plan.night.isNotEmpty) colors.add(kPurple);
+    }
+    if (filter == RoutineFilter.all || filter == RoutineFilter.supplements) {
+      colors.addAll((routineState.routineTemplates['supplements'] ?? const [])
+          .map((_) => const Color(0xFF14B8A6)));
     }
     if (filter == RoutineFilter.all || filter == RoutineFilter.eating) {
       colors.addAll(
@@ -140,12 +152,14 @@ class TimelineMonthView extends StatelessWidget {
   final RoutineState routineState;
   final RoutineFilter filter;
   final DateTime activeDate;
+  final Map<DateTime, List<TaskModel>> tasksByDay;
 
   const TimelineMonthView({
     super.key,
     required this.routineState,
     required this.filter,
     required this.activeDate,
+    this.tasksByDay = const {},
   });
 
   @override
@@ -192,6 +206,14 @@ class TimelineMonthView extends StatelessWidget {
                 }
 
                 final int day = index - offset + 1;
+                final dayKey = DateTime(activeDate.year, activeDate.month, day);
+                final taskColors = (tasksByDay[dayKey] ?? const <TaskModel>[])
+                    .where((task) =>
+                        filter == RoutineFilter.all ||
+                        _matchesFilter(task, filter))
+                    .map(_colorForTask)
+                    .take(3)
+                    .toList();
                 final bool isToday = activeDate.year == DateTime.now().year &&
                     activeDate.month == DateTime.now().month &&
                     day == DateTime.now().day;
@@ -225,9 +247,10 @@ class TimelineMonthView extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _dot(kMint),
-                          if (day % 3 == 0) _dot(kBlue),
-                          if (day % 5 == 0) _dot(kPurple),
+                          if (taskColors.isEmpty)
+                            _dot(kSub.withValues(alpha: 0.35))
+                          else
+                            ...taskColors.map(_dot),
                         ],
                       ),
                     ],
@@ -259,12 +282,14 @@ class TimelineYearView extends StatelessWidget {
   final RoutineState routineState;
   final RoutineFilter filter;
   final DateTime activeDate;
+  final Map<DateTime, List<TaskModel>> tasksByDay;
 
   const TimelineYearView({
     super.key,
     required this.routineState,
     required this.filter,
     required this.activeDate,
+    this.tasksByDay = const {},
   });
 
   @override
@@ -298,6 +323,13 @@ class TimelineYearView extends StatelessWidget {
         itemBuilder: (context, index) {
           final isCurrentMonth = activeDate.year == DateTime.now().year &&
               index + 1 == DateTime.now().month;
+          final monthTaskCount = tasksByDay.entries.where((entry) {
+            return entry.key.year == activeDate.year &&
+                entry.key.month == index + 1 &&
+                entry.value.any((task) =>
+                    filter == RoutineFilter.all ||
+                    _matchesFilter(task, filter));
+          }).length;
 
           return Container(
             decoration: BoxDecoration(
@@ -329,7 +361,8 @@ class TimelineYearView extends StatelessWidget {
                   spacing: 2,
                   runSpacing: 2,
                   children: List.generate(20, (i) {
-                    final alpha = 0.1 + (i % 3) * 0.2;
+                    final alpha =
+                        i < monthTaskCount ? 0.45 : 0.1 + (i % 3) * 0.08;
                     return Container(
                       width: 6,
                       height: 6,
@@ -347,5 +380,37 @@ class TimelineYearView extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+bool _matchesFilter(TaskModel task, RoutineFilter filter) {
+  switch (filter) {
+    case RoutineFilter.fixedSchedule:
+      return task.type == TaskType.fixed;
+    case RoutineFilter.skinCare:
+      return task.type == TaskType.skinCare;
+    case RoutineFilter.supplements:
+      return task.identityTags.contains('supplements');
+    case RoutineFilter.classes:
+      return task.type == TaskType.classBlock;
+    case RoutineFilter.eating:
+      return task.type == TaskType.eating;
+    case RoutineFilter.all:
+      return true;
+  }
+}
+
+Color _colorForTask(TaskModel task) {
+  switch (task.type) {
+    case TaskType.skinCare:
+      return kMint;
+    case TaskType.eating:
+      return kRose;
+    case TaskType.classBlock:
+      return kBlue;
+    case TaskType.fixed:
+      return kPurple;
+    default:
+      return kSub;
   }
 }

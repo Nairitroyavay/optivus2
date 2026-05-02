@@ -253,7 +253,7 @@ Return only the final coach message text, with no JSON or markdown.''';
         (onboarding?['badHabits'] as List?)?.join(', ') ?? 'None specified';
 
     final today = DateTime.now();
-    final tasks = await _taskService.tasksFor(today).first;
+    final tasks = await _taskService.watchTasksForDay(today).first;
     final todayTasks = tasks.isEmpty
         ? 'None scheduled for today.'
         : tasks
