@@ -181,6 +181,54 @@ final allStreaksProvider = StreamProvider<List<Streak>>((ref) {
   return streakService.watchAllStreaks();
 });
 
+/// Real-time stream of a single streak document by id.
+final streakByIdProvider =
+    StreamProvider.family<Streak?, String>((ref, streakId) {
+  final streakService = ref.watch(streakServiceProvider);
+  return streakService.watchStreak(streakId);
+});
+
+/// Real-time stream of habit logs for a habit over the trailing [days] window.
+/// Used by the streak heatmap to color cells per day.
+final habitLogsForRangeProvider =
+    StreamProvider.family<List<HabitLog>, ({String habitId, int days})>(
+  (ref, args) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Stream.value(const <HabitLog>[]);
+
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: args.days - 1));
+
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('habit_logs')
+        .where('habitId', isEqualTo: args.habitId)
+        .where('occurredAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .snapshots()
+        .map((snap) => snap.docs.map(HabitLog.fromFirestore).toList());
+  },
+);
+
+/// Real-time stream of daily summaries for the trailing [days] window.
+/// Used to render routine-streak history when habit logs aren't applicable.
+final recentDailySummariesProvider =
+    StreamProvider.family<List<DaySummary>, int>((ref, days) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(const <DaySummary>[]);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('dailySummaries')
+      .orderBy('date', descending: true)
+      .limit(days)
+      .snapshots()
+      .map((snap) => snap.docs.map(DaySummary.fromFirestore).toList());
+});
+
 /// Real-time stream of today's habit logs.
 final todayHabitLogsProvider = StreamProvider<List<HabitLog>>((ref) {
   final habitService = ref.watch(habitServiceProvider);

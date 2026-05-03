@@ -1415,11 +1415,15 @@ Users need to see history and trust the streak math.
 
 4h
 
+#### Status
+
+Completed on 2026-05-03.
+
 #### Done Criteria
 
-- [ ] Detail screen exists.
-- [ ] Heatmap exists.
-- [ ] Data matches logs.
+- [x] Detail screen exists.
+- [x] Heatmap exists.
+- [x] Data matches logs.
 
 ### Task 5.3 - Implement ghost-day and comeback flow
 

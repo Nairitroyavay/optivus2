@@ -131,6 +131,8 @@ class _DetailBody extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 16),
+        _StreakShortcutCard(habit: habit),
+        const SizedBox(height: 16),
         _variantFor(habit),
         const SizedBox(height: 16),
         _InfoCard(
@@ -240,6 +242,67 @@ class _DetailBody extends ConsumerWidget {
     final m = date.month.toString().padLeft(2, '0');
     final d = date.day.toString().padLeft(2, '0');
     return '$y-$m-$d';
+  }
+}
+
+class _StreakShortcutCard extends StatelessWidget {
+  final HabitModel habit;
+
+  const _StreakShortcutCard({required this.habit});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = habit.kind == HabitKind.good ? kMint : kCoral;
+    return GestureDetector(
+      onTap: () => context.push('/streaks/${habit.id}'),
+      child: LiquidCard(
+        radius: 20,
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: kAmber.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.local_fire_department_rounded,
+                color: kAmber,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Streak details',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: kInk,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Heatmap, milestones, history, and pause status',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: kSub.withValues(alpha: 0.78),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: accent),
+          ],
+        ),
+      ),
+    );
   }
 }
 

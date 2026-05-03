@@ -76,7 +76,7 @@ enum StreakState {
 
 class Streak {
   /// Streak document id. For habit streaks this is the habitId; for routine
-  /// streaks this is "routine_<routineKey>". The legacy field name is
+  /// streaks this is `routine_<routineKey>`. The legacy field name is
   /// preserved so existing UI consumers (HomeTab, tracker variants) keep
   /// working unchanged.
   final String habitId;
@@ -151,8 +151,8 @@ class Streak {
           : null,
       prePauseCount: data['prePauseCount'] as int?,
       pauseReason: data['pauseReason'] as String?,
-      weeklySkipsUsed: Map<String, int>.from(
-          data['weeklySkipsUsed'] as Map? ?? {}),
+      weeklySkipsUsed:
+          Map<String, int>.from(data['weeklySkipsUsed'] as Map? ?? {}),
       updatedAt: data['updatedAt'] != null
           ? (data['updatedAt'] as Timestamp).toDate()
           : DateTime.now(),

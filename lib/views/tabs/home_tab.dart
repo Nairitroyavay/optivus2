@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/views/habits/log_habit_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -569,10 +570,20 @@ class _HomeTabState extends ConsumerState<HomeTab>
     final tasksAsync = ref.watch(todayTasksProvider);
     final streaks = streaksAsync.valueOrNull ?? [];
 
-    int longestActive = 0;
+    Streak? featuredStreak;
+    int featuredCount = 0;
     for (final s in streaks) {
-      if (s.state == StreakState.active && s.currentCount > longestActive) {
-        longestActive = s.currentCount;
+      if (s.state == StreakState.active && s.currentCount > featuredCount) {
+        featuredStreak = s;
+        featuredCount = s.currentCount;
+      }
+    }
+    if (featuredStreak == null) {
+      for (final s in streaks) {
+        if (s.longestCount > featuredCount) {
+          featuredStreak = s;
+          featuredCount = s.longestCount;
+        }
       }
     }
 
@@ -593,14 +604,19 @@ class _HomeTabState extends ConsumerState<HomeTab>
                 children: [
                   _streakCard(
                     emoji: '🔥',
-                    value: longestActive.toString(),
-                    badge: 'Active',
+                    value: featuredCount.toString(),
+                    badge: featuredStreak?.state == StreakState.active
+                        ? 'Active'
+                        : 'Best',
                     label: 'Longest Streak',
                     gradColors: [
                       const Color(0xFFFF9B3E),
                       const Color(0xFFFFB830)
                     ],
                     badgeColor: const Color(0xFF60D4A0),
+                    onTap: () => context.push(
+                      '/streaks/${featuredStreak?.habitId ?? '_empty'}',
+                    ),
                   ),
                   const SizedBox(height: 12),
                   _streakCard(
@@ -665,52 +681,56 @@ class _HomeTabState extends ConsumerState<HomeTab>
     required List<Color> gradColors,
     required Color badgeColor,
     bool light = false,
+    VoidCallback? onTap,
   }) {
     final textColor = light ? Colors.white : const Color(0xFF1A0800);
     final subtextColor =
         light ? Colors.white70 : Colors.black.withValues(alpha: 0.55);
-    return SizedBox(
-      width: 110,
-      child: LiquidCard.solid(
-        radius: 20,
-        padding: const EdgeInsets.all(12),
-        tint: gradColors[0].withValues(alpha: 0.3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 22)),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(value,
-                    style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                        color: textColor,
-                        letterSpacing: -0.5)),
-                const SizedBox(width: 5),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(6),
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 110,
+        child: LiquidCard.solid(
+          radius: 20,
+          padding: const EdgeInsets.all(12),
+          tint: gradColors[0].withValues(alpha: 0.3),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 22)),
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(value,
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: textColor,
+                          letterSpacing: -0.5)),
+                  const SizedBox(width: 5),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(badge,
+                        style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white)),
                   ),
-                  child: Text(badge,
-                      style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white)),
-                ),
-              ],
-            ),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: subtextColor)),
-          ],
+                ],
+              ),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: subtextColor)),
+            ],
+          ),
         ),
       ),
     );

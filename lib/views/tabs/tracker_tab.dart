@@ -137,6 +137,7 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                               onUndoLatest: latestLog == null
                                   ? null
                                   : () => _undoLatest(habit, latestLog),
+                              onStreakDetails: () => _showStreakDetails(habit),
                               onDetails: () => _showDetails(
                                 habit,
                               ),
@@ -179,6 +180,7 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                               onUndoLatest: latestLog == null
                                   ? null
                                   : () => _undoLatest(habit, latestLog),
+                              onStreakDetails: () => _showStreakDetails(habit),
                               onDetails: () => _showDetails(
                                 habit,
                               ),
@@ -269,6 +271,10 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
 
   void _showDetails(HabitModel habit) {
     context.push('/habits/${habit.id}');
+  }
+
+  void _showStreakDetails(HabitModel habit) {
+    context.push('/streaks/${habit.id}');
   }
 }
 
@@ -374,6 +380,7 @@ class _GoodHabitCard extends StatelessWidget {
   final num goalValue;
   final VoidCallback onLog;
   final VoidCallback? onUndoLatest;
+  final VoidCallback onStreakDetails;
   final VoidCallback onDetails;
 
   const _GoodHabitCard({
@@ -384,6 +391,7 @@ class _GoodHabitCard extends StatelessWidget {
     required this.goalValue,
     required this.onLog,
     required this.onUndoLatest,
+    required this.onStreakDetails,
     required this.onDetails,
   });
 
@@ -546,9 +554,16 @@ class _GoodHabitCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _IconActionButton(
+                icon: Icons.local_fire_department_rounded,
+                color: kAmber,
+                tooltip: 'Streak details',
+                onTap: onStreakDetails,
+              ),
+              const SizedBox(width: 8),
+              _IconActionButton(
                 icon: Icons.info_outline_rounded,
                 color: accent,
-                tooltip: 'Details',
+                tooltip: 'Habit details',
                 onTap: onDetails,
               ),
             ],
@@ -569,6 +584,7 @@ class _BadHabitCard extends StatelessWidget {
   final num slipCount;
   final VoidCallback onLog;
   final VoidCallback? onUndoLatest;
+  final VoidCallback onStreakDetails;
   final VoidCallback onDetails;
 
   const _BadHabitCard({
@@ -577,6 +593,7 @@ class _BadHabitCard extends StatelessWidget {
     required this.slipCount,
     required this.onLog,
     required this.onUndoLatest,
+    required this.onStreakDetails,
     required this.onDetails,
   });
 
@@ -601,7 +618,7 @@ class _BadHabitCard extends StatelessWidget {
         slipCount >= (habit.target ?? 0);
 
     return SizedBox(
-      width: 180,
+      width: 218,
       child: LiquidCard(
         frosted: true,
         padding: const EdgeInsets.all(18),
@@ -707,9 +724,16 @@ class _BadHabitCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _IconActionButton(
+                  icon: Icons.local_fire_department_rounded,
+                  color: kAmber,
+                  tooltip: 'Streak details',
+                  onTap: onStreakDetails,
+                ),
+                const SizedBox(width: 8),
+                _IconActionButton(
                   icon: Icons.info_outline_rounded,
                   color: accent,
-                  tooltip: 'Details',
+                  tooltip: 'Habit details',
                   onTap: onDetails,
                 ),
               ],

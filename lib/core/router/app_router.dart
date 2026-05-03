@@ -10,6 +10,7 @@ import '../../views/screens/home_screen.dart';
 import '../../views/screens/loading_screen.dart';
 import '../../views/habits/habit_detail_screen.dart';
 import '../../views/habits/habit_editor_screen.dart';
+import '../../views/streaks/streak_detail_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
 
@@ -95,6 +96,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/habits/:habitId/edit',
         builder: (_, state) => HabitEditorScreen(
           habitId: state.pathParameters['habitId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/streaks/:streakId',
+        builder: (_, state) => StreakDetailScreen(
+          streakId: state.pathParameters['streakId']!,
         ),
       ),
     ],
