@@ -67,6 +67,7 @@ class RoutineService {
       final todayStr = _formatDate(now);
       final yesterdayStr = _formatDate(now.subtract(const Duration(days: 1)));
 
+      await _handleComebackIfNeeded(uid, userDoc, now);
       await runDayStartIfNeeded(now);
 
       if (lastDayClosed != null && lastDayClosed.compareTo(yesterdayStr) >= 0) {
@@ -116,6 +117,215 @@ class RoutineService {
         'source': 'client',
       },
     );
+  }
+
+  /// Completes the pending comeback prompt and restores ghost-paused streaks.
+  Future<void> completePendingComeback() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final uid = user.uid;
+    final userRef = _firestore.collection('users').doc(uid);
+    final userSnap = await userRef.get();
+    final pending = Map<String, dynamic>.from(
+      userSnap.data()?['pendingComeback'] as Map? ?? const {},
+    );
+    final rawGapDays = pending['gapDays'];
+    final gapDays = rawGapDays is num ? rawGapDays.toInt() : null;
+
+    await _streakService.resumeAllPausedStreaks(
+      reason: 'ghost',
+      gapDays: gapDays,
+    );
+    await userRef.set({
+      'pendingComeback': {
+        ...pending,
+        'status': 'dismissed',
+        'dismissedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _handleComebackIfNeeded(
+    String uid,
+    DocumentSnapshot<Map<String, dynamic>> userDoc,
+    DateTime now,
+  ) async {
+    final lastSeen = await _resolveLastSeen(userDoc);
+    final today = DateTime(now.year, now.month, now.day);
+    final todayStr = _formatDate(today);
+
+    if (lastSeen == null) {
+      await _writeLastSeen(uid, now, todayStr);
+      return;
+    }
+
+    final lastSeenDay =
+        DateTime(lastSeen.value.year, lastSeen.value.month, lastSeen.value.day);
+    final gapDays = today.difference(lastSeenDay).inDays.clamp(0, 9999);
+
+    if (gapDays >= 3) {
+      final lastSeenDate = _formatDate(lastSeenDay);
+      final threshold = _comebackThreshold(gapDays);
+      final eventId =
+          _eventId('comeback_initiated', uid, todayStr, gapDays.toString());
+      final suggestionIds = _comebackSuggestionIds(todayStr);
+
+      await _streakService.pauseAllActiveStreaks(
+        reason: 'ghost',
+        gapDays: gapDays,
+      );
+      final protectedCount = await _countGhostPausedStreaks(uid);
+      final suggestions = _comebackSuggestions(
+        suggestionIds: suggestionIds,
+        gapDays: gapDays,
+        now: now,
+      );
+
+      final batch = _firestore.batch();
+      final userRef = _firestore.collection('users').doc(uid);
+      final profileRef = userRef.collection('profile').doc('main');
+
+      for (final suggestion in suggestions) {
+        batch.set(
+          userRef.collection('suggestions').doc(suggestion['suggestionId']),
+          suggestion,
+          SetOptions(merge: true),
+        );
+      }
+
+      batch.set(
+          userRef,
+          {
+            'pendingComeback': {
+              'status': 'pending',
+              'gapDays': gapDays,
+              'lastSeenDate': lastSeenDate,
+              'lastSeenSource': lastSeen.source,
+              'returnDate': todayStr,
+              'threshold': threshold,
+              'protectedStreakCount': protectedCount,
+              'suggestionIds': suggestionIds,
+              'suggestions': suggestions
+                  .map((suggestion) => {
+                        'suggestionId': suggestion['suggestionId'],
+                        'title': suggestion['title'],
+                        'body': suggestion['body'],
+                      })
+                  .toList(),
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            },
+            'coachToneOverride': 'Supportive',
+            'coachToneOverrideUntil':
+                Timestamp.fromDate(now.add(const Duration(hours: 48))),
+            'coachToneOverrideReason': 'comeback',
+            'lastSeen': Timestamp.fromDate(now),
+            'lastSeenAt': Timestamp.fromDate(now),
+            'lastSeenDate': todayStr,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
+      batch.set(
+          profileRef,
+          {
+            'lastActiveDate': Timestamp.fromDate(now),
+            'coachToneOverride': 'Supportive',
+            'coachToneOverrideUntil':
+                Timestamp.fromDate(now.add(const Duration(hours: 48))),
+            'coachToneOverrideReason': 'comeback',
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
+
+      await _eventService.emit(
+        eventName: EventNames.comebackInitiated,
+        source: 'routine_service',
+        eventId: eventId,
+        payload: {
+          'uid': uid,
+          'gapDays': gapDays,
+          'lastSeenDate': lastSeenDate,
+          'lastSeenSource': lastSeen.source,
+          'returnDate': todayStr,
+          'threshold': threshold,
+          'suggestionIds': suggestionIds,
+        },
+        batch: batch,
+      );
+
+      for (final suggestionId in suggestionIds) {
+        await _eventService.emit(
+          eventName: EventNames.suggestionGenerated,
+          source: 'comeback_modal',
+          eventId:
+              _eventId('suggestion_generated', uid, todayStr, suggestionId),
+          payload: {'suggestionId': suggestionId},
+          batch: batch,
+        );
+      }
+
+      await batch.commit();
+      return;
+    }
+
+    await _writeLastSeen(uid, now, todayStr);
+  }
+
+  Future<_ResolvedLastSeen?> _resolveLastSeen(
+    DocumentSnapshot<Map<String, dynamic>> userDoc,
+  ) async {
+    final data = userDoc.data() ?? const <String, dynamic>{};
+    final rootLastSeen = _parseFlexibleDate(data['lastSeen']) ??
+        _parseFlexibleDate(data['lastSeenAt']);
+    if (rootLastSeen != null) {
+      return _ResolvedLastSeen(rootLastSeen, 'users_root');
+    }
+
+    final profileSnap =
+        await userDoc.reference.collection('profile').doc('main').get();
+    final profileLastSeen =
+        _parseFlexibleDate(profileSnap.data()?['lastActiveDate']);
+    if (profileLastSeen != null) {
+      return _ResolvedLastSeen(profileLastSeen, 'profile_main');
+    }
+
+    return null;
+  }
+
+  Future<void> _writeLastSeen(String uid, DateTime now, String todayStr) async {
+    final userRef = _firestore.collection('users').doc(uid);
+    final batch = _firestore.batch();
+    batch.set(
+        userRef,
+        {
+          'lastSeen': Timestamp.fromDate(now),
+          'lastSeenAt': Timestamp.fromDate(now),
+          'lastSeenDate': todayStr,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true));
+    batch.set(
+        userRef.collection('profile').doc('main'),
+        {
+          'lastActiveDate': Timestamp.fromDate(now),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true));
+    await batch.commit();
+  }
+
+  Future<int> _countGhostPausedStreaks(String uid) async {
+    final snap = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('streaks')
+        .where('state', isEqualTo: 'paused')
+        .where('pauseReason', isEqualTo: 'ghost')
+        .get();
+    return snap.size;
   }
 
   Future<void> _closeDate(String uid, String dateStr) async {
@@ -682,4 +892,75 @@ class RoutineService {
     if (weekday != null) return int.parse(weekday.group(2)!) == date.weekday;
     return true;
   }
+
+  static DateTime? _parseFlexibleDate(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+      final parts = value.split('-').map(int.tryParse).toList();
+      if (parts.length == 3 && parts.every((part) => part != null)) {
+        return DateTime(parts[0]!, parts[1]!, parts[2]!);
+      }
+    }
+    return null;
+  }
+
+  static int _comebackThreshold(int gapDays) {
+    const thresholds = [30, 14, 7, 3];
+    return thresholds.firstWhere((threshold) => gapDays >= threshold);
+  }
+
+  static List<String> _comebackSuggestionIds(String returnDate) => [
+        'comeback_${returnDate}_tiny_anchor',
+        'comeback_${returnDate}_one_habit_log',
+        'comeback_${returnDate}_short_reset',
+      ];
+
+  static List<Map<String, dynamic>> _comebackSuggestions({
+    required List<String> suggestionIds,
+    required int gapDays,
+    required DateTime now,
+  }) {
+    final ts = Timestamp.fromDate(now);
+    final ideas = [
+      (
+        title: 'Pick one tiny anchor',
+        body: 'Choose the smallest scheduled block and call that the restart.',
+      ),
+      (
+        title: 'Log one honest habit',
+        body: 'One habit log is enough to make today count again.',
+      ),
+      (
+        title: 'Do a 10-minute reset',
+        body: 'Set a short timer, clear one task, then stop cleanly.',
+      ),
+    ];
+
+    return [
+      for (var i = 0; i < suggestionIds.length; i++)
+        {
+          'suggestionId': suggestionIds[i],
+          'title': ideas[i].title,
+          'body': ideas[i].body,
+          'reason': ideas[i].body,
+          'category': 'comeback_restart',
+          'status': 'generated',
+          'source': 'comeback_modal',
+          'gapDays': gapDays,
+          'createdAt': ts,
+          'updatedAt': ts,
+          'schemaVersion': 1,
+        },
+    ];
+  }
+}
+
+class _ResolvedLastSeen {
+  final DateTime value;
+  final String source;
+
+  const _ResolvedLastSeen(this.value, this.source);
 }

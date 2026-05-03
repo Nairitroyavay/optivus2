@@ -1470,12 +1470,16 @@ Retention must be humane and preserve user continuity.
 
 1 day
 
+#### Status
+
+Completed on 2026-05-03.
+
 #### Done Criteria
 
-- [ ] Ghost detection works.
-- [ ] Comeback modal exists.
-- [ ] Restart plan is visible.
-- [ ] Streak rules are respected.
+- [x] Ghost detection works.
+- [x] Comeback modal exists.
+- [x] Restart plan is visible.
+- [x] Streak rules are respected.
 
 ## Phase 6 - Goals and Identity
 

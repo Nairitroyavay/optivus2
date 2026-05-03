@@ -99,7 +99,8 @@ class StreakService {
 
     final snap = await _habitLogsRef
         .where('habitId', isEqualTo: habitId)
-        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('occurredAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
         .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
         .get();
 
@@ -120,7 +121,8 @@ class StreakService {
 
     final snap = await _habitLogsRef
         .where('habitId', isEqualTo: habitId)
-        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('occurredAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
         .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
         .get();
 
@@ -156,8 +158,7 @@ class StreakService {
     final firstThursday = DateTime(year, 1, 4);
     final firstWeekStart =
         firstThursday.subtract(Duration(days: firstThursday.weekday - 1));
-    final week =
-        ((thursday.difference(firstWeekStart).inDays) ~/ 7) + 1;
+    final week = ((thursday.difference(firstWeekStart).inDays) ~/ 7) + 1;
     return '$year-W${week.toString().padLeft(2, '0')}';
   }
 
@@ -194,8 +195,7 @@ class StreakService {
 
   Future<AccountabilityMode> _resolveUserMode() async {
     try {
-      final userDoc =
-          await _firestore.collection('users').doc(_uid).get();
+      final userDoc = await _firestore.collection('users').doc(_uid).get();
       final raw = userDoc.data()?['accountabilityMode'] as String?;
       return AccountabilityMode.fromString(raw);
     } catch (e) {
@@ -265,12 +265,13 @@ class StreakService {
 
   // ── Single-habit rollup ───────────────────────────────────────────────────
 
-  Future<({
-    bool goalMet,
-    num logged,
-    int? milestoneReached,
-    bool streakActiveAfter,
-  })> _rollupHabit(
+  Future<
+      ({
+        bool goalMet,
+        num logged,
+        int? milestoneReached,
+        bool streakActiveAfter,
+      })> _rollupHabit(
     HabitModel habit,
     String date,
     AccountabilityMode mode,
@@ -403,8 +404,7 @@ class StreakService {
 
       for (final entry in groups.entries) {
         final hit = _routineCompleted(entry.value);
-        final outcome =
-            await _rollupRoutineKey(entry.key, date, hit, mode);
+        final outcome = await _rollupRoutineKey(entry.key, date, hit, mode);
         if (outcome.streakActiveAfter) streaksActive++;
         if (outcome.milestoneReached != null) {
           milestones.add(
@@ -569,11 +569,15 @@ class StreakService {
   /// Freezes every active streak. Called by the orchestrator when
   /// `ghost_day_detected` fires. Idempotent — already-paused streaks are
   /// skipped.
-  Future<void> pauseAllActiveStreaks({String reason = 'ghost'}) async {
+  Future<int> pauseAllActiveStreaks({
+    String reason = 'ghost',
+    int? gapDays,
+  }) async {
     final snap = await _streaksRef
         .where('state', isEqualTo: StreakState.active.name)
         .get();
 
+    var pausedCount = 0;
     for (final doc in snap.docs) {
       try {
         final streak = Streak.fromFirestore(doc);
@@ -595,29 +599,39 @@ class StreakService {
             'habitId': streak.habitId,
             'scope': streak.scope.name,
             'reason': reason,
+            if (gapDays != null) 'gapDays': gapDays,
             'prePauseCount': streak.currentCount,
+            'currentCount': streak.currentCount,
+            'longestCount': streak.longestCount,
           },
           batch: batch,
         );
 
         await batch.commit();
+        pausedCount++;
       } catch (e, st) {
         debugPrint('[StreakService] pause failed for ${doc.id}: $e\n$st');
       }
     }
+    return pausedCount;
   }
 
   /// Restores every paused streak to its pre-pause count. Called by the
   /// orchestrator when `comeback_initiated` fires.
-  Future<void> resumeAllPausedStreaks() async {
+  Future<int> resumeAllPausedStreaks({
+    String reason = 'ghost',
+    int? gapDays,
+  }) async {
     final snap = await _streaksRef
         .where('state', isEqualTo: StreakState.paused.name)
         .get();
 
+    var resumedCount = 0;
     for (final doc in snap.docs) {
       try {
         final streak = Streak.fromFirestore(doc);
         if (streak.state != StreakState.paused) continue;
+        if (reason.isNotEmpty && streak.pauseReason != reason) continue;
 
         final restored = streak.prePauseCount ?? streak.currentCount;
         final batch = _firestore.batch();
@@ -635,24 +649,31 @@ class StreakService {
           payload: {
             'habitId': streak.habitId,
             'scope': streak.scope.name,
+            'reason': reason,
+            if (gapDays != null) 'gapDays': gapDays,
+            'prePauseCount': streak.prePauseCount,
             'restoredCount': restored,
+            'currentCount': restored,
+            'longestCount': streak.longestCount,
           },
           batch: batch,
         );
 
         await batch.commit();
+        resumedCount++;
       } catch (e, st) {
         debugPrint('[StreakService] resume failed for ${doc.id}: $e\n$st');
       }
     }
+    return resumedCount;
   }
 
   // ── Read helpers for UI ───────────────────────────────────────────────────
 
   /// Real-time stream of all streak docs for the user.
   Stream<List<Streak>> watchAllStreaks() {
-    return _streaksRef.snapshots().map((snap) =>
-        snap.docs.map((doc) => Streak.fromFirestore(doc)).toList());
+    return _streaksRef.snapshots().map(
+        (snap) => snap.docs.map((doc) => Streak.fromFirestore(doc)).toList());
   }
 
   /// Real-time stream of the streak doc for [habitId].

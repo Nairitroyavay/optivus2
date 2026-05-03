@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/widgets/liquid_glass_tabbar.dart';
+import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/views/comeback/comeback_modal.dart';
 import 'package:optivus2/views/tabs/home_tab.dart';
 import 'package:optivus2/views/routine/routine_tab.dart' as rt;
 import 'package:optivus2/providers/routine_provider.dart';
@@ -29,10 +31,14 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
   RoutineFilter _routineFilter = RoutineFilter.all;
+  String? _shownComebackKey;
+  bool _isComebackVisible = false;
 
   @override
   Widget build(BuildContext context) {
     ref.watch(routineProvider);
+    final userDoc = ref.watch(currentUserDocumentProvider).valueOrNull;
+    _queueComebackModal(userDoc);
     final colors = _tabGradients[_currentIndex];
 
     return Scaffold(
@@ -95,5 +101,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         activeColor: _tabGradients[_currentIndex][0],
       ),
     );
+  }
+
+  void _queueComebackModal(Map<String, dynamic>? userDoc) {
+    if (userDoc == null || _isComebackVisible) return;
+    final comeback = Map<String, dynamic>.from(
+      userDoc['pendingComeback'] as Map? ?? const {},
+    );
+    if (comeback['status'] != 'pending') return;
+
+    final key = [
+      comeback['returnDate'] ?? '',
+      comeback['gapDays'] ?? '',
+      comeback['threshold'] ?? '',
+    ].join(':');
+    if (key == _shownComebackKey) return;
+
+    _shownComebackKey = key;
+    _isComebackVisible = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ComebackModal(
+          comeback: comeback,
+          onPrimary: () =>
+              ref.read(routineServiceProvider).completePendingComeback(),
+        ),
+      );
+      if (mounted) {
+        setState(() => _isComebackVisible = false);
+      }
+    });
   }
 }

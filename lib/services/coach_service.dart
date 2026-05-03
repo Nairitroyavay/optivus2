@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-// firebase_auth is not directly used here — auth comes through UserRepository.
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:optivus2/models/context_snapshot.dart';
 import 'package:optivus2/services/task_service.dart';
@@ -30,9 +30,10 @@ class CoachService {
 
   Future<String> generateSystemPrompt(String coachName, String tone) async {
     final context = await _loadCoachGroundingContext();
+    final resolvedTone = await _resolveCoachTone(tone);
 
     return '''You are the user's personal Optivus AI life coach. Your name is $coachName.
-Your tone should be: $tone.
+Your tone should be: $resolvedTone.
 User's main goals: ${context.goals}.
 Good habits they want to build: ${context.goodHabits}.
 Habits trying to break: ${context.badHabits}.
@@ -84,11 +85,12 @@ Return only the final coach message text, with no JSON or markdown.''';
     final tone = (onboarding?['coachStyle'] as String?)?.isNotEmpty == true
         ? onboarding!['coachStyle'] as String
         : 'Empathetic and motivating';
+    final resolvedTone = await _resolveCoachTone(tone, uid: uid);
     final context = await _loadCoachGroundingContext();
 
     return <String, dynamic>{
       'coachName': coachName,
-      'tone': tone,
+      'tone': resolvedTone,
       'goals': context.goals,
       'goodHabits': context.goodHabits,
       'badHabits': context.badHabits,
@@ -100,6 +102,52 @@ Return only the final coach message text, with no JSON or markdown.''';
       'userState': snapshot.userState,
       'missionScore': snapshot.missionScore,
     };
+  }
+
+  Future<String> _resolveCoachTone(String fallback, {String? uid}) async {
+    final resolvedUid = uid ?? FirebaseAuth.instance.currentUser?.uid;
+    if (resolvedUid == null) return fallback;
+
+    try {
+      final now = DateTime.now();
+      final userSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(resolvedUid)
+          .get();
+      final root = userSnap.data() ?? const <String, dynamic>{};
+      final rootTone = _unexpiredToneOverride(root, now);
+      if (rootTone != null) return rootTone;
+
+      final profileSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(resolvedUid)
+          .collection('profile')
+          .doc('main')
+          .get();
+      final profileTone = _unexpiredToneOverride(
+        profileSnap.data() ?? const <String, dynamic>{},
+        now,
+      );
+      return profileTone ?? fallback;
+    } catch (e) {
+      debugPrint('[CoachService] Could not resolve coach tone override: $e');
+      return fallback;
+    }
+  }
+
+  String? _unexpiredToneOverride(Map<String, dynamic> data, DateTime now) {
+    final tone = (data['coachToneOverride'] as String?)?.trim();
+    if (tone == null || tone.isEmpty) return null;
+    final until = _parseFlexibleDate(data['coachToneOverrideUntil']);
+    if (until == null || !until.isAfter(now)) return null;
+    return tone;
+  }
+
+  DateTime? _parseFlexibleDate(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   /// Saves a proactive coach message to Firestore and writes the
