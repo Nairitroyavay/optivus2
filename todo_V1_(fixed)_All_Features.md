@@ -1156,12 +1156,16 @@ Tracker, streaks, recovery, identity, and AI need reliable habit logs.
 
 1 day
 
+#### Status
+
+Completed on 2026-05-03.
+
 #### Done Criteria
 
-- [ ] Full lifecycle works.
-- [ ] Logs are canonical.
-- [ ] Events match contract.
-- [ ] Undo/delete works.
+- [x] Full lifecycle works.
+- [x] Logs are canonical.
+- [x] Events match contract.
+- [x] Undo/delete works.
 
 ### Task 4.2 - Build Home and Tracker quick logging
 
@@ -1204,12 +1208,16 @@ Logging must be one-tap fast from daily surfaces.
 
 4h
 
+#### Status
+
+Completed on 2026-05-03.
+
 #### Done Criteria
 
-- [ ] Home quick log works.
-- [ ] Tracker quick log works.
-- [ ] Undo latest is visible.
-- [ ] Empty/loading/error states exist.
+- [x] Home quick log works.
+- [x] Tracker quick log works.
+- [x] Undo latest is visible.
+- [x] Empty/loading/error states exist.
 
 ### Task 4.3 - Add habit management UI
 
@@ -1250,12 +1258,16 @@ Users need to manage habits after onboarding.
 
 1 day
 
+#### Status
+
+Completed on 2026-05-03.
+
 #### Done Criteria
 
-- [ ] Habit editor exists.
-- [ ] Habit detail exists.
-- [ ] Pause/resume/archive works.
-- [ ] Validation works.
+- [x] Habit editor exists.
+- [x] Habit detail exists.
+- [x] Pause/resume/archive works.
+- [x] Validation works.
 
 ### Task 4.4 - Build tracker-specific variants
 
@@ -1304,12 +1316,16 @@ The Tracker must be more than generic counters.
 
 2 days
 
+#### Status
+
+Completed on 2026-05-03.
+
 #### Done Criteria
 
-- [ ] Variant screens exist.
-- [ ] Each has user-visible path.
-- [ ] Logging works where relevant.
-- [ ] Empty states are safe.
+- [x] Variant screens exist.
+- [x] Each has user-visible path.
+- [x] Logging works where relevant.
+- [x] Empty states are safe.
 
 ## Phase 5 - Streaks, Accountability, and Retention
 
@@ -1354,12 +1370,16 @@ Streaks must respect accountability mode, grace, bad habits, routines, and ghost
 
 1 day
 
+#### Status
+
+Completed on 2026-05-03.
+
 #### Done Criteria
 
-- [ ] Streak rules match docs.
-- [ ] Milestones work.
-- [ ] Accountability modes work.
-- [ ] Ghost pause/resume works.
+- [x] Streak rules match docs.
+- [x] Milestones work.
+- [x] Accountability modes work.
+- [x] Ghost pause/resume works.
 
 ### Task 5.2 - Build streak detail and heatmap UI
 

@@ -2,10 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/habit_log_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
+import 'package:optivus2/views/habits/log_habit_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Accent colour pool for habit cards — cycles through vibrant LiquidGlass tones
@@ -21,184 +24,251 @@ class TrackerTab extends ConsumerStatefulWidget {
 }
 
 class _TrackerTabState extends ConsumerState<TrackerTab> {
-  /// Caches {habitId: dailyTotal} so we don't re-fetch on every build.
-  final Map<String, num> _dailyTotals = {};
-  final Map<String, int> _slipCounts = {};
-  bool _totalsLoaded = false;
-
-  Future<void> _loadDailyData(List<HabitModel> habits) async {
-    if (_totalsLoaded) return;
-    final service = ref.read(habitServiceProvider);
-    final now = DateTime.now();
-    for (final h in habits) {
-      if (h.kind == HabitKind.good) {
-        _dailyTotals[h.id] = await service.dailyTotal(h.id, now);
-      } else {
-        _slipCounts[h.id] = await service.dailyLogCount(h.id, now);
-      }
-    }
-    if (mounted) setState(() => _totalsLoaded = true);
-  }
-
-  void _refreshData() {
-    setState(() => _totalsLoaded = false);
-  }
-
   @override
   Widget build(BuildContext context) {
     final habitsAsync = ref.watch(habitsProvider);
+    final logsAsync = ref.watch(todayHabitLogsProvider);
+    final logs = logsAsync.valueOrNull ?? const <HabitLog>[];
+    final totals = _totalsByHabit(logs);
+    final slipCounts = _slipCountsByHabit(logs);
+    final latestLogs = _latestLogsByHabit(logs);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: habitsAsync.when(
           loading: () => const Center(
-              child: CircularProgressIndicator(color: kAmber),
-            ),
-            error: (err, _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline_rounded,
-                        size: 48, color: kCoral),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Failed to load habits',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: kInk.withValues(alpha: 0.8),
-                      ),
+            child: CircularProgressIndicator(color: kAmber),
+          ),
+          error: (err, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline_rounded,
+                      size: 48, color: kCoral),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Failed to load habits',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: kInk.withValues(alpha: 0.8),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      err.toString(),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: kSub),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    err.toString(),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13, color: kSub),
+                  ),
+                ],
               ),
             ),
-            data: (habits) {
-              // Kick off daily data load
-              _loadDailyData(habits);
+          ),
+          data: (habits) {
+            final goodHabits =
+                habits.where((h) => h.kind == HabitKind.good).toList();
+            final badHabits =
+                habits.where((h) => h.kind == HabitKind.bad).toList();
 
-              final goodHabits =
-                  habits.where((h) => h.kind == HabitKind.good).toList();
-              final badHabits =
-                  habits.where((h) => h.kind == HabitKind.bad).toList();
+            return CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                // ── Header ──
+                SliverToBoxAdapter(
+                  child: _TrackerHeader(
+                    onAddHabit: () => context.push('/habits/new'),
+                  ),
+                ),
 
-              return CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  // ── Header ──
-                  const SliverToBoxAdapter(
-                    child: _TrackerHeader(),
+                // ── Screen Time Card (Android only) ──
+                if (Platform.isAndroid)
+                  SliverToBoxAdapter(
+                    child: _ScreenTimeSection(),
                   ),
 
-                  // ── Screen Time Card (Android only) ──
-                  if (Platform.isAndroid)
-                    SliverToBoxAdapter(
-                      child: _ScreenTimeSection(),
-                    ),
-
-                  // ── Good Habits Section ──
-                  if (goodHabits.isNotEmpty) ...[
+                // ── Good Habits Section ──
+                if (goodHabits.isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: LiquidSectionHeader(title: 'Good Habits'),
+                  ),
+                  if (logsAsync.isLoading && logs.isEmpty)
                     const SliverToBoxAdapter(
-                      child: LiquidSectionHeader(title: 'Good Habits'),
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final habit = goodHabits[index];
-                            final accent =
-                                _kGoodAccents[index % _kGoodAccents.length];
-                            final total = _dailyTotals[habit.id] ?? 0;
-                            final goal = habit.dailyGoal ?? 1;
-                            final progress =
-                                (total / goal).clamp(0.0, 1.0).toDouble();
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 14),
-                              child: _GoodHabitCard(
-                                habit: habit,
-                                accent: accent,
-                                progress: progress,
-                                currentValue: total,
-                                goalValue: goal,
-                              ),
-                            );
-                          },
-                          childCount: goodHabits.length,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(20, 4, 20, 14),
+                        child: LinearProgressIndicator(
+                          minHeight: 2,
+                          color: kAmber,
                         ),
                       ),
                     ),
-                  ],
-
-                  // ── Bad Habits Section ──
-                  if (badHabits.isNotEmpty) ...[
-                    const SliverToBoxAdapter(
-                      child: LiquidSectionHeader(title: 'Habits to Break'),
-                    ),
+                  if (logsAsync.hasError)
                     SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: 220,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: badHabits.length,
-                          itemBuilder: (context, index) {
-                            final habit = badHabits[index];
-                            final accent =
-                                _kBadAccents[index % _kBadAccents.length];
-                            final slips = _slipCounts[habit.id] ?? 0;
-
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 14),
-                              child: _BadHabitCard(
-                                habit: habit,
-                                accent: accent,
-                                slipCount: slips,
-                                onLogSlip: () => _handleLogSlip(habit),
-                              ),
-                            );
-                          },
-                        ),
+                      child: _InlineError(
+                        message:
+                            'Unable to load today\'s habit logs: ${logsAsync.error}',
                       ),
                     ),
-                  ],
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final habit = goodHabits[index];
+                          final accent =
+                              _kGoodAccents[index % _kGoodAccents.length];
+                          final total = totals[habit.id] ?? 0;
+                          final goal = habit.dailyGoal ?? 1;
+                          final progress =
+                              (total / goal).clamp(0.0, 1.0).toDouble();
+                          final latestLog = latestLogs[habit.id];
 
-                  // ── Empty State ──
-                  if (habits.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _EmptyState(),
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: _GoodHabitCard(
+                              habit: habit,
+                              accent: accent,
+                              progress: progress,
+                              currentValue: total,
+                              goalValue: goal,
+                              onLog: () => _openLogSheet(habit),
+                              onUndoLatest: latestLog == null
+                                  ? null
+                                  : () => _undoLatest(habit, latestLog),
+                              onDetails: () => _showDetails(
+                                habit,
+                              ),
+                            ),
+                          );
+                        },
+                        childCount: goodHabits.length,
+                      ),
                     ),
-
-                  // Bottom padding
-                  const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                  ),
                 ],
-              );
-            },
-          ),
+
+                // ── Bad Habits Section ──
+                if (badHabits.isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: LiquidSectionHeader(title: 'Habits to Break'),
+                  ),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 268,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: badHabits.length,
+                        itemBuilder: (context, index) {
+                          final habit = badHabits[index];
+                          final accent =
+                              _kBadAccents[index % _kBadAccents.length];
+                          final slips = slipCounts[habit.id] ?? 0;
+                          final latestLog = latestLogs[habit.id];
+
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 14),
+                            child: _BadHabitCard(
+                              habit: habit,
+                              accent: accent,
+                              slipCount: slips,
+                              onLog: () => _openLogSheet(habit),
+                              onUndoLatest: latestLog == null
+                                  ? null
+                                  : () => _undoLatest(habit, latestLog),
+                              onDetails: () => _showDetails(
+                                habit,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+
+                // ── Empty State ──
+                if (habits.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(),
+                  ),
+
+                // Bottom padding
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              ],
+            );
+          },
         ),
+      ),
     );
   }
 
-  Future<void> _handleLogSlip(HabitModel habit) async {
-    final confirmed = await showLiquidSheet<bool>(
-      context: context,
-      child: _LogSlipSheet(habit: habit),
-    );
-    if (confirmed == true) {
-      _refreshData();
+  Map<String, num> _totalsByHabit(List<HabitLog> logs) {
+    final totals = <String, num>{};
+    for (final log in logs.where((log) => log.logType == 'good')) {
+      totals[log.habitId] = (totals[log.habitId] ?? 0) + (log.quantity ?? 1);
     }
+    return totals;
+  }
+
+  Map<String, num> _slipCountsByHabit(List<HabitLog> logs) {
+    final totals = <String, num>{};
+    for (final log in logs.where((log) => log.logType == 'slip')) {
+      totals[log.habitId] = (totals[log.habitId] ?? 0) + (log.quantity ?? 1);
+    }
+    return totals;
+  }
+
+  Map<String, HabitLog> _latestLogsByHabit(List<HabitLog> logs) {
+    final latest = <String, HabitLog>{};
+    for (final log in logs) {
+      final current = latest[log.habitId];
+      if (current == null || log.occurredAt.isAfter(current.occurredAt)) {
+        latest[log.habitId] = log;
+      }
+    }
+    return latest;
+  }
+
+  Future<void> _openLogSheet(HabitModel habit) async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => LogHabitSheet(habit: habit),
+    );
+  }
+
+  Future<void> _undoLatest(HabitModel habit, HabitLog log) async {
+    try {
+      await ref.read(habitServiceProvider).deleteLog(
+            habit.id,
+            log.logId,
+            confirmDestructive: true,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Latest habit log removed.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to undo latest log: $e'),
+            backgroundColor: kCoral,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showDetails(HabitModel habit) {
+    context.push('/habits/${habit.id}');
   }
 }
 
@@ -207,7 +277,9 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
 // ═════════════════════════════════════════════════════════════════════════════
 
 class _TrackerHeader extends StatelessWidget {
-  const _TrackerHeader();
+  final VoidCallback onAddHabit;
+
+  const _TrackerHeader({required this.onAddHabit});
 
   @override
   Widget build(BuildContext context) {
@@ -251,14 +323,38 @@ class _TrackerHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Your Progress',
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              color: kInk,
-              letterSpacing: -0.5,
-            ),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Your Progress',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    color: kInk,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: 'Add Habit',
+                child: GestureDetector(
+                  onTap: onAddHabit,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: kAmber.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: kAmber.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Icon(Icons.add_rounded, color: kInk),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -276,6 +372,9 @@ class _GoodHabitCard extends StatelessWidget {
   final double progress;
   final num currentValue;
   final num goalValue;
+  final VoidCallback onLog;
+  final VoidCallback? onUndoLatest;
+  final VoidCallback onDetails;
 
   const _GoodHabitCard({
     required this.habit,
@@ -283,6 +382,9 @@ class _GoodHabitCard extends StatelessWidget {
     required this.progress,
     required this.currentValue,
     required this.goalValue,
+    required this.onLog,
+    required this.onUndoLatest,
+    required this.onDetails,
   });
 
   IconData _iconForTracker(String trackerType) {
@@ -422,6 +524,35 @@ class _GoodHabitCard extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _HabitActionButton(
+                  icon: Icons.add_rounded,
+                  label: 'Log',
+                  color: accent,
+                  onTap: onLog,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _HabitActionButton(
+                  icon: Icons.undo_rounded,
+                  label: 'Undo',
+                  color: kSub,
+                  onTap: onUndoLatest,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _IconActionButton(
+                icon: Icons.info_outline_rounded,
+                color: accent,
+                tooltip: 'Details',
+                onTap: onDetails,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -435,14 +566,18 @@ class _GoodHabitCard extends StatelessWidget {
 class _BadHabitCard extends StatelessWidget {
   final HabitModel habit;
   final Color accent;
-  final int slipCount;
-  final VoidCallback onLogSlip;
+  final num slipCount;
+  final VoidCallback onLog;
+  final VoidCallback? onUndoLatest;
+  final VoidCallback onDetails;
 
   const _BadHabitCard({
     required this.habit,
     required this.accent,
     required this.slipCount,
-    required this.onLogSlip,
+    required this.onLog,
+    required this.onUndoLatest,
+    required this.onDetails,
   });
 
   String _goalLabel(BadHabitGoalType? type) {
@@ -539,7 +674,7 @@ class _BadHabitCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '$slipCount slip${slipCount == 1 ? '' : 's'}',
+                        '${slipCount.round()} slip${slipCount == 1 ? '' : 's'}',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -553,33 +688,31 @@ class _BadHabitCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
 
-            // Log Slip button
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                onLogSlip();
-              },
-              child: Container(
-                height: 36,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: accent.withValues(alpha: 0.3),
-                    width: 1,
+            Row(
+              children: [
+                Expanded(
+                  child: _HabitActionButton(
+                    icon: Icons.add_alert_rounded,
+                    label: 'Log',
+                    color: accent,
+                    onTap: onLog,
                   ),
                 ),
-                child: Center(
-                  child: Text(
-                    'Log Slip',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: accent,
-                    ),
-                  ),
+                const SizedBox(width: 8),
+                _IconActionButton(
+                  icon: Icons.undo_rounded,
+                  color: kSub,
+                  tooltip: 'Undo latest',
+                  onTap: onUndoLatest,
                 ),
-              ),
+                const SizedBox(width: 8),
+                _IconActionButton(
+                  icon: Icons.info_outline_rounded,
+                  color: accent,
+                  tooltip: 'Details',
+                  onTap: onDetails,
+                ),
+              ],
             ),
           ],
         ),
@@ -588,147 +721,109 @@ class _BadHabitCard extends StatelessWidget {
   }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// LOG SLIP BOTTOM SHEET
-// ═════════════════════════════════════════════════════════════════════════════
+class _HabitActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
 
-class _LogSlipSheet extends ConsumerStatefulWidget {
-  final HabitModel habit;
-  const _LogSlipSheet({required this.habit});
-
-  @override
-  ConsumerState<_LogSlipSheet> createState() => _LogSlipSheetState();
-}
-
-class _LogSlipSheetState extends ConsumerState<_LogSlipSheet> {
-  final _triggerController = TextEditingController();
-  final _noteController = TextEditingController();
-  bool _isLogging = false;
-
-  @override
-  void dispose() {
-    _triggerController.dispose();
-    _noteController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    setState(() => _isLogging = true);
-    try {
-      final habitService = ref.read(habitServiceProvider);
-      await habitService.logSlip(
-        widget.habit.id,
-        trigger: _triggerController.text.trim().isEmpty
-            ? null
-            : _triggerController.text.trim(),
-        note: _noteController.text.trim().isEmpty
-            ? null
-            : _noteController.text.trim(),
-      );
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to log slip: $e'),
-            backgroundColor: kCoral,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLogging = false);
-    }
-  }
+  const _HabitActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    final enabled = onTap != null;
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: enabled ? 1 : 0.42,
+        child: Container(
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.13),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: color.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const LiquidSheetHandle(),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: kCoral.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Center(
-                      child: widget.habit.emoji != null
-                          ? Text(widget.habit.emoji!,
-                              style: const TextStyle(fontSize: 24))
-                          : const Icon(Icons.block_rounded,
-                              color: kCoral, size: 24),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Log a Slip',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: kInk,
-                          ),
-                        ),
-                        Text(
-                          widget.habit.name,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: kSub.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              LiquidTextField(
-                hint: 'What triggered it? (optional)',
-                prefixIcon: Icons.flash_on_rounded,
-                controller: _triggerController,
-              ),
-              const SizedBox(height: 14),
-              LiquidTextField(
-                hint: 'Any notes? (optional)',
-                prefixIcon: Icons.edit_note_rounded,
-                controller: _noteController,
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: LiquidButton(
-                  label: _isLogging ? 'Logging…' : 'Log Slip',
-                  color: kCoral,
-                  onTap: _isLogging ? null : _submit,
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: LiquidButton.outline(
-                  label: 'Cancel',
-                  color: kSub,
-                  onTap: () => Navigator.of(context).pop(),
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: color,
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IconActionButton extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  const _IconActionButton({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: enabled ? 1 : 0.42,
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.13),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: color.withValues(alpha: 0.25)),
+            ),
+            child: Icon(icon, size: 17, color: color),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineError extends StatelessWidget {
+  final String message;
+
+  const _InlineError({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: kCoral,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

@@ -10,6 +10,7 @@ import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/habit_service.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
+import 'package:optivus2/models/habit_log_model.dart';
 import 'package:optivus2/models/streak_model.dart';
 import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
@@ -181,24 +182,9 @@ final allStreaksProvider = StreamProvider<List<Streak>>((ref) {
 });
 
 /// Real-time stream of today's habit logs.
-final todayHabitLogsProvider =
-    StreamProvider<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((ref) {
-  final uid = FirebaseAuth.instance.currentUser?.uid;
-  if (uid == null) return Stream.value([]);
-
-  final now = DateTime.now();
-  final startOfDay = DateTime(now.year, now.month, now.day);
-  final endOfDay = startOfDay.add(const Duration(days: 1));
-
-  return FirebaseFirestore.instance
-      .collection('users')
-      .doc(uid)
-      .collection('habit_logs')
-      .where('occurredAt',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-      .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
-      .snapshots()
-      .map((snap) => snap.docs);
+final todayHabitLogsProvider = StreamProvider<List<HabitLog>>((ref) {
+  final habitService = ref.watch(habitServiceProvider);
+  return habitService.watchHabitLogsForDate(DateTime.now());
 });
 
 /// Real-time stream of today's DaySummary.

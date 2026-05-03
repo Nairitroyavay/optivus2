@@ -38,15 +38,16 @@ class HabitLog {
   });
 
   factory HabitLog.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
+    final data = doc.data() ?? <String, dynamic>{};
     return HabitLog(
       logId: data['logId'] as String? ?? doc.id,
-      habitId: data['habitId'] as String,
+      habitId: data['habitId'] as String? ?? '',
       habitKind: data['habitKind'] as String? ?? 'good',
       logType: data['logType'] as String? ?? 'good',
-      occurredAt: (data['occurredAt'] as Timestamp).toDate(),
-      loggedAt: (data['loggedAt'] as Timestamp).toDate(),
-      quantity: data['quantity'] as num?,
+      occurredAt:
+          _asDateTime(data['occurredAt'] ?? data['ts']) ?? DateTime.now(),
+      loggedAt: _asDateTime(data['loggedAt']) ?? DateTime.now(),
+      quantity: data['quantity'] as num? ?? data['amount'] as num?,
       unit: data['unit'] as String?,
       trigger: data['trigger'] as String?,
       note: data['note'] as String?,
@@ -70,5 +71,12 @@ class HabitLog {
       'source': source,
       'schemaVersion': schemaVersion,
     };
+  }
+
+  static DateTime? _asDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 }

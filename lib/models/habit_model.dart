@@ -72,7 +72,8 @@ class HabitModel {
   final String name;
   final HabitKind kind;
   final String unit; // "ml", "min", "pages", "count", etc.
-  final String trackerType; // water, meditation, reading, exercise, smoking, etc.
+  final String
+      trackerType; // water, meditation, reading, exercise, smoking, etc.
 
   // Good habit fields
   final num? dailyGoal;
@@ -84,6 +85,12 @@ class HabitModel {
   final num? costPerUnit;
   final String? currency;
 
+  // Planning & support metadata
+  final List<int> scheduleDays;
+  final bool remindersEnabled;
+  final String? reminderTime;
+  final String? accountability;
+
   // Appearance & identity
   final List<String> identityTags;
   final String? emoji;
@@ -91,6 +98,8 @@ class HabitModel {
 
   // State
   final HabitState state;
+  final DateTime? pausedAt;
+  final DateTime? archivedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
   final int schemaVersion;
@@ -107,18 +116,23 @@ class HabitModel {
     this.baselinePerDay,
     this.costPerUnit,
     this.currency,
+    this.scheduleDays = const [],
+    this.remindersEnabled = false,
+    this.reminderTime,
+    this.accountability,
     this.identityTags = const [],
     this.emoji,
     this.color,
     this.state = HabitState.active,
+    this.pausedAt,
+    this.archivedAt,
     required this.createdAt,
     required this.updatedAt,
     this.schemaVersion = 1,
   });
 
   /// Backwards-compatible factory that handles both old and new Firestore shapes.
-  factory HabitModel.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory HabitModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
     return HabitModel(
       id: doc.id,
@@ -134,11 +148,16 @@ class HabitModel {
       baselinePerDay: data['baselinePerDay'] as num?,
       costPerUnit: data['costPerUnit'] as num?,
       currency: data['currency'] as String?,
-      identityTags:
-          List<String>.from(data['identityTags'] as List? ?? []),
+      scheduleDays: List<int>.from(data['scheduleDays'] as List? ?? []),
+      remindersEnabled: data['remindersEnabled'] as bool? ?? false,
+      reminderTime: data['reminderTime'] as String?,
+      accountability: data['accountability'] as String?,
+      identityTags: List<String>.from(data['identityTags'] as List? ?? []),
       emoji: data['emoji'] as String? ?? data['icon'] as String?,
       color: data['color'] as String?,
       state: HabitState.fromString(data['state'] as String?),
+      pausedAt: _asDateTime(data['pausedAt']),
+      archivedAt: _asDateTime(data['archivedAt']),
       createdAt: _asDateTime(data['createdAt']) ?? DateTime.now(),
       updatedAt: _asDateTime(data['updatedAt']) ?? DateTime.now(),
       schemaVersion: data['schemaVersion'] as int? ?? 1,
@@ -163,11 +182,16 @@ class HabitModel {
       baselinePerDay: map['baselinePerDay'] as num?,
       costPerUnit: map['costPerUnit'] as num?,
       currency: map['currency'] as String?,
-      identityTags:
-          List<String>.from(map['identityTags'] as List? ?? []),
+      scheduleDays: List<int>.from(map['scheduleDays'] as List? ?? []),
+      remindersEnabled: map['remindersEnabled'] as bool? ?? false,
+      reminderTime: map['reminderTime'] as String?,
+      accountability: map['accountability'] as String?,
+      identityTags: List<String>.from(map['identityTags'] as List? ?? []),
       emoji: map['emoji'] as String? ?? map['icon'] as String?,
       color: map['color'] as String?,
       state: HabitState.fromString(map['state'] as String?),
+      pausedAt: _asDateTime(map['pausedAt']),
+      archivedAt: _asDateTime(map['archivedAt']),
       createdAt: _asDateTime(map['createdAt']) ?? DateTime.now(),
       updatedAt: _asDateTime(map['updatedAt']) ?? DateTime.now(),
       schemaVersion: map['schemaVersion'] as int? ?? 1,
@@ -176,6 +200,7 @@ class HabitModel {
 
   Map<String, dynamic> toFirestore() {
     return {
+      'habitId': id,
       'name': name,
       'kind': kind.name,
       'unit': unit,
@@ -186,10 +211,16 @@ class HabitModel {
       if (baselinePerDay != null) 'baselinePerDay': baselinePerDay,
       if (costPerUnit != null) 'costPerUnit': costPerUnit,
       if (currency != null) 'currency': currency,
+      'scheduleDays': scheduleDays,
+      'remindersEnabled': remindersEnabled,
+      if (reminderTime != null) 'reminderTime': reminderTime,
+      if (accountability != null) 'accountability': accountability,
       'identityTags': identityTags,
       if (emoji != null) 'emoji': emoji,
       if (color != null) 'color': color,
       'state': state.name,
+      if (pausedAt != null) 'pausedAt': Timestamp.fromDate(pausedAt!),
+      if (archivedAt != null) 'archivedAt': Timestamp.fromDate(archivedAt!),
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
@@ -210,10 +241,17 @@ class HabitModel {
     num? baselinePerDay,
     num? costPerUnit,
     String? currency,
+    List<int>? scheduleDays,
+    bool? remindersEnabled,
+    String? reminderTime,
+    String? accountability,
     List<String>? identityTags,
     String? emoji,
     String? color,
     HabitState? state,
+    DateTime? pausedAt,
+    bool clearPausedAt = false,
+    DateTime? archivedAt,
     DateTime? updatedAt,
   }) {
     return HabitModel(
@@ -228,10 +266,16 @@ class HabitModel {
       baselinePerDay: baselinePerDay ?? this.baselinePerDay,
       costPerUnit: costPerUnit ?? this.costPerUnit,
       currency: currency ?? this.currency,
+      scheduleDays: scheduleDays ?? this.scheduleDays,
+      remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+      reminderTime: reminderTime ?? this.reminderTime,
+      accountability: accountability ?? this.accountability,
       identityTags: identityTags ?? this.identityTags,
       emoji: emoji ?? this.emoji,
       color: color ?? this.color,
       state: state ?? this.state,
+      pausedAt: clearPausedAt ? null : pausedAt ?? this.pausedAt,
+      archivedAt: archivedAt ?? this.archivedAt,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion,

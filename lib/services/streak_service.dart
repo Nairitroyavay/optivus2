@@ -1,16 +1,23 @@
 // lib/services/streak_service.dart
 //
-// Manages per-habit streak state in Firestore.
-// Path: /users/{uid}/streaks/{habitId}
+// Manages per-habit and per-routine streak state in Firestore.
 //
-// The primary entry point is runDayCloseRollup(date), which is called
-// directly by RoutineService as step 1 of the day-close sequence.
-// For each active habit it reads that day's logs from the canonical
-// /users/{uid}/habit_logs collection, determines whether the goal was met,
-// and updates the streak document accordingly.
+//   /users/{uid}/streaks/{habitId}            — habit streaks (good & bad)
+//   /users/{uid}/streaks/routine_<routineKey> — routine completion streaks
 //
-// Returns a DayRollupResult so RoutineService can populate DaySummary
-// with real metrics rather than zeros.
+// The primary entry point is runDayCloseRollup(date), called by RoutineService
+// as step 1 of the day-close sequence. It:
+//
+//   1. Reads the user's accountabilityMode (forgiving | strict | ruthless).
+//   2. For each active habit: reads logs from /users/{uid}/habit_logs,
+//      evaluates the goal, applies the accountability rule, persists the
+//      streak doc, and emits streak_extended / streak_broken /
+//      streak_milestone_reached as appropriate.
+//   3. Groups the day's tasks by parentRoutine and updates routine streak
+//      docs with the same rules.
+//
+// Ghost / comeback orchestration calls pauseAllActiveStreaks and
+// resumeAllPausedStreaks, which emit streak_paused / streak_resumed.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,6 +28,13 @@ import '../core/errors/app_errors.dart';
 import '../models/habit_model.dart';
 import '../models/streak_model.dart';
 import 'event_service.dart';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+/// Streak lengths that trigger a `streak_milestone_reached` event.
+const List<int> kStreakMilestones = [3, 7, 14, 30, 60, 90, 180, 365];
+
+const String _kRoutineStreakPrefix = 'routine_';
 
 // ── Return type ──────────────────────────────────────────────────────────────
 
@@ -73,6 +87,9 @@ class StreakService {
   CollectionReference<Map<String, dynamic>> get _streaksRef =>
       _firestore.collection('users').doc(_uid).collection('streaks');
 
+  CollectionReference<Map<String, dynamic>> get _tasksRef =>
+      _firestore.collection('users').doc(_uid).collection('tasks');
+
   // ── Log readers (canonical collection) ───────────────────────────────────
 
   /// Parses logs for [habitId] on [date] where logType == 'good' and returns
@@ -118,44 +135,79 @@ class StreakService {
 
   /// Parses start/end DateTime bounds for a YYYY-MM-DD string.
   (DateTime, DateTime) _dayBounds(String date) {
+    final start = _parseDate(date);
+    return (start, start.add(const Duration(days: 1)));
+  }
+
+  static DateTime _parseDate(String date) {
     final parts = date.split('-');
-    final startOfDay = DateTime(
+    return DateTime(
       int.parse(parts[0]),
       int.parse(parts[1]),
       int.parse(parts[2]),
     );
-    return (startOfDay, startOfDay.add(const Duration(days: 1)));
+  }
+
+  /// ISO 8601 week key — "YYYY-Www" — used as the bucket for forgiving-mode
+  /// grace days.
+  static String isoWeekKey(DateTime date) {
+    final thursday = date.add(Duration(days: 4 - date.weekday));
+    final year = thursday.year;
+    final firstThursday = DateTime(year, 1, 4);
+    final firstWeekStart =
+        firstThursday.subtract(Duration(days: firstThursday.weekday - 1));
+    final week =
+        ((thursday.difference(firstWeekStart).inDays) ~/ 7) + 1;
+    return '$year-W${week.toString().padLeft(2, '0')}';
   }
 
   // ── Goal evaluation ──────────────────────────────────────────────────────
 
-  /// Returns `true` if the habit's goal was met for the given day.
-  bool _goalMet(HabitModel habit, num logged) {
+  /// Returns `true` if the habit's goal was met for the given day under
+  /// the supplied accountability [mode].
+  bool _goalMet(HabitModel habit, num logged, AccountabilityMode mode) {
+    // Ruthless overrides bad-habit goal type — any slip is a break.
+    if (habit.kind == HabitKind.bad &&
+        mode == AccountabilityMode.ruthless &&
+        logged > 0) {
+      return false;
+    }
+
     if (habit.kind == HabitKind.good) {
       final goal = habit.dailyGoal;
       if (goal == null) return logged > 0; // any log counts
       return logged >= goal;
-    } else {
-      // bad habit
-      switch (habit.goalType ?? BadHabitGoalType.awarenessOnly) {
-        case BadHabitGoalType.eliminate:
-          return logged == 0; // zero slips = success
-        case BadHabitGoalType.reduceToTarget:
-          final target = habit.target;
-          if (target == null) return true; // no cap set, always pass
-          return logged <= target;
-        case BadHabitGoalType.awarenessOnly:
-          return true; // tracking only — goal always "met"
-      }
+    }
+    switch (habit.goalType ?? BadHabitGoalType.awarenessOnly) {
+      case BadHabitGoalType.eliminate:
+        return logged == 0;
+      case BadHabitGoalType.reduceToTarget:
+        final target = habit.target;
+        if (target == null) return true;
+        return logged <= target;
+      case BadHabitGoalType.awarenessOnly:
+        return true;
+    }
+  }
+
+  // ── User-mode resolution ─────────────────────────────────────────────────
+
+  Future<AccountabilityMode> _resolveUserMode() async {
+    try {
+      final userDoc =
+          await _firestore.collection('users').doc(_uid).get();
+      final raw = userDoc.data()?['accountabilityMode'] as String?;
+      return AccountabilityMode.fromString(raw);
+    } catch (e) {
+      debugPrint('[StreakService] Could not resolve accountability mode: $e');
+      return AccountabilityMode.strict;
     }
   }
 
   // ── Day-close rollup ─────────────────────────────────────────────────────
 
-  /// Iterates all active habits, evaluates goal completion for [date],
-  /// writes updated streak docs to `/users/{uid}/streaks/{habitId}`, and
-  /// emits `streak_extended`, `streak_broken`, and `streak_milestone_reached`
-  /// as appropriate.
+  /// Iterates active habits and routines, evaluates completion for [date],
+  /// writes updated streak docs, and emits the streak event family.
   ///
   /// [date] must be in `YYYY-MM-DD` format.
   ///
@@ -165,17 +217,13 @@ class StreakService {
   Future<DayRollupResult> runDayCloseRollup(String date) async {
     debugPrint('[StreakService] runDayCloseRollup($date) — starting');
 
-    // 1. Load all active habits.
+    final mode = await _resolveUserMode();
+
+    // 1. Active habits.
     final habitsSnap = await _habitsRef
         .where('state', isEqualTo: HabitState.active.name)
         .get();
 
-    if (habitsSnap.docs.isEmpty) {
-      debugPrint('[StreakService] No active habits — nothing to roll up.');
-      return const DayRollupResult();
-    }
-
-    // Accumulate summary metrics across all habits.
     int habitsCompleted = 0;
     int habitsBadLogged = 0;
     int streaksActive = 0;
@@ -183,21 +231,26 @@ class StreakService {
 
     for (final habitDoc in habitsSnap.docs) {
       final habit = HabitModel.fromFirestore(habitDoc);
-      final result = await _rollupHabit(habit, date);
+      final result = await _rollupHabit(habit, date, mode);
 
-      if (result.goalMet) {
-        if (habit.kind == HabitKind.good) {
-          habitsCompleted++;
-        }
-        streaksActive++;
+      if (result.goalMet && habit.kind == HabitKind.good) {
+        habitsCompleted++;
       }
       if (habit.kind == HabitKind.bad && result.logged > 0) {
         habitsBadLogged += result.logged.toInt();
+      }
+      if (result.streakActiveAfter) {
+        streaksActive++;
       }
       if (result.milestoneReached != null) {
         milestonesHit.add('${habit.id}:${result.milestoneReached}');
       }
     }
+
+    // 2. Routine completion streaks.
+    final routineResult = await _rollupRoutines(date, mode);
+    streaksActive += routineResult.streaksActive;
+    milestonesHit.addAll(routineResult.milestonesHit);
 
     debugPrint('[StreakService] runDayCloseRollup($date) — complete. '
         'completed=$habitsCompleted active=$streaksActive');
@@ -212,43 +265,58 @@ class StreakService {
 
   // ── Single-habit rollup ───────────────────────────────────────────────────
 
-  /// Computes the new streak state for a single [habit] on [date], persists
-  /// the result, and emits the appropriate streak events.
-  Future<({bool goalMet, num logged, int? milestoneReached})> _rollupHabit(
+  Future<({
+    bool goalMet,
+    num logged,
+    int? milestoneReached,
+    bool streakActiveAfter,
+  })> _rollupHabit(
     HabitModel habit,
     String date,
+    AccountabilityMode mode,
   ) async {
     try {
-      // 2. Read logs from canonical collection (habit_logs).
       final num logged = habit.kind == HabitKind.good
           ? await _sumGoodLogsForDate(habit.id, date)
           : (await _slipCountForDate(habit.id, date)).toDouble();
 
-      final bool hit = _goalMet(habit, logged);
+      final hit = _goalMet(habit, logged, mode);
 
-      // 3. Load existing streak (or seed a fresh one).
-      final streakDocRef = _streaksRef.doc(habit.id);
-      final streakSnap = await streakDocRef.get();
+      final docRef = _streaksRef.doc(habit.id);
+      final snap = await docRef.get();
 
-      final Streak current = streakSnap.exists
-          ? Streak.fromFirestore(streakSnap)
-          : Streak.initial(habit.id);
+      final current = snap.exists
+          ? Streak.fromFirestore(snap)
+          : Streak.initial(habit.id, mode: mode);
 
-      // 4. Compute next streak state.
-      final Streak next = _computeNextStreak(current, date, hit);
+      // Frozen streaks (paused) are not advanced by the daily rollup.
+      if (current.state == StreakState.paused) {
+        return (
+          goalMet: hit,
+          logged: logged,
+          milestoneReached: null,
+          streakActiveAfter: false,
+        );
+      }
 
-      // 5. Persist + emit side-effect events atomically.
+      final next = _computeNextStreak(current, date, hit, mode);
+
       final batch = _firestore.batch();
-      batch.set(streakDocRef, next.toFirestore(), SetOptions(merge: true));
+      batch.set(docRef, next.toFirestore(), SetOptions(merge: true));
 
       int? milestoneReached;
+      final extended = hit && next.currentCount > current.currentCount;
+      final broken = !hit &&
+          next.state == StreakState.broken &&
+          current.state == StreakState.active;
 
-      if (hit && next.currentCount > current.currentCount) {
-        // Streak extended — emit event inside the batch.
+      if (extended) {
         await _eventService.emit(
           eventName: EventNames.streakExtended,
           payload: {
             'habitId': habit.id,
+            'scope': StreakScope.habit.name,
+            'mode': mode.name,
             'currentCount': next.currentCount,
             'longestCount': next.longestCount,
             'date': date,
@@ -256,26 +324,26 @@ class StreakService {
           batch: batch,
         );
 
-        // Milestone check: 7, 14, 21, 30, 60, 90, 180, 365-day milestones.
-        const milestones = [7, 14, 21, 30, 60, 90, 180, 365];
-        if (milestones.contains(next.currentCount)) {
+        if (kStreakMilestones.contains(next.currentCount)) {
           milestoneReached = next.currentCount;
           await _eventService.emit(
             eventName: EventNames.streakMilestoneReached,
             payload: {
               'habitId': habit.id,
+              'scope': StreakScope.habit.name,
               'milestone': next.currentCount,
               'date': date,
             },
             batch: batch,
           );
         }
-      } else if (!hit && current.state == StreakState.active) {
-        // Streak broken — emit event inside the batch.
+      } else if (broken) {
         await _eventService.emit(
           eventName: EventNames.streakBroken,
           payload: {
             'habitId': habit.id,
+            'scope': StreakScope.habit.name,
+            'mode': mode.name,
             'brokenAt': date,
             'previousCount': current.currentCount,
           },
@@ -283,48 +351,299 @@ class StreakService {
         );
       }
 
-      // Commit streak doc + event docs in a single batch.
       await batch.commit();
 
       debugPrint(
         '[StreakService] ${habit.id}: hit=$hit logged=$logged '
         'current=${next.currentCount} longest=${next.longestCount} '
-        'state=${next.state.name}',
+        'state=${next.state.name} mode=${mode.name}',
       );
 
-      return (goalMet: hit, logged: logged, milestoneReached: milestoneReached);
+      return (
+        goalMet: hit,
+        logged: logged,
+        milestoneReached: milestoneReached,
+        streakActiveAfter: next.state == StreakState.active,
+      );
     } catch (e, st) {
-      // Never let a single habit failure abort the entire rollup.
       debugPrint('[StreakService] Error rolling up ${habit.id}: $e\n$st');
-      return (goalMet: false, logged: 0.0, milestoneReached: null);
+      return (
+        goalMet: false,
+        logged: 0.0,
+        milestoneReached: null,
+        streakActiveAfter: false,
+      );
     }
   }
 
-  // ── State machine ─────────────────────────────────────────────────────────
+  // ── Routine completion rollup ────────────────────────────────────────────
 
-  /// Pure function — derives the next [Streak] from [current], [date], and
-  /// whether the goal was [hit].
-  Streak _computeNextStreak(Streak current, String date, bool hit) {
+  Future<({int streaksActive, List<String> milestonesHit})> _rollupRoutines(
+    String date,
+    AccountabilityMode mode,
+  ) async {
+    try {
+      final (start, end) = _dayBounds(date);
+      final tasksSnap = await _tasksRef
+          .where('plannedStart',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('plannedStart', isLessThan: Timestamp.fromDate(end))
+          .get();
+
+      final groups = <String, List<Map<String, dynamic>>>{};
+      for (final doc in tasksSnap.docs) {
+        final data = doc.data();
+        final parent = (data['parentRoutine'] as String?)?.trim();
+        if (parent == null || parent.isEmpty) continue;
+        groups.putIfAbsent(parent, () => []).add(data);
+      }
+
+      int streaksActive = 0;
+      final milestones = <String>[];
+
+      for (final entry in groups.entries) {
+        final hit = _routineCompleted(entry.value);
+        final outcome =
+            await _rollupRoutineKey(entry.key, date, hit, mode);
+        if (outcome.streakActiveAfter) streaksActive++;
+        if (outcome.milestoneReached != null) {
+          milestones.add(
+              '$_kRoutineStreakPrefix${entry.key}:${outcome.milestoneReached}');
+        }
+      }
+
+      return (streaksActive: streaksActive, milestonesHit: milestones);
+    } catch (e, st) {
+      debugPrint('[StreakService] Error rolling up routines: $e\n$st');
+      return (streaksActive: 0, milestonesHit: const <String>[]);
+    }
+  }
+
+  bool _routineCompleted(List<Map<String, dynamic>> tasks) {
+    var needed = 0;
+    var completed = 0;
+    for (final t in tasks) {
+      final state = (t['state'] as String?) ?? 'scheduled';
+      final reasonTag = ((t['reasonTag'] as String?) ?? '').toLowerCase();
+      final excluded = state == 'skipped' &&
+          (reasonTag == 'valid_reason' ||
+              reasonTag == 'day_off' ||
+              reasonTag == 'illness');
+      if (excluded) continue;
+      needed++;
+      if (state == 'completed') completed++;
+    }
+    return needed > 0 && completed == needed;
+  }
+
+  Future<({int? milestoneReached, bool streakActiveAfter})> _rollupRoutineKey(
+    String routineKey,
+    String date,
+    bool hit,
+    AccountabilityMode mode,
+  ) async {
+    final streakId = '$_kRoutineStreakPrefix$routineKey';
+    final docRef = _streaksRef.doc(streakId);
+    final snap = await docRef.get();
+    final current = snap.exists
+        ? Streak.fromFirestore(snap)
+        : Streak.initial(streakId, scope: StreakScope.routine, mode: mode);
+
+    if (current.state == StreakState.paused) {
+      return (milestoneReached: null, streakActiveAfter: false);
+    }
+
+    final next = _computeNextStreak(current, date, hit, mode);
+    final batch = _firestore.batch();
+    batch.set(docRef, next.toFirestore(), SetOptions(merge: true));
+
+    int? milestoneReached;
+    final extended = hit && next.currentCount > current.currentCount;
+    final broken = !hit &&
+        next.state == StreakState.broken &&
+        current.state == StreakState.active;
+
+    if (extended) {
+      await _eventService.emit(
+        eventName: EventNames.streakExtended,
+        payload: {
+          'habitId': streakId,
+          'scope': StreakScope.routine.name,
+          'routineKey': routineKey,
+          'mode': mode.name,
+          'currentCount': next.currentCount,
+          'longestCount': next.longestCount,
+          'date': date,
+        },
+        batch: batch,
+      );
+
+      if (kStreakMilestones.contains(next.currentCount)) {
+        milestoneReached = next.currentCount;
+        await _eventService.emit(
+          eventName: EventNames.streakMilestoneReached,
+          payload: {
+            'habitId': streakId,
+            'scope': StreakScope.routine.name,
+            'routineKey': routineKey,
+            'milestone': next.currentCount,
+            'date': date,
+          },
+          batch: batch,
+        );
+      }
+    } else if (broken) {
+      await _eventService.emit(
+        eventName: EventNames.streakBroken,
+        payload: {
+          'habitId': streakId,
+          'scope': StreakScope.routine.name,
+          'routineKey': routineKey,
+          'mode': mode.name,
+          'brokenAt': date,
+          'previousCount': current.currentCount,
+        },
+        batch: batch,
+      );
+    }
+
+    await batch.commit();
+    return (
+      milestoneReached: milestoneReached,
+      streakActiveAfter: next.state == StreakState.active,
+    );
+  }
+
+  // ── Pure state machine ───────────────────────────────────────────────────
+
+  Streak _computeNextStreak(
+    Streak current,
+    String date,
+    bool hit,
+    AccountabilityMode mode,
+  ) {
+    final now = DateTime.now();
+
     if (hit) {
       final newCount = current.currentCount + 1;
       final newLongest =
           newCount > current.longestCount ? newCount : current.longestCount;
-
       return current.copyWith(
         currentCount: newCount,
         longestCount: newLongest,
         lastHitDate: date,
         state: StreakState.active,
-        updatedAt: DateTime.now(),
+        mode: mode,
+        updatedAt: now,
       );
-    } else {
-      // Missed: reset current streak but preserve longest.
-      return current.copyWith(
-        currentCount: 0,
-        lastBreakDate: date,
-        state: StreakState.broken,
-        updatedAt: DateTime.now(),
-      );
+    }
+
+    // Forgiving: spend an ISO-week grace day if we have one and there is an
+    // existing streak to preserve.
+    if (mode == AccountabilityMode.forgiving && current.currentCount > 0) {
+      final weekKey = isoWeekKey(_parseDate(date));
+      final used = current.weeklySkipsUsed[weekKey] ?? 0;
+      if (used < 1) {
+        final updated = Map<String, int>.from(current.weeklySkipsUsed);
+        updated[weekKey] = used + 1;
+        return current.copyWith(
+          weeklySkipsUsed: updated,
+          state: StreakState.active,
+          mode: mode,
+          updatedAt: now,
+        );
+      }
+    }
+
+    return current.copyWith(
+      currentCount: 0,
+      lastBreakDate: date,
+      state: StreakState.broken,
+      mode: mode,
+      updatedAt: now,
+    );
+  }
+
+  // ── Ghost pause / comeback resume ────────────────────────────────────────
+
+  /// Freezes every active streak. Called by the orchestrator when
+  /// `ghost_day_detected` fires. Idempotent — already-paused streaks are
+  /// skipped.
+  Future<void> pauseAllActiveStreaks({String reason = 'ghost'}) async {
+    final snap = await _streaksRef
+        .where('state', isEqualTo: StreakState.active.name)
+        .get();
+
+    for (final doc in snap.docs) {
+      try {
+        final streak = Streak.fromFirestore(doc);
+        if (streak.state != StreakState.active) continue;
+
+        final now = DateTime.now();
+        final batch = _firestore.batch();
+        batch.update(doc.reference, {
+          'state': StreakState.paused.name,
+          'pausedAt': Timestamp.fromDate(now),
+          'prePauseCount': streak.currentCount,
+          'pauseReason': reason,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        await _eventService.emit(
+          eventName: EventNames.streakPaused,
+          payload: {
+            'habitId': streak.habitId,
+            'scope': streak.scope.name,
+            'reason': reason,
+            'prePauseCount': streak.currentCount,
+          },
+          batch: batch,
+        );
+
+        await batch.commit();
+      } catch (e, st) {
+        debugPrint('[StreakService] pause failed for ${doc.id}: $e\n$st');
+      }
+    }
+  }
+
+  /// Restores every paused streak to its pre-pause count. Called by the
+  /// orchestrator when `comeback_initiated` fires.
+  Future<void> resumeAllPausedStreaks() async {
+    final snap = await _streaksRef
+        .where('state', isEqualTo: StreakState.paused.name)
+        .get();
+
+    for (final doc in snap.docs) {
+      try {
+        final streak = Streak.fromFirestore(doc);
+        if (streak.state != StreakState.paused) continue;
+
+        final restored = streak.prePauseCount ?? streak.currentCount;
+        final batch = _firestore.batch();
+        batch.update(doc.reference, {
+          'state': StreakState.active.name,
+          'currentCount': restored,
+          'pausedAt': FieldValue.delete(),
+          'prePauseCount': FieldValue.delete(),
+          'pauseReason': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        await _eventService.emit(
+          eventName: EventNames.streakResumed,
+          payload: {
+            'habitId': streak.habitId,
+            'scope': streak.scope.name,
+            'restoredCount': restored,
+          },
+          batch: batch,
+        );
+
+        await batch.commit();
+      } catch (e, st) {
+        debugPrint('[StreakService] resume failed for ${doc.id}: $e\n$st');
+      }
     }
   }
 

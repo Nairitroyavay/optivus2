@@ -455,12 +455,19 @@ class _HomeTabState extends ConsumerState<HomeTab>
 
     final habits = habitsAsync.valueOrNull ?? [];
     final logs = logsAsync.valueOrNull ?? [];
+    final hasError = habitsAsync.hasError || logsAsync.hasError;
+    final isLoading = (habitsAsync.isLoading && habits.isEmpty) ||
+        (logsAsync.isLoading && logs.isEmpty);
 
-    // Quick lookup for habits that have a 'good' log today
     final completedHabitIds = logs
-        .where((doc) => doc.data()['logType'] == 'good')
-        .map((doc) => doc.data()['habitId'] as String)
+        .where((log) => log.logType == 'good')
+        .map((log) => log.habitId)
         .toSet();
+    final slipCounts = <String, num>{};
+    for (final log in logs.where((log) => log.logType == 'slip')) {
+      slipCounts[log.habitId] =
+          (slipCounts[log.habitId] ?? 0) + (log.quantity ?? 1);
+    }
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 22, 0, 0),
@@ -488,31 +495,71 @@ class _HomeTabState extends ConsumerState<HomeTab>
           const SizedBox(height: 12),
           SizedBox(
             height: 58,
-            child: habits.isEmpty
+            child: isLoading
                 ? const Padding(
                     padding: EdgeInsets.only(left: 4),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Text('No habits yet.',
-                          style: TextStyle(color: _kSubtext)),
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _kAmber,
+                        ),
+                      ),
                     ),
                   )
-                : ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.only(right: 20),
-                    itemCount: habits.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(width: 10),
-                    itemBuilder: (context, i) {
-                      final h = habits[i];
-                      return _HabitPill(h,
-                          completedToday: completedHabitIds.contains(h.id));
-                    },
-                  ),
+                : hasError
+                    ? const Padding(
+                        padding: EdgeInsets.only(left: 4, right: 20),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Unable to load habit check-ins.',
+                            style: TextStyle(color: _kSubtext),
+                          ),
+                        ),
+                      )
+                    : habits.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.only(left: 4),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('No habits yet.',
+                                  style: TextStyle(color: _kSubtext)),
+                            ),
+                          )
+                        : ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.only(right: 20),
+                            itemCount: habits.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(width: 10),
+                            itemBuilder: (context, i) {
+                              final h = habits[i];
+                              return _HabitPill(
+                                h,
+                                completedToday:
+                                    completedHabitIds.contains(h.id),
+                                slipCount: slipCounts[h.id] ?? 0,
+                                onTap: () => _openHabitLogSheet(h),
+                              );
+                            },
+                          ),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openHabitLogSheet(HabitModel habit) async {
+    await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => LogHabitSheet(habit: habit),
     );
   }
 
@@ -777,7 +824,15 @@ class _GlassOrb extends StatelessWidget {
 class _HabitPill extends StatelessWidget {
   final HabitModel h;
   final bool completedToday;
-  const _HabitPill(this.h, {this.completedToday = false});
+  final num slipCount;
+  final VoidCallback onTap;
+
+  const _HabitPill(
+    this.h, {
+    this.completedToday = false,
+    this.slipCount = 0,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -786,33 +841,54 @@ class _HabitPill extends StatelessWidget {
       final hex = h.color!.replaceFirst('#', '');
       color = Color(int.parse('FF$hex', radix: 16));
     }
-    final emoji = completedToday ? '✅' : (h.emoji ?? '📌');
+    final hasSlip = h.kind == HabitKind.bad && slipCount > 0;
+    final emoji = completedToday
+        ? '✅'
+        : hasSlip
+            ? '!'
+            : (h.emoji ?? '📌');
 
-    return LiquidCard.solid(
-      radius: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      tint: completedToday
-          ? const Color(0xFF60D4A0).withValues(alpha: 0.15)
-          : Colors.white.withValues(alpha: 0.15),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 3-D orb icon
-          _GlassOrb(
-            size: 36,
-            colors: [
-              color.withValues(alpha: 0.55),
-              color,
-            ],
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 18)),
+    return GestureDetector(
+      onTap: onTap,
+      child: LiquidCard.solid(
+        radius: 30,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        tint: completedToday
+            ? const Color(0xFF60D4A0).withValues(alpha: 0.15)
+            : hasSlip
+                ? const Color(0xFFFF6B6B).withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.15),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 3-D orb icon
+            _GlassOrb(
+              size: 36,
+              colors: [
+                color.withValues(alpha: 0.55),
+                color,
+              ],
+              child: Center(
+                child: Text(emoji, style: const TextStyle(fontSize: 18)),
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Text(h.name,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700, color: _kInk)),
-        ],
+            const SizedBox(width: 10),
+            Text(h.name,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: _kInk)),
+            if (hasSlip) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${slipCount.round()}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFFFF6B6B),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

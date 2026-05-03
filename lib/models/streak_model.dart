@@ -1,10 +1,49 @@
 // lib/models/streak_model.dart
 //
 // Streak record per ServiceContracts §4.3 and DB Schema §1A.5.
-// One streak doc per habit — lives at /users/{uid}/streaks/{habitId}.
+// One streak doc per habit OR per routine — lives at
+// /users/{uid}/streaks/{streakId}.
+//
+//   • Habit streaks: streakId == habitId.
+//   • Routine streaks: streakId == "routine_<routineKey>".
+//
 // Written by StreakService.runDayCloseRollup, read by UI.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// What this streak counts.
+enum StreakScope {
+  habit,
+  routine;
+
+  static StreakScope fromString(String? value) =>
+      value == 'routine' ? StreakScope.routine : StreakScope.habit;
+}
+
+/// Accountability mode. Sourced from the user document
+/// (`accountabilityMode`) and applied by the day-close rollup.
+enum AccountabilityMode {
+  /// One ISO-week grace day; missed days within budget keep the streak alive.
+  forgiving,
+
+  /// Default — any miss breaks the streak.
+  strict,
+
+  /// Bad-habit slips always break, regardless of `goalType`.
+  ruthless;
+
+  static AccountabilityMode fromString(String? value) {
+    switch (value?.toLowerCase()) {
+      case 'forgiving':
+        return AccountabilityMode.forgiving;
+      case 'ruthless':
+        return AccountabilityMode.ruthless;
+      case 'strict':
+      default:
+        return AccountabilityMode.strict;
+    }
+  }
+}
 
 /// Streak lifecycle states.
 enum StreakState {
@@ -36,20 +75,35 @@ enum StreakState {
 }
 
 class Streak {
+  /// Streak document id. For habit streaks this is the habitId; for routine
+  /// streaks this is "routine_<routineKey>". The legacy field name is
+  /// preserved so existing UI consumers (HomeTab, tracker variants) keep
+  /// working unchanged.
   final String habitId;
+  final StreakScope scope;
+  final AccountabilityMode mode;
+
   final int currentCount;
   final int longestCount;
   final String? lastHitDate; // "YYYY-MM-DD"
   final String? lastBreakDate; // "YYYY-MM-DD"
   final StreakState state;
+
+  // Pause bookkeeping (set when state == paused).
   final DateTime? pausedAt;
   final int? prePauseCount;
-  final Map<String, int> weeklySkipsUsed; // "YYYY-Wxx": count
+  final String? pauseReason;
+
+  /// Forgiving-mode skip ledger keyed by ISO week ("YYYY-Wxx").
+  final Map<String, int> weeklySkipsUsed;
+
   final DateTime updatedAt;
   final int schemaVersion;
 
   const Streak({
     required this.habitId,
+    this.scope = StreakScope.habit,
+    this.mode = AccountabilityMode.strict,
     this.currentCount = 0,
     this.longestCount = 0,
     this.lastHitDate,
@@ -57,15 +111,22 @@ class Streak {
     this.state = StreakState.fresh,
     this.pausedAt,
     this.prePauseCount,
+    this.pauseReason,
     this.weeklySkipsUsed = const {},
     required this.updatedAt,
     this.schemaVersion = 1,
   });
 
   /// Create a fresh streak for a newly created habit.
-  factory Streak.initial(String habitId) {
+  factory Streak.initial(
+    String habitId, {
+    StreakScope scope = StreakScope.habit,
+    AccountabilityMode mode = AccountabilityMode.strict,
+  }) {
     return Streak(
       habitId: habitId,
+      scope: scope,
+      mode: mode,
       currentCount: 0,
       longestCount: 0,
       state: StreakState.fresh,
@@ -78,6 +139,8 @@ class Streak {
     final data = doc.data()!;
     return Streak(
       habitId: data['habitId'] as String? ?? doc.id,
+      scope: StreakScope.fromString(data['scope'] as String?),
+      mode: AccountabilityMode.fromString(data['mode'] as String?),
       currentCount: data['currentCount'] as int? ?? 0,
       longestCount: data['longestCount'] as int? ?? 0,
       lastHitDate: data['lastHitDate'] as String?,
@@ -87,6 +150,7 @@ class Streak {
           ? (data['pausedAt'] as Timestamp).toDate()
           : null,
       prePauseCount: data['prePauseCount'] as int?,
+      pauseReason: data['pauseReason'] as String?,
       weeklySkipsUsed: Map<String, int>.from(
           data['weeklySkipsUsed'] as Map? ?? {}),
       updatedAt: data['updatedAt'] != null
@@ -99,6 +163,8 @@ class Streak {
   Map<String, dynamic> toFirestore() {
     return {
       'habitId': habitId,
+      'scope': scope.name,
+      'mode': mode.name,
       'currentCount': currentCount,
       'longestCount': longestCount,
       'lastHitDate': lastHitDate,
@@ -106,6 +172,7 @@ class Streak {
       'state': state.name,
       if (pausedAt != null) 'pausedAt': Timestamp.fromDate(pausedAt!),
       if (prePauseCount != null) 'prePauseCount': prePauseCount,
+      if (pauseReason != null) 'pauseReason': pauseReason,
       'weeklySkipsUsed': weeklySkipsUsed,
       'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
@@ -113,6 +180,8 @@ class Streak {
   }
 
   Streak copyWith({
+    StreakScope? scope,
+    AccountabilityMode? mode,
     int? currentCount,
     int? longestCount,
     String? lastHitDate,
@@ -120,11 +189,14 @@ class Streak {
     StreakState? state,
     DateTime? pausedAt,
     int? prePauseCount,
+    String? pauseReason,
     Map<String, int>? weeklySkipsUsed,
     DateTime? updatedAt,
   }) {
     return Streak(
       habitId: habitId,
+      scope: scope ?? this.scope,
+      mode: mode ?? this.mode,
       currentCount: currentCount ?? this.currentCount,
       longestCount: longestCount ?? this.longestCount,
       lastHitDate: lastHitDate ?? this.lastHitDate,
@@ -132,6 +204,7 @@ class Streak {
       state: state ?? this.state,
       pausedAt: pausedAt ?? this.pausedAt,
       prePauseCount: prePauseCount ?? this.prePauseCount,
+      pauseReason: pauseReason ?? this.pauseReason,
       weeklySkipsUsed: weeklySkipsUsed ?? this.weeklySkipsUsed,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion,

@@ -39,10 +39,13 @@ abstract final class EventNames {
   // ── Habit tracking ──────────────────────────────────────────────────────
   static const habitCreated = 'habit_created';
   static const habitUpdated = 'habit_updated';
+  static const habitPaused = 'habit_paused';
+  static const habitResumed = 'habit_resumed';
   static const goodHabitLogged = 'good_habit_logged';
   static const badHabitSlipLogged = 'bad_habit_slip_logged';
   static const habitLogDeleted = 'habit_log_deleted';
   static const habitArchived = 'habit_archived';
+  static const habitDeleted = 'habit_deleted';
   static const slipStreakDetected = 'slip_streak_detected';
 
   // ── Streaks ─────────────────────────────────────────────────────────────

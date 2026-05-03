@@ -8,6 +8,8 @@ import '../../views/screens/signup_screen.dart';
 import '../../views/screens/onboarding_screen.dart';
 import '../../views/screens/home_screen.dart';
 import '../../views/screens/loading_screen.dart';
+import '../../views/habits/habit_detail_screen.dart';
+import '../../views/habits/habit_editor_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
 
@@ -31,7 +33,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final bootstrapState = ref.read(bootstrapProvider);
       final loc = state.matchedLocation;
-      
+
       final isAuthRoute = loc == '/' || loc == '/login' || loc == '/signup';
 
       switch (bootstrapState) {
@@ -78,6 +80,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/home',
         builder: (_, __) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: '/habits/new',
+        builder: (_, __) => const HabitEditorScreen(),
+      ),
+      GoRoute(
+        path: '/habits/:habitId',
+        builder: (_, state) => HabitDetailScreen(
+          habitId: state.pathParameters['habitId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/habits/:habitId/edit',
+        builder: (_, state) => HabitEditorScreen(
+          habitId: state.pathParameters['habitId']!,
+        ),
       ),
     ],
   );

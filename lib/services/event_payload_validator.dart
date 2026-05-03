@@ -83,6 +83,8 @@ class EventPayloadValidator {
     EventNames.subtaskUnchecked: _subtaskRule,
     EventNames.habitCreated: _habitRule,
     EventNames.habitUpdated: _habitRule,
+    EventNames.habitPaused: _habitRule,
+    EventNames.habitResumed: _habitRule,
     EventNames.goodHabitLogged: _habitLogRule,
     EventNames.badHabitSlipLogged: _habitLogRule,
     EventNames.habitLogDeleted: _EventRule.any([
@@ -90,6 +92,7 @@ class EventPayloadValidator {
       ['logId', 'log_id'],
     ]),
     EventNames.habitArchived: _habitRule,
+    EventNames.habitDeleted: _habitRule,
     EventNames.slipStreakDetected: _EventRule.any([
       ['habitId', 'habit_id'],
       ['count'],
