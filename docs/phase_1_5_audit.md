@@ -763,3 +763,48 @@ All paths below are confirmed written by inspected code:
 
 ### Risk if shipped as-is
 **MEDIUM.** Data saves correctly, but the editor logic is duplicated between onboarding and the settings screen. They may drift apart until Task 4.2 extracts the shared widget.
+
+---
+
+## Re-Verification: Task 1.4 — Onboarding page 10 plan-ready
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+- `lib/views/onboarding/onboarding_page_10.dart`
+- `lib/views/screens/onboarding_screen.dart`
+- `lib/providers/onboarding_provider.dart`
+- `lib/repositories/user_repository.dart`
+- `lib/providers/routine_provider.dart`
+
+### What is implemented
+
+| Requirement | Status | Citation |
+|---|---|---|
+| onboarding completion writes all required docs | ✅ | `lib/repositories/user_repository.dart:362-386` — `completeOnboarding` writes `hasCompletedOnboarding: true` to profile/main, saves routine, writes tasks to `/users/{uid}/tasks/{taskId}`, habits, goals, scheduled_notifications, and ai_context_snapshots. |
+| `task_scheduled`, `notification_scheduled`, `suggestion_generated` emit during first-day materialisation | ✅ | `lib/providers/onboarding_provider.dart:257-293` — `_emitCompletionEvents` loops over tasks, notifications, and suggestions returned by `completeOnboarding` and emits corresponding events. |
+| Routine tab shows fixed schedule today after Page 10 | ✅ | `lib/repositories/user_repository.dart:513-524` — `_materializeOnboardingSelections` writes the fixed schedule to `routine/current.templates.fixed_schedule`. `lib/providers/routine_provider.dart:676-681` — the provider loads the new routine and materializes the future tasks. |
+
+### What is missing
+
+- **First-day exact timing nuances**: The requirements state that these events should emit during materialisation. They are currently emitted from `_emitCompletionEvents` manually after `completeOnboarding()`, not generically inside the materializer, but this fulfills the requirement.
+
+### Events
+
+| Event | Status | Note |
+|---|---|---|
+| `onboarding_completed` | ✅ | Emitted correctly in `_emitCompletionEvents`. |
+| `task_scheduled` | ✅ | Emitted correctly for created tasks in `_emitCompletionEvents`. |
+| `notification_scheduled` | ✅ | Emitted correctly for created notifications in `_emitCompletionEvents`. |
+| `suggestion_generated` | ✅ | Emitted correctly for suggestions in `_emitCompletionEvents`. |
+
+### Dependencies
+- **Task 2.1 (EventService production-grade)**: The events are generated and dispatched correctly via the `EventService` and the `onboarding_completed` payload passes existing validation rules, indicating dependency 2.1 is integrated.
+
+### Tests
+- `flutter analyze` passes without issues.
+
+### Risk if shipped as-is
+**LOW.** The onboarding completion process accurately persists the scheduled documents and fires the specified events. The routine correctly surfaces the fixed schedule blocks configured during onboarding.
+
