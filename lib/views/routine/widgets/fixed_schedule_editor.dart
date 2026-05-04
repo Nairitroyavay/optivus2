@@ -1,0 +1,677 @@
+import 'dart:async' show unawaited;
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/providers/routine_provider.dart';
+
+/// Shared list-based editor for fixed-schedule templates.
+///
+/// Both onboarding page 9 (draft mode) and the Settings Fixed Schedule screen
+/// (immediate-save mode) use this widget. The parent decides what to do with
+/// [onChanged]; the widget handles validation, ordering, and event emission.
+class FixedScheduleEditor extends ConsumerStatefulWidget {
+  final List<FixedScheduleTemplate> initialTemplates;
+
+  /// Called on every mutation (add / edit / remove / reorder).
+  /// The list passed is an unmodifiable snapshot of the current state.
+  final void Function(List<FixedScheduleTemplate> templates)? onChanged;
+
+  const FixedScheduleEditor({
+    super.key,
+    required this.initialTemplates,
+    this.onChanged,
+  });
+
+  @override
+  ConsumerState<FixedScheduleEditor> createState() =>
+      _FixedScheduleEditorState();
+}
+
+class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
+  late List<FixedScheduleTemplate> _templates;
+  bool _allowOverlap = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _templates = List.from(widget.initialTemplates);
+  }
+
+  void _notify() =>
+      widget.onChanged?.call(List.unmodifiable(_templates));
+
+  // ── Time helpers ─────────────────────────────────────────────────────────
+
+  static TimeOfDay _parseTod(String s) {
+    try {
+      final p = s.split(':');
+      return TimeOfDay(hour: int.parse(p[0]), minute: int.parse(p[1]));
+    } catch (_) {
+      return const TimeOfDay(hour: 9, minute: 0);
+    }
+  }
+
+  static String _formatTod(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:'
+      '${t.minute.toString().padLeft(2, '0')}';
+
+  int _durationMin(FixedScheduleTemplate t) {
+    final s = _parseTod(t.startTime);
+    final e = _parseTod(t.endTime);
+    int d = (e.hour * 60 + e.minute) - (s.hour * 60 + s.minute);
+    if (d <= 0) d += 1440;
+    return d;
+  }
+
+  String _durationStr(FixedScheduleTemplate t) {
+    final m = _durationMin(t);
+    final h = m ~/ 60;
+    final min = m % 60;
+    if (h > 0 && min > 0) return '${h}h ${min}m';
+    if (h > 0) return '${h}h';
+    return '${min}m';
+  }
+
+  bool _overlaps(TimeOfDay s1, TimeOfDay e1, TimeOfDay s2, TimeOfDay e2) {
+    int a = s1.hour * 60 + s1.minute;
+    int b = e1.hour * 60 + e1.minute;
+    int c = s2.hour * 60 + s2.minute;
+    int d = e2.hour * 60 + e2.minute;
+    if (b <= a) b += 1440;
+    if (d <= c) d += 1440;
+    return a < d && c < b;
+  }
+
+  static const _validRepeatRules = ['daily', 'weekly:1,2,3,4,5', 'weekly:6,7'];
+  static String _safeRepeat(String r) =>
+      _validRepeatRules.contains(r) ? r : 'daily';
+
+  // ── Events ───────────────────────────────────────────────────────────────
+
+  Future<void> _emitCreated(FixedScheduleTemplate t) =>
+      ref.read(eventServiceProvider).emit(
+        eventName: EventNames.routineTemplateCreated,
+        source: 'fixed_schedule_editor',
+        payload: {
+          'templateId': t.templateId,
+          'routineType': 'fixed_schedule',
+        },
+      );
+
+  Future<void> _emitUpdated(FixedScheduleTemplate t) =>
+      ref.read(eventServiceProvider).emit(
+        eventName: EventNames.routineTemplateUpdated,
+        source: 'fixed_schedule_editor',
+        payload: {
+          'templateId': t.templateId,
+          'routineType': 'fixed_schedule',
+        },
+      );
+
+  Future<void> _emitDeleted(String templateId) =>
+      ref.read(eventServiceProvider).emit(
+        eventName: EventNames.routineTemplateDeleted,
+        source: 'fixed_schedule_editor',
+        payload: {
+          'templateId': templateId,
+          'routineType': 'fixed_schedule',
+        },
+      );
+
+  // ── Edit dialog ──────────────────────────────────────────────────────────
+
+  Future<void> _showEditDialog({
+    FixedScheduleTemplate? existing,
+    required int index,
+  }) async {
+    final isNew = existing == null;
+
+    TimeOfDay startTod = isNew
+        ? const TimeOfDay(hour: 9, minute: 0)
+        : _parseTod(existing.startTime);
+    TimeOfDay endTod = isNew
+        ? const TimeOfDay(hour: 10, minute: 0)
+        : _parseTod(existing.endTime);
+    String repeatRule = _safeRepeat(existing?.repeatRule ?? 'daily');
+
+    final titleCtrl = TextEditingController(text: existing?.title ?? '');
+    final categoryCtrl = TextEditingController(text: existing?.category ?? '');
+    final notesCtrl = TextEditingController(text: existing?.notes ?? '');
+
+    int curDurMin() {
+      int d = (endTod.hour * 60 + endTod.minute) -
+          (startTod.hour * 60 + startTod.minute);
+      if (d <= 0) d += 1440;
+      return d;
+    }
+
+    String curDurStr() {
+      final m = curDurMin();
+      final h = m ~/ 60;
+      final min = m % 60;
+      if (h > 0 && min > 0) return '${h}h ${min}m';
+      if (h > 0) return '${h}h';
+      return '${min}m';
+    }
+
+    final durationCtrl = TextEditingController(text: curDurMin().toString());
+    String? errorMsg;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (_, setModal) {
+          return Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(color: Color(0x1A000000), blurRadius: 20)
+                ],
+              ),
+              padding: const EdgeInsets.all(24),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          isNew ? 'Add Task' : 'Edit Task',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F111A),
+                          ),
+                        ),
+                        if (!isNew)
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.red),
+                            onPressed: () {
+                              final id = existing.templateId;
+                              setState(() => _templates.removeAt(index));
+                              _notify();
+                              unawaited(_emitDeleted(id));
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Title
+                    TextField(
+                      controller: titleCtrl,
+                      decoration: _inputDecor('Task Title'),
+                      onChanged: (_) {
+                        if (errorMsg != null) {
+                          setModal(() => errorMsg = null);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Start / End pickers
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final t = await showTimePicker(
+                                  context: ctx,
+                                  initialTime: startTod);
+                              if (t != null) {
+                                setModal(() {
+                                  startTod = t;
+                                  final dur = int.tryParse(
+                                      durationCtrl.text.trim());
+                                  if (dur != null &&
+                                      dur > 0 &&
+                                      dur < 1440) {
+                                    final total = (t.hour * 60 +
+                                            t.minute +
+                                            dur) %
+                                        1440;
+                                    endTod = TimeOfDay(
+                                        hour: total ~/ 60,
+                                        minute: total % 60);
+                                  }
+                                  errorMsg = null;
+                                });
+                              }
+                            },
+                            child: _timeTile(ctx, 'Start Time', startTod),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final t = await showTimePicker(
+                                  context: ctx, initialTime: endTod);
+                              if (t != null) {
+                                setModal(() {
+                                  endTod = t;
+                                  durationCtrl.text =
+                                      curDurMin().toString();
+                                  errorMsg = null;
+                                });
+                              }
+                            },
+                            child: _timeTile(ctx, 'End Time', endTod),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Duration hint
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Duration: ${curDurStr()}',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Duration field
+                    TextField(
+                      controller: durationCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: _inputDecor('Duration (minutes)'),
+                      onChanged: (v) {
+                        final dur = int.tryParse(v.trim());
+                        if (dur == null || dur <= 0 || dur >= 1440) {
+                          setModal(() => errorMsg =
+                              'Duration must be 1 to 1439 minutes.');
+                          return;
+                        }
+                        final total = (startTod.hour * 60 +
+                                startTod.minute +
+                                dur) %
+                            1440;
+                        setModal(() {
+                          endTod = TimeOfDay(
+                              hour: total ~/ 60, minute: total % 60);
+                          errorMsg = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Repeat rule
+                    InputDecorator(
+                      decoration: _inputDecor('Repeat'),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: repeatRule,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'daily', child: Text('Daily')),
+                            DropdownMenuItem(
+                                value: 'weekly:1,2,3,4,5',
+                                child: Text('Weekdays')),
+                            DropdownMenuItem(
+                                value: 'weekly:6,7',
+                                child: Text('Weekends')),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) setModal(() => repeatRule = v);
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Category
+                    TextField(
+                      controller: categoryCtrl,
+                      decoration: _inputDecor('Category (Optional)'),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Notes
+                    TextField(
+                      controller: notesCtrl,
+                      maxLines: 2,
+                      decoration: _inputDecor('Notes (Optional)'),
+                    ),
+
+                    if (errorMsg != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        errorMsg!,
+                        style: const TextStyle(
+                            color: Colors.red, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+
+                    // Save button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF3B82F6),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                        ),
+                        onPressed: () {
+                          // Validation
+                          if (titleCtrl.text.trim().isEmpty) {
+                            setModal(() =>
+                                errorMsg = 'Title cannot be blank.');
+                            return;
+                          }
+                          if (startTod.hour == endTod.hour &&
+                              startTod.minute == endTod.minute) {
+                            setModal(() => errorMsg =
+                                'Start and end time cannot be the same.');
+                            return;
+                          }
+                          final dur =
+                              int.tryParse(durationCtrl.text.trim());
+                          if (dur == null || dur <= 0 || dur >= 1440) {
+                            setModal(() => errorMsg =
+                                'Duration must be 1 to 1439 minutes.');
+                            return;
+                          }
+
+                          if (!_allowOverlap) {
+                            for (int i = 0; i < _templates.length; i++) {
+                              if (!isNew && i == index) continue;
+                              if (_overlaps(
+                                startTod,
+                                endTod,
+                                _parseTod(_templates[i].startTime),
+                                _parseTod(_templates[i].endTime),
+                              )) {
+                                setModal(() => errorMsg =
+                                    'Time overlaps with another task. '
+                                    'Adjust times or allow overlaps.');
+                                return;
+                              }
+                            }
+                          }
+
+                          // Recalculate end time from duration field
+                          final total = (startTod.hour * 60 +
+                                  startTod.minute +
+                                  dur) %
+                              1440;
+                          endTod = TimeOfDay(
+                              hour: total ~/ 60, minute: total % 60);
+
+                          final now = DateTime.now().toIso8601String();
+                          final template = FixedScheduleTemplate(
+                            templateId: existing?.templateId ??
+                                'sched_${DateTime.now().microsecondsSinceEpoch}',
+                            title: titleCtrl.text.trim(),
+                            startTime: _formatTod(startTod),
+                            endTime: _formatTod(endTod),
+                            repeatRule: repeatRule,
+                            category: categoryCtrl.text.trim(),
+                            notes: notesCtrl.text.trim(),
+                            isActive: existing?.isActive ?? true,
+                            reminderEnabled:
+                                existing?.reminderEnabled ?? false,
+                            reminderOffsetMinutes:
+                                existing?.reminderOffsetMinutes ?? 5,
+                            createdAt: existing?.createdAt ?? now,
+                            updatedAt: now,
+                          );
+
+                          setState(() {
+                            if (isNew) {
+                              _templates.add(template);
+                            } else {
+                              _templates[index] = template;
+                            }
+                          });
+                          _notify();
+                          unawaited(isNew
+                              ? _emitCreated(template)
+                              : _emitUpdated(template));
+                          Navigator.pop(ctx);
+                        },
+                        child: Text(
+                          isNew ? 'Create Task' : 'Save Task',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        });
+      },
+    );
+
+    titleCtrl.dispose();
+    categoryCtrl.dispose();
+    notesCtrl.dispose();
+    durationCtrl.dispose();
+  }
+
+  // ── UI helpers ───────────────────────────────────────────────────────────
+
+  InputDecoration _inputDecor(String label) => InputDecoration(
+        labelText: label,
+        filled: true,
+        fillColor: const Color(0xFFF1F5F9),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      );
+
+  Widget _timeTile(BuildContext ctx, String label, TimeOfDay time) =>
+      Container(
+        padding:
+            const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 12, color: Color(0xFF64748B))),
+            const SizedBox(height: 4),
+            Text(
+              time.format(ctx),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      );
+
+  // ── Build ────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Checkbox(
+                  value: _allowOverlap,
+                  onChanged: (v) =>
+                      setState(() => _allowOverlap = v ?? false),
+                  activeColor: const Color(0xFF3B82F6),
+                ),
+                const Text(
+                  'Allow Overlaps',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF334155)),
+                ),
+              ],
+            ),
+            FilledButton.icon(
+              onPressed: () =>
+                  _showEditDialog(index: _templates.length),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add Task'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF3B82F6),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: _templates.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.calendar_month_rounded,
+                        size: 64,
+                        color:
+                            Colors.blueGrey.withValues(alpha: 0.2),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No fixed tasks yet.',
+                        style: TextStyle(
+                            color: Colors.blueGrey,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                )
+              : ReorderableListView.builder(
+                  itemCount: _templates.length,
+                  onReorder: (oldIndex, newIndex) {
+                    setState(() {
+                      if (newIndex > oldIndex) newIndex -= 1;
+                      final item = _templates.removeAt(oldIndex);
+                      _templates.insert(newIndex, item);
+                    });
+                    _notify();
+                  },
+                  itemBuilder: (_, index) {
+                    final t = _templates[index];
+                    return Container(
+                      key: ValueKey(t.templateId),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: const Color(0xFFE2E8F0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black
+                                .withValues(alpha: 0.03),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        title: Text(
+                          t.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Text(
+                                  '${_parseTod(t.startTime).format(context)} – '
+                                  '${_parseTod(t.endTime).format(context)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        const Color(0xFFEFF6FF),
+                                    borderRadius:
+                                        BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    _durationStr(t),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF3B82F6),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (t.category.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                t.category,
+                                style: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 13),
+                              ),
+                            ],
+                          ],
+                        ),
+                        trailing: const Icon(
+                            Icons.drag_handle_rounded,
+                            color: Color(0xFFCBD5E1)),
+                        onTap: () => _showEditDialog(
+                            existing: t, index: index),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
