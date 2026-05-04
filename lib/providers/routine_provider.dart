@@ -1160,8 +1160,14 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
           await _taskService.createTask(c.task);
           await _repo.mergeTaskFields(c.task.id, c.materializationMeta);
         } else {
+          // Exclude user-editable fields so manual time/subtask edits survive
+          // a re-materialization (e.g. template update on a future day).
+          final safeConfig = Map<String, dynamic>.from(c.configFields)
+            ..remove('plannedStart')
+            ..remove('plannedEnd')
+            ..remove('subtasks');
           await _repo.mergeTaskFields(c.task.id, {
-            ...c.configFields,
+            ...safeConfig,
             ...c.materializationMeta,
             'status': existingState,
           });
