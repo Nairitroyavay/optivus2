@@ -4,64 +4,51 @@ class IdentityProfileModel {
   final List<String> identities;
   final int progressPct;
   final DateTime lastComputedAt;
-  final Map<String, dynamic> biometrics;
-  final Map<String, dynamic> lifestyle;
-  final Map<String, dynamic> sensitiveContext;
+  final List<String> activeGoalIds;
+  final List<String> pausedGoalIds;
+  final List<String> archivedGoalIds;
+  final Map<String, int> goalProgress;
+  final List<String> connectedHabitIds;
+  final List<String> connectedRoutineTypes;
   final int schemaVersion;
 
   const IdentityProfileModel({
     this.identities = const [],
     this.progressPct = 0,
     required this.lastComputedAt,
-    this.biometrics = const {},
-    this.lifestyle = const {},
-    this.sensitiveContext = const {},
-    this.schemaVersion = 1,
+    this.activeGoalIds = const [],
+    this.pausedGoalIds = const [],
+    this.archivedGoalIds = const [],
+    this.goalProgress = const {},
+    this.connectedHabitIds = const [],
+    this.connectedRoutineTypes = const [],
+    this.schemaVersion = 3,
   });
 
   factory IdentityProfileModel.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? {};
-    return IdentityProfileModel(
-      identities: List<String>.from(data['identities'] as List? ?? []),
-      progressPct: data['progressPct'] as int? ?? 0,
-      lastComputedAt: data['lastComputedAt'] != null
-          ? (data['lastComputedAt'] is Timestamp
-              ? (data['lastComputedAt'] as Timestamp).toDate()
-              : DateTime.now())
-          : DateTime.now(),
-      biometrics: data['biometrics'] is Map
-          ? Map<String, dynamic>.from(data['biometrics'] as Map)
-          : const {},
-      lifestyle: data['lifestyle'] is Map
-          ? Map<String, dynamic>.from(data['lifestyle'] as Map)
-          : const {},
-      sensitiveContext: data['sensitiveContext'] is Map
-          ? Map<String, dynamic>.from(data['sensitiveContext'] as Map)
-          : const {},
-      schemaVersion: data['schemaVersion'] as int? ?? 1,
-    );
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    return IdentityProfileModel.fromMap(doc.data() ?? const {});
   }
 
   factory IdentityProfileModel.fromMap(Map<String, dynamic> map) {
+    final identities = _stringList(
+      map['identities'] ?? map['identityTags'] ?? map['goals'],
+    );
+
     return IdentityProfileModel(
-      identities: List<String>.from(map['identities'] as List? ?? []),
-      progressPct: map['progressPct'] as int? ?? 0,
-      lastComputedAt: map['lastComputedAt'] != null
-          ? (map['lastComputedAt'] is Timestamp
-              ? (map['lastComputedAt'] as Timestamp).toDate()
-              : DateTime.now())
-          : DateTime.now(),
-      biometrics: map['biometrics'] is Map
-          ? Map<String, dynamic>.from(map['biometrics'] as Map)
-          : const {},
-      lifestyle: map['lifestyle'] is Map
-          ? Map<String, dynamic>.from(map['lifestyle'] as Map)
-          : const {},
-      sensitiveContext: map['sensitiveContext'] is Map
-          ? Map<String, dynamic>.from(map['sensitiveContext'] as Map)
-          : const {},
-      schemaVersion: map['schemaVersion'] as int? ?? 1,
+      identities: identities,
+      progressPct: _progress(map['progressPct'] ?? map['progress']),
+      lastComputedAt: _asDateTime(map['lastComputedAt']) ??
+          _asDateTime(map['updatedAt']) ??
+          DateTime.now(),
+      activeGoalIds: _stringList(map['activeGoalIds']),
+      pausedGoalIds: _stringList(map['pausedGoalIds']),
+      archivedGoalIds: _stringList(map['archivedGoalIds']),
+      goalProgress: _intMap(map['goalProgress']),
+      connectedHabitIds: _stringList(map['connectedHabitIds']),
+      connectedRoutineTypes: _stringList(map['connectedRoutineTypes']),
+      schemaVersion: map['schemaVersion'] as int? ?? 3,
     );
   }
 
@@ -70,12 +57,76 @@ class IdentityProfileModel {
       'identities': identities,
       'progressPct': progressPct,
       'lastComputedAt': Timestamp.fromDate(lastComputedAt),
-      'biometrics': biometrics,
-      'lifestyle': lifestyle,
-      'sensitiveContext': sensitiveContext,
+      'activeGoalIds': activeGoalIds,
+      'pausedGoalIds': pausedGoalIds,
+      'archivedGoalIds': archivedGoalIds,
+      'goalProgress': goalProgress,
+      'connectedHabitIds': connectedHabitIds,
+      'connectedRoutineTypes': connectedRoutineTypes,
+      'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
     };
   }
 
   Map<String, dynamic> toMap() => toFirestore();
+
+  IdentityProfileModel copyWith({
+    List<String>? identities,
+    int? progressPct,
+    DateTime? lastComputedAt,
+    List<String>? activeGoalIds,
+    List<String>? pausedGoalIds,
+    List<String>? archivedGoalIds,
+    Map<String, int>? goalProgress,
+    List<String>? connectedHabitIds,
+    List<String>? connectedRoutineTypes,
+    int? schemaVersion,
+  }) {
+    return IdentityProfileModel(
+      identities: identities ?? this.identities,
+      progressPct: progressPct ?? this.progressPct,
+      lastComputedAt: lastComputedAt ?? this.lastComputedAt,
+      activeGoalIds: activeGoalIds ?? this.activeGoalIds,
+      pausedGoalIds: pausedGoalIds ?? this.pausedGoalIds,
+      archivedGoalIds: archivedGoalIds ?? this.archivedGoalIds,
+      goalProgress: goalProgress ?? this.goalProgress,
+      connectedHabitIds: connectedHabitIds ?? this.connectedHabitIds,
+      connectedRoutineTypes:
+          connectedRoutineTypes ?? this.connectedRoutineTypes,
+      schemaVersion: schemaVersion ?? this.schemaVersion,
+    );
+  }
+
+  static DateTime? _asDateTime(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  static int _progress(Object? value) {
+    if (value is int) return value.clamp(0, 100);
+    if (value is num) return value.round().clamp(0, 100);
+    return 0;
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  static Map<String, int> _intMap(Object? value) {
+    if (value is! Map) return const {};
+    return value.map((key, dynamic item) {
+      final intValue = item is int
+          ? item
+          : item is num
+              ? item.round()
+              : 0;
+      return MapEntry(key.toString(), intValue.clamp(0, 100));
+    });
+  }
 }

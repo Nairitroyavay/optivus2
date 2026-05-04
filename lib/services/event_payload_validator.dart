@@ -130,6 +130,14 @@ class EventPayloadValidator {
     EventNames.notificationSuppressed: _EventRule.any([
       ['reason'],
     ]),
+    EventNames.identityCreated: _identityRule,
+    EventNames.identityUpdated: _identityRule,
+    EventNames.identityPaused: _identityRule,
+    EventNames.identityArchived: _identityRule,
+    EventNames.identityHabitLinked: _EventRule.any([
+      ['goalId', 'goal_id', 'identityId', 'identity_id'],
+      ['habitId', 'habit_id'],
+    ]),
     EventNames.identityProgressChanged: _EventRule.any([
       ['score', 'newPct', 'new_pct'],
       ['triggerEventId', 'trigger_event_id', 'identityId', 'identity_id'],
@@ -188,6 +196,10 @@ class EventPayloadValidator {
   static final _notificationRule = _EventRule.any([
     ['notifId', 'notif_id', 'notificationId', 'notification_id'],
     ['category'],
+  ]);
+
+  static final _identityRule = _EventRule.any([
+    ['goalId', 'goal_id', 'identityId', 'identity_id'],
   ]);
 }
 

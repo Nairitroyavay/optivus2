@@ -1,156 +1,330 @@
 // lib/models/goal_model.dart
 //
-// Goal model per DB Schema §1A.5.
-// Stored at: users/{uid}/goals/{goalId}
-// Mutable document — has createdAt, updatedAt, schemaVersion.
+// Goal model stored at: /users/{uid}/goals/{goalId}
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class GoalModel {
-  final String id;
-  final String title;
-  final String? description;
-  final bool isCompleted;
-  final int progressPct;
-  final List<String> identityTags;
-  final List<String> milestones;
-  final DateTime? targetDate;
-  final DateTime? lastComputedAt;
-  final String? colorHex;
-  final String? iconName;
-  final String source;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final int schemaVersion;
+abstract final class GoalStatus {
+  static const active = 'active';
+  static const paused = 'paused';
+  static const archived = 'archived';
+  static const completed = 'completed';
 
-  const GoalModel({
-    required this.id,
+  static const values = {active, paused, archived, completed};
+
+  static String normalize(String? value) {
+    if (value == null || value.trim().isEmpty) return active;
+    final normalized = value.trim().toLowerCase();
+    return values.contains(normalized) ? normalized : active;
+  }
+}
+
+class GoalMilestone {
+  final String milestoneId;
+  final String title;
+  final bool completed;
+  final DateTime? completedAt;
+
+  const GoalMilestone({
+    required this.milestoneId,
     required this.title,
-    this.description,
-    this.isCompleted = false,
-    this.progressPct = 0,
-    this.identityTags = const [],
-    this.milestones = const [],
-    this.targetDate,
-    this.lastComputedAt,
-    this.colorHex,
-    this.iconName,
-    this.source = 'manual',
-    required this.createdAt,
-    required this.updatedAt,
-    this.schemaVersion = 1,
+    this.completed = false,
+    this.completedAt,
   });
 
-  factory GoalModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? <String, dynamic>{};
-    return GoalModel(
-      id: data['id'] as String? ?? doc.id,
-      title: data['title'] as String? ?? '',
-      description: data['description'] as String?,
-      isCompleted: data['isCompleted'] as bool? ?? false,
-      progressPct: _asProgressPct(data['progressPct']),
-      identityTags: List<String>.from(data['identityTags'] as List? ?? []),
-      milestones: List<String>.from(data['milestones'] as List? ?? []),
-      targetDate: _asDateTime(data['targetDate']),
-      lastComputedAt: _asDateTime(data['lastComputedAt']),
-      colorHex: data['colorHex'] as String?,
-      iconName: data['iconName'] as String?,
-      source: data['source'] as String? ?? 'manual',
-      createdAt: _asDateTime(data['createdAt']) ?? DateTime.now(),
-      updatedAt: _asDateTime(data['updatedAt']) ?? DateTime.now(),
-      schemaVersion: data['schemaVersion'] as int? ?? 1,
+  factory GoalMilestone.fromMap(Map<String, dynamic> map) {
+    return GoalMilestone(
+      milestoneId: map['milestoneId'] as String? ?? map['id'] as String? ?? '',
+      title: map['title'] as String? ?? '',
+      completed: map['completed'] as bool? ?? false,
+      completedAt: _asDateTime(map['completedAt']),
     );
   }
 
-  factory GoalModel.fromMap(Map<String, dynamic> map) {
-    return GoalModel(
-      id: map['id'] as String? ?? '',
-      title: map['title'] as String? ?? '',
-      description: map['description'] as String?,
-      isCompleted: map['isCompleted'] as bool? ?? false,
-      progressPct: _asProgressPct(map['progressPct']),
-      identityTags: List<String>.from(map['identityTags'] as List? ?? []),
-      milestones: List<String>.from(map['milestones'] as List? ?? []),
-      targetDate: _asDateTime(map['targetDate']),
-      lastComputedAt: _asDateTime(map['lastComputedAt']),
-      colorHex: map['colorHex'] as String?,
-      iconName: map['iconName'] as String?,
-      source: map['source'] as String? ?? 'manual',
-      createdAt: _asDateTime(map['createdAt']) ?? DateTime.now(),
-      updatedAt: _asDateTime(map['updatedAt']) ?? DateTime.now(),
-      schemaVersion: map['schemaVersion'] as int? ?? 1,
+  factory GoalMilestone.fromLegacyString(String title) {
+    return GoalMilestone(
+      milestoneId: _slug(title).isEmpty ? 'milestone' : _slug(title),
+      title: title,
     );
   }
 
   Map<String, dynamic> toFirestore() {
     return {
-      'id': id,
+      'milestoneId': milestoneId,
       'title': title,
-      if (description != null) 'description': description,
-      'isCompleted': isCompleted,
-      'progressPct': progressPct,
-      'identityTags': identityTags,
-      'milestones': milestones,
-      if (targetDate != null) 'targetDate': Timestamp.fromDate(targetDate!),
-      if (lastComputedAt != null)
-        'lastComputedAt': Timestamp.fromDate(lastComputedAt!),
-      if (colorHex != null) 'colorHex': colorHex,
-      if (iconName != null) 'iconName': iconName,
-      'source': source,
+      'completed': completed,
+      'completedAt':
+          completedAt == null ? null : Timestamp.fromDate(completedAt!),
+    };
+  }
+}
+
+class GoalModel {
+  final String goalId;
+  final String title;
+  final String identityTag;
+  final String why;
+  final String status;
+  final int weight;
+  final int progress;
+  final DateTime? targetDate;
+  final List<GoalMilestone> milestones;
+  final List<String> connectedHabitIds;
+  final List<String> connectedRoutineTypes;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? archivedAt;
+
+  GoalModel({
+    String? goalId,
+    String? id,
+    required this.title,
+    String? identityTag,
+    String? why,
+    String? status,
+    int? weight,
+    int? progress,
+    this.targetDate,
+    List<GoalMilestone> milestones = const [],
+    List<String> connectedHabitIds = const [],
+    List<String> connectedRoutineTypes = const [],
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    this.archivedAt,
+    String? description,
+    bool? isCompleted,
+    int? progressPct,
+    List<String>? identityTags,
+    DateTime? lastComputedAt,
+    String? colorHex,
+    String? iconName,
+    String? source,
+    int? schemaVersion,
+  })  : goalId = goalId ?? id ?? '',
+        identityTag = _cleanString(
+          identityTag ??
+              (identityTags == null || identityTags.isEmpty
+                  ? null
+                  : identityTags.first),
+        ),
+        why = why ?? description ?? '',
+        status = GoalStatus.normalize(
+          status ??
+              ((isCompleted ?? false)
+                  ? GoalStatus.completed
+                  : GoalStatus.active),
+        ),
+        weight = _asPositiveInt(weight, fallback: 1),
+        progress = _asProgress(progress ?? progressPct),
+        milestones = List.unmodifiable(milestones),
+        connectedHabitIds =
+            List.unmodifiable(_cleanStringList(connectedHabitIds)),
+        connectedRoutineTypes =
+            List.unmodifiable(_cleanStringList(connectedRoutineTypes)),
+        createdAt = createdAt ?? DateTime.now(),
+        updatedAt = updatedAt ?? lastComputedAt ?? DateTime.now();
+
+  factory GoalModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? <String, dynamic>{};
+    return GoalModel.fromMap(data, fallbackId: doc.id);
+  }
+
+  factory GoalModel.fromMap(
+    Map<String, dynamic> map, {
+    String fallbackId = '',
+  }) {
+    final legacyIdentityTags = _cleanStringList(map['identityTags']);
+    final identityTag = map['identityTag'] as String? ??
+        (legacyIdentityTags.isEmpty ? null : legacyIdentityTags.first);
+
+    return GoalModel(
+      goalId: map['goalId'] as String? ?? map['id'] as String? ?? fallbackId,
+      title: map['title'] as String? ?? '',
+      identityTag: identityTag,
+      why: map['why'] as String? ?? map['description'] as String? ?? '',
+      status: map['status'] as String? ??
+          ((map['isCompleted'] as bool? ?? false)
+              ? GoalStatus.completed
+              : GoalStatus.active),
+      weight: _asPositiveInt(map['weight'], fallback: 1),
+      progress: _asProgress(map['progress'] ?? map['progressPct']),
+      targetDate: _asDateTime(map['targetDate']),
+      milestones: _asMilestones(map['milestones']),
+      connectedHabitIds: _cleanStringList(map['connectedHabitIds']),
+      connectedRoutineTypes: _cleanStringList(map['connectedRoutineTypes']),
+      createdAt: _asDateTime(map['createdAt']) ?? DateTime.now(),
+      updatedAt: _asDateTime(map['updatedAt']) ??
+          _asDateTime(map['lastComputedAt']) ??
+          DateTime.now(),
+      archivedAt: _asDateTime(map['archivedAt']),
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'goalId': goalId,
+      'title': title,
+      'identityTag': identityTag,
+      'why': why,
+      'status': status,
+      'weight': weight,
+      'progress': progress,
+      'targetDate': targetDate == null ? null : Timestamp.fromDate(targetDate!),
+      'milestones':
+          milestones.map((milestone) => milestone.toFirestore()).toList(),
+      'connectedHabitIds': connectedHabitIds,
+      'connectedRoutineTypes': connectedRoutineTypes,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
-      'schemaVersion': schemaVersion,
+      'archivedAt': archivedAt == null ? null : Timestamp.fromDate(archivedAt!),
     };
   }
 
   Map<String, dynamic> toMap() => toFirestore();
 
   GoalModel copyWith({
+    String? goalId,
     String? id,
     String? title,
+    String? identityTag,
+    String? why,
+    String? status,
+    int? weight,
+    int? progress,
+    DateTime? targetDate,
+    List<GoalMilestone>? milestones,
+    List<String>? connectedHabitIds,
+    List<String>? connectedRoutineTypes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    DateTime? archivedAt,
     String? description,
     bool? isCompleted,
     int? progressPct,
     List<String>? identityTags,
-    List<String>? milestones,
-    DateTime? targetDate,
     DateTime? lastComputedAt,
     String? colorHex,
     String? iconName,
     String? source,
-    DateTime? createdAt,
-    DateTime? updatedAt,
     int? schemaVersion,
   }) {
     return GoalModel(
-      id: id ?? this.id,
+      goalId: goalId ?? id ?? this.goalId,
       title: title ?? this.title,
-      description: description ?? this.description,
-      isCompleted: isCompleted ?? this.isCompleted,
-      progressPct: progressPct ?? this.progressPct,
-      identityTags: identityTags ?? this.identityTags,
-      milestones: milestones ?? this.milestones,
+      identityTag: identityTag ??
+          (identityTags == null || identityTags.isEmpty
+              ? this.identityTag
+              : identityTags.first),
+      why: why ?? description ?? this.why,
+      status: status ??
+          (isCompleted == null
+              ? this.status
+              : (isCompleted ? GoalStatus.completed : GoalStatus.active)),
+      weight: weight ?? this.weight,
+      progress: progress ?? progressPct ?? this.progress,
       targetDate: targetDate ?? this.targetDate,
-      lastComputedAt: lastComputedAt ?? this.lastComputedAt,
-      colorHex: colorHex ?? this.colorHex,
-      iconName: iconName ?? this.iconName,
-      source: source ?? this.source,
+      milestones: milestones ?? this.milestones,
+      connectedHabitIds: connectedHabitIds ?? this.connectedHabitIds,
+      connectedRoutineTypes:
+          connectedRoutineTypes ?? this.connectedRoutineTypes,
       createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-      schemaVersion: schemaVersion ?? this.schemaVersion,
+      updatedAt: updatedAt ?? lastComputedAt ?? this.updatedAt,
+      archivedAt: archivedAt ?? this.archivedAt,
     );
   }
 
-  static DateTime? _asDateTime(Object? value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
-  }
+  // Backwards-compatible accessors used by existing UI and older services.
+  String get id => goalId;
+  String? get description => why.isEmpty ? null : why;
+  bool get isCompleted => status == GoalStatus.completed || progress >= 100;
+  int get progressPct => progress;
+  List<String> get identityTags =>
+      identityTag.isEmpty ? const [] : <String>[identityTag];
+  DateTime? get lastComputedAt => updatedAt;
+  String? get colorHex => _defaultGoalColor(title);
+  String? get iconName => _defaultGoalIcon(title);
+  String get source => 'identity';
+  int get schemaVersion => 3;
+}
 
-  static int _asProgressPct(Object? value) {
-    if (value is int) return value.clamp(0, 100);
-    if (value is num) return value.round().clamp(0, 100);
-    return 0;
+DateTime? _asDateTime(Object? value) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value);
+  return null;
+}
+
+int _asProgress(Object? value) {
+  if (value is int) return value.clamp(0, 100);
+  if (value is num) return value.round().clamp(0, 100);
+  return 0;
+}
+
+int _asPositiveInt(Object? value, {required int fallback}) {
+  if (value is int && value > 0) return value;
+  if (value is num && value > 0) return value.round();
+  return fallback;
+}
+
+String _cleanString(String? value) => value?.trim() ?? '';
+
+List<String> _cleanStringList(Object? value) {
+  if (value is! List) return const [];
+  return value
+      .map((item) => item.toString().trim())
+      .where((item) => item.isNotEmpty)
+      .toList();
+}
+
+List<GoalMilestone> _asMilestones(Object? value) {
+  if (value is! List) return const [];
+  return value.map((item) {
+    if (item is Map) {
+      return GoalMilestone.fromMap(Map<String, dynamic>.from(item));
+    }
+    return GoalMilestone.fromLegacyString(item.toString());
+  }).toList();
+}
+
+String _slug(String input) {
+  return input
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+}
+
+String _defaultGoalColor(String title) {
+  final text = title.toLowerCase();
+  if (_matchesAny(text, const ['gym', 'fitness', 'health', 'run'])) {
+    return '#22C55E';
   }
+  if (_matchesAny(text, const ['study', 'learn', 'read', 'class', 'exam'])) {
+    return '#3B82F6';
+  }
+  if (_matchesAny(text, const ['quit', 'reduce', 'stop', 'smoking'])) {
+    return '#F97316';
+  }
+  return '#14B8A6';
+}
+
+String _defaultGoalIcon(String title) {
+  final text = title.toLowerCase();
+  if (_matchesAny(text, const ['study', 'learn', 'read', 'class', 'exam'])) {
+    return 'menu_book_rounded';
+  }
+  if (_matchesAny(text, const ['gym', 'fitness', 'health', 'run'])) {
+    return 'directions_run_rounded';
+  }
+  if (_matchesAny(text, const ['quit', 'reduce', 'stop', 'smoking'])) {
+    return 'local_fire_department_rounded';
+  }
+  return 'flag_rounded';
+}
+
+bool _matchesAny(String text, List<String> terms) {
+  for (final term in terms) {
+    if (text.contains(term)) return true;
+  }
+  return false;
 }

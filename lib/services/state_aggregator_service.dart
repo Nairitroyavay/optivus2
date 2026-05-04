@@ -230,10 +230,14 @@ class StateAggregatorService {
     final results = await Future.wait([
       userRef.get(),
       userRef.collection('goals').get(),
+      userRef.collection('habits').get(),
+      userRef.collection('tasks').get(),
     ]);
 
     final userSnap = results[0] as DocumentSnapshot<Map<String, dynamic>>;
     final goalsSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final habitsSnap = results[2] as QuerySnapshot<Map<String, dynamic>>;
+    final tasksSnap = results[3] as QuerySnapshot<Map<String, dynamic>>;
     final onboarding = Map<String, dynamic>.from(
       userSnap.data()?['onboarding'] as Map? ?? const {},
     );
@@ -249,35 +253,21 @@ class StateAggregatorService {
       existingGoals: existingGoals,
       onboardingGoals: onboardingGoals,
       snapshot: snapshot,
+      habits: habitsSnap.docs,
+      tasks: tasksSnap.docs,
     );
 
     final batch = _firestore.batch();
     final goalRef = userRef.collection('goals');
     for (final goal in goalModels) {
-      batch.set(
-        goalRef.doc(goal.id),
-        {
-          ...goal.toFirestore(),
-          'lastComputedAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'schemaVersion': 2,
-        },
-        SetOptions(merge: true),
-      );
+      batch.set(goalRef.doc(goal.goalId), goal.toFirestore());
     }
 
     final identities = _deriveIdentities(
       onboardingGoals: onboardingGoals,
       goalModels: goalModels,
     );
-    final score = goalModels.isEmpty
-        ? _computeFallbackIdentityScore(snapshot)
-        : (goalModels
-                    .map((goal) => goal.progressPct)
-                    .reduce((total, value) => total + value) /
-                goalModels.length)
-            .round()
-            .clamp(0, 100);
+    final score = _computeIdentityScore(goalModels, snapshot);
 
     final profileRef = userRef.collection('identity_profile').doc('main');
     final profileSnap = await profileRef.get();
@@ -294,15 +284,45 @@ class StateAggregatorService {
     final identitiesChanged = !_listEquals(oldIdentities, identities);
     final scoreChanged = score != oldScore;
 
+    final activeGoalIds = goalModels
+        .where((goal) =>
+            goal.status == GoalStatus.active ||
+            goal.status == GoalStatus.completed)
+        .map((goal) => goal.goalId)
+        .toList();
+    final pausedGoalIds = goalModels
+        .where((goal) => goal.status == GoalStatus.paused)
+        .map((goal) => goal.goalId)
+        .toList();
+    final archivedGoalIds = goalModels
+        .where((goal) => goal.status == GoalStatus.archived)
+        .map((goal) => goal.goalId)
+        .toList();
+    final goalProgress = {
+      for (final goal in goalModels) goal.goalId: goal.progress,
+    };
+    final connectedHabitIds = _unionStrings(
+      goalModels.expand((goal) => goal.connectedHabitIds),
+    );
+    final connectedRoutineTypes = _unionStrings(
+      goalModels.expand((goal) => goal.connectedRoutineTypes),
+    );
+
     batch.set(
       profileRef,
       {
         'identities': identities,
         'progressPct': score,
         'lastComputedAt': FieldValue.serverTimestamp(),
-        'schemaVersion': 2,
+        'activeGoalIds': activeGoalIds,
+        'pausedGoalIds': pausedGoalIds,
+        'archivedGoalIds': archivedGoalIds,
+        'goalProgress': goalProgress,
+        'connectedHabitIds': connectedHabitIds,
+        'connectedRoutineTypes': connectedRoutineTypes,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'schemaVersion': 3,
       },
-      SetOptions(merge: true),
     );
 
     await batch.commit();
@@ -330,6 +350,8 @@ class StateAggregatorService {
     required List<GoalModel> existingGoals,
     required List<String> onboardingGoals,
     required ContextSnapshot snapshot,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> habits,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> tasks,
   }) {
     final goalsByKey = <String, GoalModel>{};
 
@@ -342,38 +364,55 @@ class StateAggregatorService {
       goalsByKey.putIfAbsent(
         key,
         () => GoalModel(
-          id: _goalIdForTitle(title),
+          goalId: _goalIdForTitle(title),
           title: title,
-          description: _defaultGoalDescription(title),
-          progressPct: 0,
-          identityTags: _defaultIdentityTags(title),
-          colorHex: _defaultGoalColor(title),
-          iconName: _defaultGoalIcon(title),
-          source: 'onboarding_v2',
+          identityTag: _defaultIdentityTag(title),
+          why: _defaultGoalWhy(title),
+          status: GoalStatus.active,
+          weight: 1,
+          progress: 0,
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
-          schemaVersion: 2,
         ),
       );
     }
 
     return goalsByKey.values.map((goal) {
-      final progressPct = _computeGoalProgress(goal, snapshot);
+      final connectedHabitIds = _unionStrings([
+        ...goal.connectedHabitIds,
+        ..._matchingHabitIds(goal, habits),
+      ]);
+      final connectedRoutineTypes = _unionStrings([
+        ...goal.connectedRoutineTypes,
+        ..._matchingRoutineTypes(goal, tasks),
+      ]);
+      final normalizedGoal = goal.copyWith(
+        identityTag: goal.identityTag.isNotEmpty
+            ? goal.identityTag
+            : _defaultIdentityTag(goal.title),
+        why: goal.why.isNotEmpty ? goal.why : _defaultGoalWhy(goal.title),
+        connectedHabitIds: connectedHabitIds,
+        connectedRoutineTypes: connectedRoutineTypes,
+      );
+      final progress = _computeGoalProgress(
+        normalizedGoal,
+        snapshot,
+        habits: habits,
+        tasks: tasks,
+      );
       return goal.copyWith(
-        description: goal.description ?? _defaultGoalDescription(goal.title),
-        progressPct: progressPct,
-        isCompleted: goal.isCompleted || progressPct >= 100,
-        identityTags: goal.identityTags.isNotEmpty
-            ? goal.identityTags
-            : _defaultIdentityTags(goal.title),
-        colorHex: goal.colorHex ?? _defaultGoalColor(goal.title),
-        iconName: goal.iconName ?? _defaultGoalIcon(goal.title),
-        source: goal.source.isEmpty ? 'onboarding_v2' : goal.source,
-        lastComputedAt: DateTime.now(),
-        schemaVersion: goal.schemaVersion < 2 ? 2 : goal.schemaVersion,
+        identityTag: normalizedGoal.identityTag,
+        why: normalizedGoal.why,
+        progress: progress,
+        status: goal.status == GoalStatus.active && progress >= 100
+            ? GoalStatus.completed
+            : goal.status,
+        connectedHabitIds: connectedHabitIds,
+        connectedRoutineTypes: connectedRoutineTypes,
+        updatedAt: DateTime.now(),
       );
     }).toList()
-      ..sort((a, b) => b.progressPct.compareTo(a.progressPct));
+      ..sort((a, b) => b.progress.compareTo(a.progress));
   }
 
   List<String> _deriveIdentities({
@@ -386,17 +425,64 @@ class StateAggregatorService {
       if (!identities.contains(goal)) identities.add(goal);
     }
     for (final goal in goalModels) {
-      if (!identities.contains(goal.title)) identities.add(goal.title);
+      if (goal.status == GoalStatus.archived) continue;
+      final identity =
+          goal.identityTag.isNotEmpty ? goal.identityTag : goal.title;
+      if (!identities.contains(identity)) identities.add(identity);
     }
 
     return identities;
   }
 
-  int _computeGoalProgress(GoalModel goal, ContextSnapshot snapshot) {
+  int _computeIdentityScore(
+    List<GoalModel> goalModels,
+    ContextSnapshot snapshot,
+  ) {
+    final scoreableGoals =
+        goalModels.where((goal) => goal.status != GoalStatus.archived).toList();
+    if (scoreableGoals.isEmpty) return _computeFallbackIdentityScore(snapshot);
+
+    var weightedTotal = 0;
+    var totalWeight = 0;
+    for (final goal in scoreableGoals) {
+      weightedTotal += goal.progress * goal.weight;
+      totalWeight += goal.weight;
+    }
+
+    if (totalWeight <= 0) return _computeFallbackIdentityScore(snapshot);
+    return (weightedTotal / totalWeight).round().clamp(0, 100);
+  }
+
+  int _computeGoalProgress(
+    GoalModel goal,
+    ContextSnapshot snapshot, {
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> habits,
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> tasks,
+  }) {
+    if (goal.status == GoalStatus.archived ||
+        goal.status == GoalStatus.paused) {
+      return goal.progress;
+    }
+
+    final directTaskSignal = _computeGoalTaskSignal(goal, tasks);
+    final directHabitSignal = _computeGoalHabitSignal(goal, habits, snapshot);
+    final directSignals = <int>[
+      if (directTaskSignal != null) directTaskSignal,
+      if (directHabitSignal != null) directHabitSignal,
+      snapshot.missionScore.clamp(0, 100),
+    ];
+
+    if (directTaskSignal != null || directHabitSignal != null) {
+      return (directSignals.reduce((total, value) => total + value) /
+              directSignals.length)
+          .round()
+          .clamp(0, 100);
+    }
+
     final text = [
       goal.title,
-      goal.description ?? '',
-      ...goal.identityTags,
+      goal.why,
+      goal.identityTag,
     ].join(' ').toLowerCase();
 
     final taskSignal = _computeTaskSignal(snapshot);
@@ -491,6 +577,147 @@ class StateAggregatorService {
     return rawScore.clamp(0, 100);
   }
 
+  int? _computeGoalTaskSignal(
+    GoalModel goal,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> tasks,
+  ) {
+    final matchingTasks =
+        tasks.where((doc) => _goalMatchesTask(goal, doc.data())).toList();
+    final terminalTasks = matchingTasks.where((doc) {
+      final data = doc.data();
+      final state = data['state'] as String? ?? data['status'] as String? ?? '';
+      return state == 'completed' || state == 'abandoned' || state == 'skipped';
+    }).toList();
+
+    if (terminalTasks.isEmpty) return null;
+
+    final completed = terminalTasks.where((doc) {
+      final data = doc.data();
+      final state = data['state'] as String? ?? data['status'] as String? ?? '';
+      return state == 'completed';
+    }).length;
+
+    return ((completed / terminalTasks.length) * 100).round().clamp(0, 100);
+  }
+
+  int? _computeGoalHabitSignal(
+    GoalModel goal,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> habits,
+    ContextSnapshot snapshot,
+  ) {
+    final hasMatchingHabit =
+        habits.any((doc) => _goalMatchesHabit(goal, doc.id, doc.data()));
+    return hasMatchingHabit ? _computeHabitSignal(snapshot) : null;
+  }
+
+  List<String> _matchingHabitIds(
+    GoalModel goal,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> habits,
+  ) {
+    return habits
+        .where((doc) => _goalMatchesHabit(goal, doc.id, doc.data()))
+        .map((doc) => doc.id)
+        .toList();
+  }
+
+  List<String> _matchingRoutineTypes(
+    GoalModel goal,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> tasks,
+  ) {
+    final routineTypes = <String>[];
+    for (final doc in tasks) {
+      final data = doc.data();
+      if (!_goalMatchesTask(goal, data)) continue;
+      final routineType = data['sourceRoutineType'] as String? ??
+          data['parentRoutine'] as String? ??
+          data['routineType'] as String?;
+      if (routineType != null && routineType.trim().isNotEmpty) {
+        routineTypes.add(routineType.trim());
+      }
+    }
+    return _unionStrings(routineTypes);
+  }
+
+  bool _goalMatchesTask(GoalModel goal, Map<String, dynamic> data) {
+    final identityTags = _stringList(data['identityTags']);
+    final sourceRoutineType = data['sourceRoutineType'] as String? ??
+        data['parentRoutine'] as String? ??
+        data['routineType'] as String?;
+    final title = data['title'] as String? ?? '';
+
+    if (goal.connectedRoutineTypes
+        .map(_normalizeTag)
+        .contains(_normalizeTag(sourceRoutineType ?? ''))) {
+      return true;
+    }
+
+    return _matchesGoalText(
+      goal,
+      [
+        title,
+        sourceRoutineType ?? '',
+        ...identityTags,
+      ],
+    );
+  }
+
+  bool _goalMatchesHabit(
+    GoalModel goal,
+    String habitId,
+    Map<String, dynamic> data,
+  ) {
+    if (goal.connectedHabitIds.contains(habitId)) return true;
+
+    final identityTags = _stringList(data['identityTags']);
+    return _matchesGoalText(
+      goal,
+      [
+        data['name'] as String? ?? '',
+        data['trackerType'] as String? ?? '',
+        habitId,
+        ...identityTags,
+      ],
+    );
+  }
+
+  bool _matchesGoalText(GoalModel goal, List<String> candidates) {
+    final goalKeys = {
+      _normalizeTag(goal.identityTag),
+      _normalizeTag(goal.title),
+    }..remove('');
+
+    for (final candidate in candidates) {
+      final normalized = _normalizeTag(candidate);
+      if (normalized.isEmpty) continue;
+      if (goalKeys.contains(normalized)) return true;
+      for (final key in goalKeys) {
+        if (normalized.contains(key) || key.contains(normalized)) return true;
+      }
+    }
+
+    return false;
+  }
+
+  List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return value
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  List<String> _unionStrings(Iterable<String> values) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) continue;
+      final key = _normalizeTag(trimmed);
+      if (seen.add(key)) result.add(trimmed);
+    }
+    return result;
+  }
+
   bool _matchesAny(String text, List<String> terms) {
     for (final term in terms) {
       if (text.contains(term)) return true;
@@ -511,45 +738,19 @@ class StateAggregatorService {
         .replaceAll(RegExp(r'^_|_$'), '');
   }
 
-  String _defaultGoalDescription(String title) {
+  String _normalizeTag(String input) => _normalizeGoalKey(input);
+
+  String _defaultGoalWhy(String title) {
     return 'Progress auto-updated from your daily tasks, habits, and streaks.';
   }
 
-  List<String> _defaultIdentityTags(String title) {
-    return title
+  String _defaultIdentityTag(String title) {
+    final parts = title
         .split(RegExp(r'[^A-Za-z0-9]+'))
         .map((part) => part.trim().toLowerCase())
         .where((part) => part.length > 2)
-        .take(3)
         .toList();
-  }
-
-  String _defaultGoalColor(String title) {
-    final text = title.toLowerCase();
-    if (_matchesAny(text, const ['gym', 'fitness', 'health', 'run'])) {
-      return '#22C55E';
-    }
-    if (_matchesAny(text, const ['study', 'learn', 'read', 'class', 'exam'])) {
-      return '#3B82F6';
-    }
-    if (_matchesAny(text, const ['quit', 'reduce', 'stop', 'smoking'])) {
-      return '#F97316';
-    }
-    return '#14B8A6';
-  }
-
-  String _defaultGoalIcon(String title) {
-    final text = title.toLowerCase();
-    if (_matchesAny(text, const ['study', 'learn', 'read', 'class', 'exam'])) {
-      return 'menu_book_rounded';
-    }
-    if (_matchesAny(text, const ['gym', 'fitness', 'health', 'run'])) {
-      return 'directions_run_rounded';
-    }
-    if (_matchesAny(text, const ['quit', 'reduce', 'stop', 'smoking'])) {
-      return 'local_fire_department_rounded';
-    }
-    return 'flag_rounded';
+    return parts.isEmpty ? _normalizeGoalKey(title) : parts.take(3).join('_');
   }
 
   bool _listEquals(List<String> a, List<String> b) {

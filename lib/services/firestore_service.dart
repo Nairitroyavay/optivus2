@@ -204,11 +204,13 @@ class FirestoreService {
   // ── /users/{uid}/goals/{goalId} ───────────────────────────────────────────
 
   Future<void> saveGoal(GoalModel goal) =>
-      userSubdocument(kGoals, goal.id).set(goal.toMap());
+      userSubdocument(kGoals, goal.goalId).set(goal.toMap());
 
   Future<List<GoalModel>> getGoals() async {
     final snap = await userCollection(kGoals).get();
-    return snap.docs.map((d) => GoalModel.fromMap(d.data())).toList();
+    return snap.docs
+        .map((d) => GoalModel.fromMap(d.data(), fallbackId: d.id))
+        .toList();
   }
 
   Future<void> deleteGoal(String goalId) =>

@@ -79,6 +79,11 @@ abstract final class EventNames {
   static const notificationSuppressed = 'notification_suppressed';
 
   // ── Identity ────────────────────────────────────────────────────────────
+  static const identityCreated = 'identity_created';
+  static const identityUpdated = 'identity_updated';
+  static const identityPaused = 'identity_paused';
+  static const identityArchived = 'identity_archived';
+  static const identityHabitLinked = 'identity_habit_linked';
   static const identityProgressChanged = 'identity_progress_changed';
   static const milestoneCompleted = 'milestone_completed';
 
