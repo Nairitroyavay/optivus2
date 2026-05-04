@@ -293,6 +293,62 @@ void main() {
     });
   });
 
+  group('EventPayloadValidator (Strict Rules)', () {
+    test('accepts valid payload with default priority', () {
+      expect(
+        EventPayloadValidator.isValid(EventNames.accountDeleted, {'uid': '123', 'priority': 'high'}),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(EventNames.screenTimeSynced, {'logId': 'log1', 'totalMinutes': 45}),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(EventNames.slipLogDismissed, {'logId': 'log1', 'habitId': 'h1'}),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(EventNames.badDayDetected, {'date': '2023-10-10'}),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(EventNames.weeklyInsightReady, {'insightId': 'w1'}),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(EventNames.comebackPathChosen, {'path': 'gentle'}),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(EventNames.notificationMissed, {'notifId': 'n1'}),
+        isTrue,
+      );
+      expect(
+        EventPayloadValidator.isValid(EventNames.coachReEnabled, {'reason': 'user_tapped'}),
+        isTrue,
+      );
+    });
+
+    test('rejects payload with missing fields', () {
+      final result = EventPayloadValidator.validate(EventNames.screenTimeSynced, {'logId': 'log1'});
+      expect(result.isValid, isFalse);
+      expect(result.message, contains('missing totalMinutes or total_minutes'));
+    });
+
+    test('rejects payload with wrong type', () {
+      final result = EventPayloadValidator.validate(EventNames.screenTimeSynced, {'logId': 'log1', 'totalMinutes': 'not_an_int'});
+      expect(result.isValid, isFalse);
+      expect(result.message, contains('wrong type for totalMinutes'));
+    });
+
+    test('rejects unknown fields in debug mode', () {
+      final result = EventPayloadValidator.validate(EventNames.comebackPathChosen, {'path': 'gentle', 'unknown_field': 123});
+      // In tests, kDebugMode is true
+      expect(result.isValid, isFalse);
+      expect(result.message, contains('Unknown fields in payload'));
+    });
+  });
+
   // ── on / onAny ──────────────────────────────────────────────────────────────
 
   group('EventService.on', () {

@@ -25,6 +25,10 @@ class EventPayloadValidator {
       );
     }
 
+    if (rule is _StrictEventRule) {
+      return rule.validateStrict(eventName, payload);
+    }
+
     final missing = <String>[];
     for (final requirement in rule.requiredAny) {
       if (!requirement.any(payload.containsKey)) {
@@ -53,9 +57,19 @@ class EventPayloadValidator {
     EventNames.userSignedUp: _EventRule.any([
       ['uid', 'userId', 'user_id', 'email'],
     ]),
-    EventNames.accountDeleted: _EventRule.any([
-      ['uid', 'userId', 'user_id', 'email'],
-    ]),
+    EventNames.accountDeleted: _StrictEventRule(
+      requiredAny: [['uid', 'userId', 'user_id', 'email']],
+      allowedFields: {
+        'uid': (v) => v is String,
+        'userId': (v) => v is String,
+        'user_id': (v) => v is String,
+        'email': (v) => v is String,
+        'deletedAt': (v) => v is String,
+        'deleted_at': (v) => v is String,
+        'scheduledPurgeAt': (v) => v is String,
+        'scheduled_purge_at': (v) => v is String,
+      },
+    ),
     EventNames.onboardingCompleted: _EventRule.any([
       ['onboardingStep', 'onboarding_step'],
       ['hasCompletedOnboarding', 'has_completed_onboarding'],
@@ -65,10 +79,15 @@ class EventPayloadValidator {
       ['new'],
       ['fieldsChanged', 'fields_changed'],
     ]),
-    EventNames.screenTimeSynced: _EventRule.any([
-      ['logId', 'log_id'],
-      ['totalMinutes', 'total_minutes'],
-    ]),
+    EventNames.screenTimeSynced: _StrictEventRule(
+      requiredAny: [['logId', 'log_id'], ['totalMinutes', 'total_minutes']],
+      allowedFields: {
+        'logId': (v) => v is String,
+        'log_id': (v) => v is String,
+        'totalMinutes': (v) => v is int || v is num,
+        'total_minutes': (v) => v is int || v is num,
+      },
+    ),
     EventNames.taskScheduled: _taskRule,
     EventNames.taskStarted: _taskRule,
     EventNames.taskPaused: _taskRule,
@@ -97,6 +116,15 @@ class EventPayloadValidator {
       ['habitId', 'habit_id'],
       ['count'],
     ]),
+    EventNames.slipLogDismissed: _StrictEventRule(
+      requiredAny: [['logId', 'log_id'], ['habitId', 'habit_id']],
+      allowedFields: {
+        'logId': (v) => v is String,
+        'log_id': (v) => v is String,
+        'habitId': (v) => v is String,
+        'habit_id': (v) => v is String,
+      },
+    ),
     EventNames.streakExtended: _streakRule,
     EventNames.streakBroken: _streakRule,
     EventNames.streakMilestoneReached: _streakRule,
@@ -120,6 +148,12 @@ class EventPayloadValidator {
       ['turnId', 'turn_id'],
       ['text'],
     ]),
+    EventNames.coachReEnabled: _StrictEventRule(
+      requiredAny: [['reason']],
+      allowedFields: {
+        'reason': (v) => v is String,
+      },
+    ),
     EventNames.suggestionGenerated: _suggestionRule,
     EventNames.suggestionAccepted: _suggestionRule,
     EventNames.suggestionDismissed: _suggestionRule,
@@ -130,6 +164,15 @@ class EventPayloadValidator {
     EventNames.notificationSuppressed: _EventRule.any([
       ['reason'],
     ]),
+    EventNames.notificationMissed: _StrictEventRule(
+      requiredAny: [['notifId', 'notif_id', 'notificationId', 'notification_id']],
+      allowedFields: {
+        'notifId': (v) => v is String,
+        'notif_id': (v) => v is String,
+        'notificationId': (v) => v is String,
+        'notification_id': (v) => v is String,
+      },
+    ),
     EventNames.identityCreated: _identityRule,
     EventNames.identityUpdated: _identityRule,
     EventNames.identityPaused: _identityRule,
@@ -151,6 +194,12 @@ class EventPayloadValidator {
     EventNames.dayClosed: _EventRule.any([
       ['date'],
     ]),
+    EventNames.badDayDetected: _StrictEventRule(
+      requiredAny: [['date']],
+      allowedFields: {
+        'date': (v) => v is String,
+      },
+    ),
     EventNames.ghostDayDetected: _EventRule.any([
       ['uid', 'userId', 'user_id'],
       ['missedDays', 'missed_days'],
@@ -159,6 +208,19 @@ class EventPayloadValidator {
       ['uid', 'userId', 'user_id'],
       ['gapDays', 'gap_days'],
     ]),
+    EventNames.comebackPathChosen: _StrictEventRule(
+      requiredAny: [['path']],
+      allowedFields: {
+        'path': (v) => v is String,
+      },
+    ),
+    EventNames.weeklyInsightReady: _StrictEventRule(
+      requiredAny: [['insightId', 'insight_id']],
+      allowedFields: {
+        'insightId': (v) => v is String,
+        'insight_id': (v) => v is String,
+      },
+    ),
   };
 
   static final _taskRule = _EventRule.any([
@@ -210,4 +272,75 @@ class _EventRule {
 
   factory _EventRule.any(List<List<String>> requiredAny) =>
       _EventRule(requiredAny: requiredAny);
+}
+
+class _StrictEventRule extends _EventRule {
+  final Map<String, bool Function(dynamic)> allowedFields;
+
+  const _StrictEventRule({
+    required super.requiredAny,
+    required this.allowedFields,
+  });
+
+  EventPayloadValidationResult validateStrict(String eventName, Map<String, dynamic> payload) {
+    final missing = <String>[];
+    final wrongType = <String>[];
+    final unknown = <String>[];
+
+    final finalAllowed = {...allowedFields.keys, 'priority'};
+
+    for (final key in payload.keys) {
+      if (!finalAllowed.contains(key)) {
+        unknown.add(key);
+      }
+    }
+
+    for (final requirement in requiredAny) {
+      if (!requirement.any(payload.containsKey)) {
+        missing.add(requirement.join(' or '));
+      }
+    }
+
+    for (final entry in payload.entries) {
+      final key = entry.key;
+      final val = entry.value;
+
+      if (key == 'priority') {
+        if (val is! String) wrongType.add(key);
+        continue;
+      }
+
+      if (allowedFields.containsKey(key)) {
+        if (!allowedFields[key]!(val)) {
+          wrongType.add(key);
+        }
+      }
+    }
+
+    final errors = <String>[];
+    if (missing.isNotEmpty) {
+      errors.add('missing ${missing.join(', ')}');
+    }
+    if (wrongType.isNotEmpty) {
+      errors.add('wrong type for ${wrongType.join(', ')}');
+    }
+
+    if (errors.isNotEmpty) {
+      return EventPayloadValidationResult.invalid(
+        'Invalid payload for "$eventName"; ${errors.join(', ')}.',
+      );
+    }
+
+    if (unknown.isNotEmpty) {
+      final msg = 'Unknown fields in payload for "$eventName": ${unknown.join(', ')}.';
+      if (kDebugMode) {
+        return EventPayloadValidationResult.invalid(msg);
+      } else {
+        debugPrint('[EventPayloadValidator] $msg');
+        return const EventPayloadValidationResult.valid();
+      }
+    }
+
+    return const EventPayloadValidationResult.valid();
+  }
 }

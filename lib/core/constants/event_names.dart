@@ -47,6 +47,7 @@ abstract final class EventNames {
   static const habitArchived = 'habit_archived';
   static const habitDeleted = 'habit_deleted';
   static const slipStreakDetected = 'slip_streak_detected';
+  static const slipLogDismissed = 'slip_log_dismissed';
 
   // ── Streaks ─────────────────────────────────────────────────────────────
   static const streakExtended = 'streak_extended';
@@ -65,6 +66,8 @@ abstract final class EventNames {
   // ── Coach ───────────────────────────────────────────────────────────────
   static const coachMessageSent = 'coach_message_sent';
   static const coachReplied = 'coach_replied';
+  static const coachReEnabled = 'coach_re_enabled';
+  static const weeklyInsightReady = 'weekly_insight_ready';
 
   // ── Suggestions ─────────────────────────────────────────────────────────
   static const suggestionGenerated = 'suggestion_generated';
@@ -77,6 +80,7 @@ abstract final class EventNames {
   static const notificationTapped = 'notification_tapped';
   static const notificationDismissed = 'notification_dismissed';
   static const notificationSuppressed = 'notification_suppressed';
+  static const notificationMissed = 'notification_missed';
 
   // ── Identity ────────────────────────────────────────────────────────────
   static const identityCreated = 'identity_created';
@@ -90,8 +94,10 @@ abstract final class EventNames {
   // ── Day lifecycle ───────────────────────────────────────────────────────
   static const dayStarted = 'day_started';
   static const dayClosed = 'day_closed';
+  static const badDayDetected = 'bad_day_detected';
 
   // ── Engagement ──────────────────────────────────────────────────────────
   static const ghostDayDetected = 'ghost_day_detected';
   static const comebackInitiated = 'comeback_initiated';
+  static const comebackPathChosen = 'comeback_path_chosen';
 }
