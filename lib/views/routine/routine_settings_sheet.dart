@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:optivus2/providers/routine_provider.dart';
 
@@ -126,7 +127,12 @@ class RoutineSettingsSheet extends StatelessWidget {
                 opt.filter != null && (setupDone[opt.filter] ?? false);
             return GestureDetector(
               onTap: () {
-                if (opt.filter != null) onSetup(opt.filter!);
+                if (opt.filter == RoutineFilter.fixedSchedule) {
+                  Navigator.pop(context); // dismiss sheet
+                  context.push('/settings/fixed-schedule');
+                } else if (opt.filter != null) {
+                  onSetup(opt.filter!);
+                }
               },
               child: Padding(
                 padding:

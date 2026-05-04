@@ -6,7 +6,6 @@ import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/services/firestore_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
-import 'routine_settings_screen.dart';
 
 class ProfileTab extends StatelessWidget {
   const ProfileTab({super.key});
@@ -364,11 +363,7 @@ class ProfileTab extends StatelessWidget {
             title: 'Routine Setting',
             hasArrow: true,
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const RoutineSettingsScreen()),
-              );
+              context.push('/settings/routine');
             },
           ),
         ],

@@ -11,6 +11,8 @@ import '../../views/screens/loading_screen.dart';
 import '../../views/habits/habit_detail_screen.dart';
 import '../../views/habits/habit_editor_screen.dart';
 import '../../views/streaks/streak_detail_screen.dart';
+import '../../views/tabs/routine_settings_screen.dart';
+import '../../views/routine/fixed_schedule_setup_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
 
@@ -103,6 +105,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, state) => StreakDetailScreen(
           streakId: state.pathParameters['streakId']!,
         ),
+      ),
+      GoRoute(
+        path: '/settings/routine',
+        builder: (_, __) => const RoutineSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/fixed-schedule',
+        builder: (_, __) => FixedScheduleSetupScreen(onComplete: () {}),
       ),
     ],
   );

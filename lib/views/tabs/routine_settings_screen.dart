@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'package:optivus2/views/routine/skin_care_setup_screen.dart';
 import 'package:optivus2/views/routine/eating_setup_screen.dart';
 import 'package:optivus2/views/routine/class_setup_screen.dart';
-import 'package:optivus2/views/routine/fixed_schedule_setup_screen.dart';
 import 'package:optivus2/views/routine/supplement_setup_screen.dart';
 
 class RoutineSettingsScreen extends ConsumerWidget {
@@ -24,8 +24,7 @@ class RoutineSettingsScreen extends ConsumerWidget {
       Navigator.push(
           context, slideRoute(SupplementSetupScreen(onComplete: () {})));
     } else if (f == RoutineFilter.fixedSchedule) {
-      Navigator.push(
-          context, slideRoute(FixedScheduleSetupScreen(onComplete: () {})));
+      context.push('/settings/fixed-schedule');
     }
   }
 
