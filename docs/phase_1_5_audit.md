@@ -1020,3 +1020,155 @@ No production Dart files were modified. No issues introduced or pre-existing.
 ### Risk if shipped as-is
 **LOW.** Cross-user data isolation is correctly enforced and the event log is strictly append-only. The reliance on the wildcard rule for AI collections is secure (owner-only access), but users could theoretically mutate their own system-generated data until Task 17.1 tightens it. Missing indexes will only cause errors when newer unreleased UI starts querying them.
 
+---
+
+## Re-Verification: Task 3.2 — Daily materialisation from reusable templates
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+
+- `lib/providers/routine_provider.dart`
+- `lib/repositories/routine_repository.dart`
+- `lib/services/task_service.dart`
+- `test/services/routine_service_contract_test.dart`
+- `test/services/task_service_contract_test.dart`
+
+### Firestore paths
+
+- `/users/{uid}/routine/current` — read by `RoutineRepository.loadRoutine()` (routine_repository.dart:115-119), written by `saveRoutine()` (routine_repository.dart:18-27)
+- `/users/{uid}/tasks/{taskId}` — written by `TaskService.createTask()` and `RoutineRepository.mergeTaskFields()` during materialisation
+
+### Requirement 1 — Idempotent: re-running materialise does not create duplicates
+
+**Mechanism — three-layer guard in `materializeForDate()`:**
+
+**Layer 1 — Deterministic ID.** Every candidate is assigned a stable ID before any Firestore interaction:
+
+```
+routine_{YYYY-MM-DD}_{routineType_slug}_{templateId_slug}
+```
+
+Function `_routineTaskId()` (routine_provider.dart:76-81). The same template on the same calendar day always yields the same string, regardless of wall-clock time or how many times materialisation runs.
+
+**Layer 2 — Within-run dedup.** `_candidatesForDate()` maintains a local `seenIds` set (routine_provider.dart:751, 777). If `_routineTaskId()` produces a colliding ID for two templates on the same day (only possible with duplicate `templateId + routineType` combos), the second candidate is silently dropped.
+
+**Layer 3 — Cross-run existence check.** `materializeForDate()` (routine_provider.dart:1147-1175):
+1. Batch-fetches existing task states for the target date via `existingRoutineTaskStatesForDate()` (routine_repository.dart:127-140) — one query covers most tasks.
+2. Falls back to a per-document read `_repo.taskState(c.task.id)` (routine_repository.dart:145-149) for any candidate not found in the batch — handles tasks whose `plannedStart` moved outside the date window.
+3. `existingState == null` → `createTask()` (new task; emits `task_scheduled`)
+4. `existingState != null` + non-terminal → `mergeTaskFields()` with `SetOptions(merge: true)` (no event, no overwrite)
+5. `existingState != null` + terminal → `continue` (history preserved)
+
+**Status: ✅ CONFIRMED** — repeated calls to `materializeForDate()` for the same date will create the task once and merge-update it on every subsequent run.
+
+**Gap — unchecked race window:**
+`materializeForDate()` is not wrapped in a Firestore transaction. Between the `existingRoutineTaskStatesForDate()` read and the `createTask()` write, a concurrent materialise call for the same date (e.g., two quick app launches) could both observe `existingState == null` and both call `createTask()`. The second `createTask()` call uses `batch.set()` (full overwrite, no merge) and would clobber any execution state written by the first call. In practice this is low risk for a single-user mobile app, but it is a latent data-integrity hole.
+
+**Gap — `syncRoutineTasks()` is dead code in the materialisation path:**
+`task_service.dart:253-304` defines `syncRoutineTasks()`, and the previous Task 3.2 audit cited it as part of the idempotency story. In the current code, `syncRoutineTasks()` is **not called from `routine_provider.dart`** or any other production caller — a codebase-wide grep confirms it is only referenced in `task_service.dart` (definition) and `test/services/task_service_contract_test.dart` (tests). The actual materialiser path uses `createTask()` + `mergeTaskFields()` instead. The contract tests for `syncRoutineTasks` are still valid, but they test a method that is unreachable from the materialiser as currently wired.
+
+### Requirement 2 — Completed/skipped/abandoned past tasks are preserved
+
+**Terminal-state guard in `materializeForDate()`:**
+```dart
+const _kTerminalTaskStates = {'completed', 'skipped', 'abandoned'};
+// routine_provider.dart:726
+
+if (existingState != null &&
+    _kTerminalTaskStates.contains(existingState)) {
+  continue; // do not overwrite history
+}
+// routine_provider.dart:1153-1155
+```
+
+When a task in `completed`, `skipped`, or `abandoned` state is encountered, materialisation skips the write entirely — neither `createTask()` nor `mergeTaskFields()` is called.
+
+**`mergeTaskFields()` — safe for non-terminal tasks:**
+`routine_repository.dart:154-161` uses `SetOptions(merge: true)` for all non-terminal merges. The fields written (`configFields` + `materializationMeta`) do not include `state`, `actualStart`, `actualEnd`, `pausedAt`, `abandonedAt`, or `driftPct` — so a `started` or `paused` task's execution state is never touched.
+
+**`syncRoutineTasks()` — also safe (but unreachable from materialiser):**
+`task_service.dart:272-287` uses `batch.set(docRef, updates, SetOptions(merge: true))` and the update map only contains config/schedule fields, not execution fields. Safe in isolation but not in the current call graph.
+
+**Status: ✅ CONFIRMED** — terminal tasks are skipped at the caller level; non-terminal tasks are updated via merge-only writes that explicitly exclude execution fields.
+
+### Requirement 3 — Deterministic task ID: scheduledDate + routineType + templateId
+
+**Function `_routineTaskId()` (routine_provider.dart:76-81):**
+
+```dart
+String _routineTaskId({
+  required String scheduledDate,  // e.g. "2026-05-04"
+  required String routineType,    // e.g. "fixed_schedule"
+  required String templateId,     // e.g. "template_abc"
+}) =>
+    'routine_${scheduledDate}_${_routineSlug(routineType)}_${_routineSlug(templateId)}';
+```
+
+`scheduledDate` is produced by `_routineDateKey(date)` (routine_provider.dart:62-65), which formats as `YYYY-MM-DD` (zero-padded, locale-independent).
+
+`_routineSlug()` (routine_provider.dart:67-74) lowercases and replaces non-alphanumeric runs with underscores, ensuring a stable slug even if titles or type strings contain spaces or mixed case.
+
+**Status: ✅ CONFIRMED** — ID = `routine_{YYYY-MM-DD}_{routineType}_{templateId}`, all three components are included and the format is stable.
+
+**Minor gap — fallback templateId for generic templates:**
+For templates in the `routineTemplates` map that lack a `templateId` field, the code falls back to `'${routineType}_$i'` (routine_provider.dart:985), where `$i` is the list index. If templates are reordered, the index changes, producing a different ID and a new task doc. This affects generic/custom templates only; the `FixedScheduleTemplate` always has a `templateId`.
+
+### Requirement 4 — Task 5.1 idempotency tests: status
+
+| Artefact | Status |
+|---|---|
+| `test/providers/routine_notifier_test.dart` | ❌ Does not exist |
+| `test/services/routine_service_contract_test.dart` | ⚠️ Exists — 17/17 tests skipped (`skip: 'Not yet implemented'`) |
+| Tests for: idempotency (re-run same date) | ❌ Missing |
+| Tests for: terminal state preservation | ❌ Missing |
+| Tests for: DST / timezone edge cases | ❌ Missing |
+| Tests for: 14-day window boundary | ❌ Missing |
+| Tests for: fallback `taskState()` single-doc read | ❌ Missing |
+| Tests for: race window (concurrent materialise) | ❌ Missing |
+
+**Status: ❌ CONFIRMED STILL PENDING** — Task 5.1 has not been implemented. Zero automated coverage exists for the materialisation logic itself. The only indirect coverage is the two `syncRoutineTasks` tests in `task_service_contract_test.dart` (lines 573-603), which test a method that is not currently called by the materialiser.
+
+### Events
+
+| Event | Path | Status |
+|---|---|---|
+| `task_scheduled` | `createTask()` → emits once per new task | ✅ Confirmed |
+| `task_scheduled` (re-run) | `mergeTaskFields()` → no event emitted | ✅ Correct — no duplicate event |
+| `task_scheduled` (terminal skip) | `continue` branch → no event | ✅ Correct — history preserved |
+
+`EventNames.taskScheduled = 'task_scheduled'` is defined at `event_names.dart:25`.
+
+### Tests
+
+| Test | Status |
+|---|---|
+| `syncRoutineTasks` — returns early for empty list | ✅ Passing (task_service_contract_test.dart:574-579) |
+| `syncRoutineTasks` — merges without clobbering in-progress state | ✅ Passing (task_service_contract_test.dart:581-603) |
+| `materializeForDate` — idempotency (run twice, same date) | ❌ Missing |
+| `materializeForDate` — terminal task preservation | ❌ Missing |
+| `materializeForDate` — fallback single-doc read | ❌ Missing |
+| Routine notifier tests (Task 5.1) | ❌ Missing — file does not exist |
+
+### Analyzer result
+
+```
+flutter analyze → No issues found! (ran in 5.3s)
+```
+
+No production Dart files were modified.
+
+### Gaps and follow-ups
+
+| # | Gap | Severity | Follow-up |
+|---|---|---|---|
+| G1 | `syncRoutineTasks()` is a dead method — defined and tested but not called by the materialiser. The previous audit cited it as the idempotency mechanism; it is not. The actual mechanism is `createTask()` + `mergeTaskFields()`. | LOW | Document this in a code comment or remove from contract tests if the method is not needed. If it was intended as the materialisation entry point, wire it in. |
+| G2 | Race window: `materializeForDate()` reads existence then calls `createTask()` without a transaction. Concurrent calls for the same date could double-create and clobber a task. | LOW | Wrap the check + write for each candidate in a Firestore transaction, or use a merge-safe `set()` inside `createTask()` when called from the materialiser. Track as part of Task 5.1. |
+| G3 | Fallback `templateId` uses list index `$i` for generic templates — unstable if templates are reordered. | LOW | Require `templateId` to be non-empty on all templates before saving; reject or assign a UUID at write time. |
+| G4 | Task 5.1 idempotency proof (routine notifier tests) — 0 tests, file missing. | HIGH | Implement `test/providers/routine_notifier_test.dart` per Task 5.1. Priority: idempotency, terminal preservation, 14-day window boundary. |
+
+### Risk if shipped as-is
+
+**MEDIUM.** The materialisation logic is functionally correct for normal single-user flows. The race window (G2) and the missing test coverage (G4) are the primary risks. G4 remains the highest-risk gap in the project: DST bugs, duplicate tasks, and timezone-crossing issues are unproven. No regression has been observed yet, but no automated test would catch one either.
+
