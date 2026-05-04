@@ -850,6 +850,139 @@ All paths below are confirmed written by inspected code:
 
 ---
 
+## Re-Verification: Task 3.1 — TaskService contract
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+
+- `lib/services/task_service.dart`
+- `lib/models/task_model.dart`
+- `lib/core/constants/event_names.dart`
+- `lib/core/errors/app_errors.dart`
+- `test/services/task_service_contract_test.dart`
+
+### Requirement 1 — Full state machine
+
+| Transition | Method | Guard | Citation |
+|---|---|---|---|
+| → scheduled (create) | `createTask()` | `plannedEnd > plannedStart`, `durationMin ≤ 480` | `task_service.dart:226-245` |
+| scheduled → started | `startTask()` | `state == scheduled` else `InvalidStateTransitionError` | `task_service.dart:314-319` |
+| started → paused | `pauseTask()` | `state == started` else `InvalidStateTransitionError` | `task_service.dart:345-350` |
+| paused → started (resume) | `resumeTask()` | `state == paused` else `InvalidStateTransitionError` | `task_service.dart:376-381` |
+| started\|paused → completed | `completeTask()` | `state in {started, paused}` else `InvalidStateTransitionError` | `task_service.dart:413-418` |
+| started\|paused → abandoned | `abandonTask()` | `!state.isTerminal && state != scheduled` else `InvalidStateTransitionError` | `task_service.dart:476-489` |
+| scheduled → skipped | `skipTask()` | `state == scheduled` else `TaskSkippedFromInvalidStateError` | `task_service.dart:555-559` |
+| Terminal guard | `TaskState.isTerminal` | Returns true for completed, skipped, abandoned | `task_model.dart:44-47` |
+
+**Status: ✅ CONFIRMED** — all transitions are implemented with typed guards. Terminal states cannot be re-entered.
+
+### Requirement 2 — Only one active task at a time
+
+**What is confirmed:**
+- `startTask()` calls `_activeTaskId()` (task_service.dart:308-311) which queries `where('state', isEqualTo: 'started').limit(1)` and throws `MultipleActiveTasksError` if any other task is already in `started` state.
+- Contract test covers this: `'throws MultipleActiveTasksError when another task is started'` (task_service_contract_test.dart:222-232).
+
+**Gap identified — `resumeTask()` does not re-check for a started peer:**
+
+The sequence `startTask(A)` → `pauseTask(A)` → `startTask(B)` → `resumeTask(A)` is permitted by the current code:
+
+1. After `pauseTask(A)`: A is `paused`; no `started` tasks exist.
+2. `startTask(B)` passes `_activeTaskId()` (no `started` tasks) → B becomes `started`.
+3. `resumeTask(A)` enforces only `state == paused` (task_service.dart:376-381), then transitions A to `started` without querying for an already-started peer.
+
+Result: both A and B are in `started` state simultaneously — violating the declared invariant in the service header (task_service.dart:12).
+
+`MultipleActiveTasksError` is defined in `app_errors.dart:56-61` but is only thrown from `startTask()`.
+
+No test in `task_service_contract_test.dart` exercises the "pause A → start B → resume A" sequence.
+
+**Status: ⚠️ PARTIAL GAP** — `startTask()` enforces the invariant; `resumeTask()` does not. Follow-up: add `_activeTaskId()` check to `resumeTask()` and a corresponding contract test.
+
+### Requirement 3 — Subtask check auto-completes parent
+
+**What is confirmed:**
+- `_setSubtaskChecked()` computes `allDone = updated.every((s) => s.checked)` (task_service.dart:656).
+- `allSubtasksChecked: allDone` is included in the event payload (task_service.dart:672).
+- Contract test at line 516 asserts `payload['allSubtasksChecked'] == true` when the single subtask is checked.
+
+**Gap confirmed:**
+- When `allDone == true`, the code emits the flag but takes no further action. The parent task remains in `started` (or `paused`) state.
+- Auto-transition (`completeTask()` call inside `_setSubtaskChecked()`) is absent.
+- No test covers "all subtasks checked → parent auto-completes."
+
+This gap also appeared in the original Task 3.1 audit (line 251-253 of this doc). It is not a regression — it was never implemented. The requirement is unambiguous: "confirm subtask check auto-completes parent."
+
+**Status: ❌ NOT IMPLEMENTED** — Follow-up: a new Task (tentatively Task 3.1b or the next available slot) should implement `if (allDone) await completeTask(taskId)` within `_setSubtaskChecked()`, gated on `checked == true` only, plus a contract test for this path. Consider whether auto-complete should also be guarded (e.g., only when task state is `started`).
+
+### Requirement 4 — Task and subtask events emit per state change
+
+All 10 required event names are defined as constants in `event_names.dart:25-37` and are emitted inside the same `WriteBatch` as the Firestore mutation.
+
+| Event | Emitted in | Citation |
+|---|---|---|
+| `task_scheduled` | `createTask()`, `syncRoutineTasks()` | task_service.dart:236, 291 |
+| `task_started` | `startTask()` | task_service.dart:332 |
+| `task_paused` | `pauseTask()` | task_service.dart:362 |
+| `task_resumed` | `resumeTask()` | task_service.dart:398 |
+| `task_completed` | `completeTask()` | task_service.dart:454 |
+| `task_abandoned` | `abandonTask()` | task_service.dart:531 |
+| `task_skipped` | `skipTask()` | task_service.dart:591 |
+| `task_deleted` | `deleteTask()` | task_service.dart:616 |
+| `subtask_checked` | `checkSubtask()` (via `_setSubtaskChecked`) | task_service.dart:666 |
+| `subtask_unchecked` | `uncheckSubtask()` (via `_setSubtaskChecked`) | task_service.dart:666 |
+
+Idempotency: `checkSubtask()` / `uncheckSubtask()` return early without emitting when `subtask.checked == checked` (task_service.dart:652), so no duplicate events fire on a no-op toggle.
+
+**Status: ✅ CONFIRMED** — all 10 events confirmed; no extra events invented.
+
+### Firestore paths
+
+| Path | Written by | Notes |
+|---|---|---|
+| `/users/{uid}/tasks/{taskId}` | All state transitions | Confirmed — `_tasksRef.doc(taskId)` in every method |
+| `/users/{uid}/task_outcomes/{taskId}` | `completeTask()`, `abandonTask()`, `skipTask()` | Written via `_writeTaskOutcome()` inside the same batch |
+
+### Tests
+
+| Test group | Tests | Status |
+|---|---|---|
+| `createTask` | 4 | ✅ Passing |
+| `watchTask / watchTasksForDay / watchTasksForWindow / watchActiveTask` | 4 | ✅ Passing |
+| `startTask` | 5 | ✅ Passing |
+| `pauseTask / resumeTask` | 4 | ✅ Passing |
+| `completeTask` | 5 | ✅ Passing |
+| `abandonTask` | 5 | ✅ Passing |
+| `skipTask` | 4 | ✅ Passing |
+| `deleteTask` | 2 | ✅ Passing |
+| `checkSubtask` | 4 | ✅ Passing |
+| `uncheckSubtask` | 1 | ✅ Passing |
+| `syncRoutineTasks` | 2 | ✅ Passing |
+| resume-while-peer-started scenario | 0 | ❌ Missing |
+| all-subtasks-checked → parent completes | 0 | ❌ Missing |
+
+### Analyzer result
+
+```
+flutter analyze → No issues found! (ran in 5.5s)
+```
+
+No production Dart files were modified. No issues introduced or pre-existing.
+
+### Gaps and follow-ups
+
+| # | Gap | Severity | Suggested follow-up |
+|---|---|---|---|
+| G1 | `resumeTask()` does not call `_activeTaskId()` before transitioning `paused → started`. The sequence start→pause→start-peer→resume results in two simultaneous `started` tasks, violating the declared invariant. | MEDIUM | Add `_activeTaskId()` guard to `resumeTask()` (throw `MultipleActiveTasksError` if a different task is started). Add contract test for this path. |
+| G2 | `allSubtasksChecked == true` in event payload does not auto-complete the parent task. Requirement says "subtask check auto-completes parent." | MEDIUM | Implement auto-completion: call `completeTask(taskId)` inside `_setSubtaskChecked()` when `checked && allDone`. Add contract test. |
+
+### Risk if shipped as-is
+
+**LOW–MEDIUM.** G1 requires an unusual multi-task flow (start → pause → start peer → resume) to trigger; most users will not hit it. G2 is a missing UX feature (users must manually complete tasks even after all subtasks are done). Neither gap causes data loss or security issues.
+
+---
+
 ## Re-Verification: Task 2.2 — Firestore schema, rules, indexes alignment
 
 > Date: 2026-05-04
