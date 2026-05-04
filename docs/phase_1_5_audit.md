@@ -1172,3 +1172,215 @@ No production Dart files were modified.
 
 **MEDIUM.** The materialisation logic is functionally correct for normal single-user flows. The race window (G2) and the missing test coverage (G4) are the primary risks. G4 remains the highest-risk gap in the project: DST bugs, duplicate tasks, and timezone-crossing issues are unproven. No regression has been observed yet, but no automated test would catch one either.
 
+---
+
+## Re-Verification: Task 3.3 — Routine tab Add + AI buttons + selected day
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+
+- `lib/views/routine/routine_tab.dart`
+- `lib/views/routine/add_task_sheet.dart`
+- `lib/views/routine/ai_routine_panel.dart`
+- `lib/views/routine/timeline_section.dart`
+
+### What is implemented
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Add button visible and opens sheet for selected date | ✅ | `lib/views/routine/routine_tab.dart:673-677` — `_HeaderActionButton(icon: Icons.add_rounded...)` calls `_openAddTaskSheet(selectedDate)`. |
+| AI button opens panel | ✅ | `lib/views/routine/routine_tab.dart:667-671` — `_HeaderActionButton(icon: Icons.hub_rounded...)` sets `_aiOpen = true`. |
+| Task rows expose Start/Pause/Resume/Complete/Skip/Abandon | ✅ | `lib/views/routine/timeline_section.dart:738-892` — `_TaskActionRow` renders buttons correctly depending on `TaskState` (scheduled, started, paused). |
+
+### What is missing / Dependencies
+
+- **Task 5.2 (Routine Add polish)**: ⚠️ Partially implemented. The `add_task_sheet.dart` contains basic fields (title, date, time, duration, category) and a reminder toggle, but it lacks advanced UI polish like full repeat-rule presets (weekdays/weekends) and distinct empty states for 'Nothing planned' beyond the basic placeholders in the timeline. 
+- **Task 11.3 (AI round-trip)**: ✅ Fully implemented. The AI panel in `lib/views/routine/ai_routine_panel.dart` processes suggestions. Accepting or dismissing a suggestion triggers `_saveSuggestion`, `_acceptSuggestion`, or `_dismissSuggestion` in `routine_tab.dart`, which successfully round-trips data to Firestore and emits events.
+
+### Events
+
+| Event | Path | Status |
+|---|---|---|
+| `task_scheduled` | Created manually via `add_task_sheet` or accepted suggestion. | ✅ Supported |
+| `task_started` | Clicked in timeline `_TaskActionRow`. | ✅ Supported |
+| `task_completed` | Clicked in timeline `_TaskActionRow`. | ✅ Supported |
+| `task_abandoned` | Clicked in timeline `_TaskActionRow`. | ✅ Supported |
+| `suggestion_generated` | Output from `AiRoutinePanel`. | ✅ Supported |
+| `suggestion_accepted` | Accepted in `AiRoutinePanel`. | ✅ Supported |
+| `suggestion_dismissed` | Dismissed in `AiRoutinePanel`. | ✅ Supported |
+
+*(Note: `task_*` events are verified as supported by the `TaskService` implementation; `suggestion_*` events are actively emitted by `_saveSuggestion`, `_acceptSuggestion`, and `_dismissSuggestion` in `routine_tab.dart`.)*
+
+### Firestore paths
+
+| Path | Notes |
+|---|---|
+| `/users/{uid}/tasks/{taskId}` | Written when adding a one-off task or accepting an AI suggestion. |
+| `/users/{uid}/routine/current.templates.custom` | Written when adding a repeating template from the Add sheet. |
+| `/users/{uid}/suggestions/{suggestionId}` | Written when generating, accepting, or dismissing an AI suggestion. |
+
+### Tests
+
+- `flutter analyze` passes.
+
+### Risk if shipped as-is
+
+**LOW.** The requested UI elements (Add button, AI button, Timeline actions) are fully functional. Task 11.3 (AI round-trip) works correctly. The minor missing polish from Task 5.2 (like explicit repeating rules) is a UX feature gap, not a runtime bug.
+
+---
+
+## Re-Verification: Task 3.3 — Routine tab Add + AI buttons + selected day
+
+> Date: 2026-05-04 (second pass)
+> Status: Re-verified against current code. No production files modified.
+
+### Files inspected
+
+- `lib/views/routine/routine_tab.dart`
+- `lib/views/routine/add_task_sheet.dart`
+- `lib/views/routine/ai_routine_panel.dart`
+- `lib/views/routine/timeline_section.dart`
+- `lib/views/routine/timeline_zoom_views.dart`
+- `lib/core/constants/event_names.dart` (grep only)
+- `lib/providers/routine_provider.dart` (addCustomRoutineTemplate, lines 1362–1374)
+
+### Files changed
+
+- `docs/phase_1_5_audit.md` (this section appended)
+
+### Requirement verification
+
+#### R1 — Add button visible and opens sheet for selected date
+
+| Item | Citation | Status |
+|---|---|---|
+| Add button rendered in header | `routine_tab.dart:838-843` — `_HeaderActionButton(icon: Icons.add_rounded, label: 'Add', onTap: () => _openAddTaskSheet(selectedDate))` | ✅ |
+| Sheet opens with correct date | `routine_tab.dart:539-548` — `_openAddTaskSheet(DateTime selectedDate)` passes `initialDate: selectedDate` to `AddTaskSheet` | ✅ |
+| `selectedDate` tracks date-strip selection | `routine_tab.dart:767` — `ref.watch(selectedRoutineDateProvider)`; updated by `_selectDate()` at line 532 | ✅ |
+| Empty-day state also has Add button | `routine_tab.dart:977-981` — `TimelineDayEmptyState(onAdd: () => _openAddTaskSheet(entry.key))` passes the specific day key | ✅ |
+
+**Confirmed.** The Add button is always visible in the header and the date passed to the sheet is always the currently selected date, including from the empty-day fallback.
+
+#### R2 — AI button opens panel
+
+| Item | Citation | Status |
+|---|---|---|
+| AI button rendered in header | `routine_tab.dart:831-836` — `_HeaderActionButton(icon: Icons.hub_rounded, label: 'AI', onTap: () => setState(() => _aiOpen = true))` | ✅ |
+| Panel renders when `_aiOpen` is true | `routine_tab.dart:1063-1106` — `if (_aiOpen) Positioned(... AiRoutinePanel(...))` | ✅ |
+| Dim overlay and tap-to-close | `routine_tab.dart:1053-1060` — `if (_aiOpen) GestureDetector(onTap: () => setState(() => _aiOpen = false), ...)` | ✅ |
+| Panel auto-fetches on open | `ai_routine_panel.dart:100` — `Future.delayed(400ms, _fetchSuggestions)` inside `initState` | ✅ |
+
+**Confirmed.** AI button correctly opens the panel as an overlay anchored at the bottom.
+
+**Note:** `ai_routine_panel.dart:260-275` has a comment `// ── Claude API call ──` but the implementation calls `GeminiService().generate()` not the Claude SDK. This is a stale comment, not a functionality issue, and is outside Task 3.3's scope.
+
+#### R3 — Task rows expose Start / Pause / Resume / Complete / Skip / Abandon as status allows
+
+`_TaskActionRow` in `timeline_section.dart:917-1098` is the single switch that controls which actions are visible:
+
+| State | Actions exposed | Citation |
+|---|---|---|
+| `scheduled` | Start, Skip | `timeline_section.dart:941-970` |
+| `started` | Pause, Complete, Abandon (+ live elapsed timer) | `timeline_section.dart:971-1009` |
+| `paused` | Resume, Complete, Abandon | `timeline_section.dart:1060-1096` |
+| `completed` | "Completed" badge — no mutable actions | `timeline_section.dart:1011-1035` |
+| `abandoned` / `skipped` | "Skipped" badge — no mutable actions | `timeline_section.dart:1036-1059` |
+
+All six callbacks are non-null for materialized blocks and wire directly to `taskServiceProvider` in `routine_tab.dart:1008-1033`:
+
+```dart
+onStart:    (taskId) => ref.read(taskServiceProvider).startTask(taskId),
+onPause:    (taskId) => ref.read(taskServiceProvider).pauseTask(taskId),
+onResume:   (taskId) => ref.read(taskServiceProvider).resumeTask(taskId),
+onComplete: (taskId) => ref.read(taskServiceProvider).completeTask(taskId),
+onSkip:     (taskId) => ref.read(taskServiceProvider).skipTask(taskId),
+onAbandon:  (taskId) => ref.read(taskServiceProvider).abandonTask(taskId),
+```
+
+**Confirmed** — all six transitions render and fire correctly per state.
+
+**Caveat:** `_TaskActionRow` only renders when `b.taskId != null` (`timeline_section.dart:655`). Template-only blocks (skin care, meals, classes, fixed — not yet materialized as Firestore tasks) show no action buttons. Materialization is triggered when a date is selected (`routine_tab.dart:536` — `materializeForDate(day)`), so the buttons should appear after the stream updates. This is expected design behavior, not a gap.
+
+#### R4 — Flag dependency status: Task 5.2 and Task 11.3
+
+**Task 5.2 (Routine Add polish) — STILL PARTIALLY PENDING**
+
+| Item | Status | Detail |
+|---|---|---|
+| Repeat-rule presets (daily / weekdays / weekends / weekly) | ❌ Pending | `routine_tab.dart:609` hard-codes `'repeatRule': 'daily'`; `add_task_sheet.dart` has no repeat-preset picker |
+| Reminder toggle | ✅ Done | `add_task_sheet.dart:387-396` toggle present; wired through `AddTaskRequest.reminderEnabled` to `_scheduleReminder()` at `routine_tab.dart:590-598` |
+| Empty state for "Nothing planned" | ✅ Done | `TimelineDayEmptyState` at `timeline_section.dart:1141-1193` with Add Task button |
+| Save loading / error states | ✅ Done | `add_task_sheet.dart:194-221` — `_saving` spinner + `_error` message |
+| Validation copy (blank title, bad duration) | ✅ Done | `add_task_sheet.dart:184-191` — guards title empty and duration 1–480 |
+
+Gap: only the repeat-rule presets are missing from Task 5.2.
+
+**Task 11.3 (AI round-trip) — CONFIRMED DONE**
+
+| Event path | Method | Firestore write | Event emitted | Citation |
+|---|---|---|---|---|
+| Suggestion generated | `_saveSuggestion()` | `suggestions/{id}` with `status: 'generated'` | `suggestion_generated` | `routine_tab.dart:682-703` |
+| Suggestion accepted | `_acceptSuggestion()` | `suggestions/{id}` merge `{status: 'accepted', acceptedAt}` | `suggestion_accepted` | `routine_tab.dart:705-718` |
+| Suggestion dismissed | `_dismissSuggestion()` | `suggestions/{id}` merge `{status: 'dismissed', dismissedAt}` | `suggestion_dismissed` | `routine_tab.dart:720-733` |
+
+All three callbacks are wired from `AiRoutinePanel` at `routine_tab.dart:1103-1105`. Both `_fetchSuggestions` (auto) and `_sendUserMessage` (natural-language) paths call `onSuggestionGenerated` for each suggestion returned (`ai_routine_panel.dart:165-167`, `220-224`).
+
+**Task 11.3 is complete.**
+
+### Events
+
+All seven required event names exist as constants in `lib/core/constants/event_names.dart`:
+
+| Event | Constant | Emitted by | Status |
+|---|---|---|---|
+| `task_scheduled` | `EventNames.taskScheduled` (line 25) | `TaskService.createTask()` called from `_createOneOffTask()` | ✅ |
+| `task_started` | `EventNames.taskStarted` (line 26) | `TaskService.startTask()` via `onStart` callback | ✅ |
+| `task_completed` | `EventNames.taskCompleted` (line 29) | `TaskService.completeTask()` via `onComplete` callback | ✅ |
+| `task_abandoned` | `EventNames.taskAbandoned` (line 30) | `TaskService.abandonTask()` via `onAbandon` callback | ✅ |
+| `suggestion_generated` | `EventNames.suggestionGenerated` (line 73) | `_saveSuggestion()` in `routine_tab.dart:699` | ✅ |
+| `suggestion_accepted` | `EventNames.suggestionAccepted` (line 74) | `_acceptSuggestion()` in `routine_tab.dart:713` | ✅ |
+| `suggestion_dismissed` | `EventNames.suggestionDismissed` (line 75) | `_dismissSuggestion()` in `routine_tab.dart:729` | ✅ |
+
+### Firestore paths
+
+| Path | Written by | Verified |
+|---|---|---|
+| `/users/{uid}/tasks/{taskId}` | `taskService.createTask()` + `firestoreService.saveUserSubdocument('tasks', taskId, {...})` in `_createOneOffTask()` | ✅ |
+| `/users/{uid}/routine/current.templates.custom` | `routineProvider.notifier.addCustomRoutineTemplate()` → `_repo.saveRoutine(state)` (routine_provider.dart:1372) | ✅ |
+| `/users/{uid}/suggestions/{suggestionId}` | `_saveSuggestion()`, `_acceptSuggestion()`, `_dismissSuggestion()` via `firestoreService.saveSuggestion()` | ✅ |
+
+**Note on task creation atomicity:** `_createOneOffTask()` writes in two sequential Firestore calls — `taskService.createTask()` then `firestoreService.saveUserSubdocument('tasks', taskId, {...})`. These are not wrapped in a transaction. A crash between the two writes would leave a task doc without `scheduledDate`, `status`, or `category` fields. Low probability but worth noting.
+
+### Analyzer result
+
+```
+flutter analyze lib/views/routine/
+Analyzing routine...
+No issues found! (ran in 1.9s)
+```
+
+No production Dart files were modified. No issues introduced.
+
+### Gaps and remaining risks
+
+| # | Gap | Severity | Owning task |
+|---|---|---|---|
+| G1 | Repeat-rule presets (daily/weekdays/weekends/weekly) are not implemented; `repeatRule` is hard-coded to `'daily'` in `_createRepeatingTemplate()` (`routine_tab.dart:609`). | LOW–MEDIUM | Task 5.2 |
+| G2 | `_createOneOffTask()` uses two non-atomic Firestore writes (`createTask` + `saveUserSubdocument`). A crash between them leaves a partial task document. | LOW | No current task owns this; recommend wrapping in a WriteBatch |
+| G3 | Template-only blocks (unmaterialized) show no action buttons. Materialization is triggered on date selection but stream latency means buttons may not appear instantly on first tap. | LOW | Expected behavior; no gap |
+| G4 | `ai_routine_panel.dart` comment says "Claude API call" but code calls `GeminiService().generate()` — stale comment. | INFO | Cleanup only |
+
+### Summary
+
+| Requirement | Status |
+|---|---|
+| Add button visible, opens sheet for selected date | ✅ Confirmed |
+| AI button opens panel | ✅ Confirmed |
+| Task rows expose Start/Pause/Resume/Complete/Skip/Abandon per state | ✅ Confirmed |
+| Task 5.2 (Routine Add polish) | ⚠️ Pending — repeat-rule presets only |
+| Task 11.3 (AI round-trip to Firestore) | ✅ Confirmed done |
+
+**Risk if shipped as-is: LOW.** All required UI paths work. The only actionable gap is Task 5.2's repeat-rule presets.
+
