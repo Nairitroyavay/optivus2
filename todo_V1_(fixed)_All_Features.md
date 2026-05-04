@@ -521,7 +521,7 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 - [ ] Not started
 - [ ] In progress
 - [x] Done (carried from previous TODO Pre-Phase 0 / Phase 0 — May 1 2026)
-- [ ] Needs review (re-audit recommended for new tracker rows)
+- [x] Needs review — verified May 4 2026: all new rows present
 
 #### Why
 
@@ -619,8 +619,8 @@ Return:
 #### Done Criteria
 
 - [x] Inventory + matrix exist (carried over).
-- [ ] All new rows added (smoking, running, meditation, supplements AI, eating mess photo, etc.).
-- [ ] Status column accurate against current code.
+- [x] All new rows added (smoking, running, meditation, supplements AI, eating mess photo, etc.).
+- [x] Status column accurate against current code.
 
 ---
 
@@ -630,7 +630,7 @@ Return:
 
 - [ ] Not started
 - [ ] In progress
-- [ ] Done
+- [x] Done (May 4 2026)
 
 #### Why
 
@@ -717,9 +717,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] All 14 test files exist.
-- [ ] Test runners pass with skips.
-- [ ] `functions/package.json` has `test` script.
+- [x] All 14 test files exist.
+- [x] Test runners pass with skips.
+- [x] `functions/package.json` has `test` script.
 
 ---
 
@@ -727,7 +727,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [ ] Not started
+- [x] Done (May 4 2026)
 
 #### Why
 
@@ -791,9 +791,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] Audit doc exists.
-- [ ] All Phase 1–5 tasks audited.
-- [ ] Risks named explicitly.
+- [x] Audit doc exists.
+- [x] All Phase 1–5 tasks audited.
+- [x] Risks named explicitly.
 
 ---
 
@@ -1499,7 +1499,7 @@ Return:
 
 #### Status
 
-- [ ] Not started
+- [x] Done (May 4 2026)
 
 #### Why
 
@@ -1581,9 +1581,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] All 10 new events have validators.
-- [ ] Test cases cover valid + invalid.
-- [ ] No existing validator broken.
+- [x] All 10 new events have validators.
+- [x] Test cases cover valid + invalid.
+- [x] No existing validator broken.
 
 ---
 
@@ -1591,7 +1591,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [ ] Not started
+- [x] Done (May 4 2026)
 
 #### Why
 
@@ -1655,8 +1655,8 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] All listed indexes declared.
-- [ ] Doc updated.
+- [x] All listed indexes declared.
+- [x] Doc updated.
 
 ---
 
