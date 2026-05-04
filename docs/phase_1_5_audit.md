@@ -655,3 +655,37 @@ All paths below are confirmed written by inspected code:
 - `/users/{uid}/dailySummaries/{date}`
 - `/users/{uid}/identity_profile/main`
 - `/users/{uid}/ai_context_snapshots/{snapshotId}`
+
+---
+
+## Re-Verification: Task 1.1 — Auth lifecycle + root user schema
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+- `lib/services/auth_service.dart`
+- `lib/repositories/auth_repository.dart`
+- `lib/models/user_model.dart`
+- `lib/views/screens/signup_screen.dart`
+- `lib/views/screens/login_screen.dart`
+- `lib/core/constants/event_names.dart`
+- `firestore.rules`
+
+### What is implemented
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Root schema fields | ✅ | `lib/models/user_model.dart:181-196` — full field set with `fromFirestore`/`toFirestore` (includes uid, email, displayName, createdAt, updatedAt, schemaVersion, timezone, hasCompletedOnboarding, onboardingStep, lastDayClosed, coachName, coachStyle, accountabilityMode, notificationSettings). |
+| `user_signed_up` emitted once | ✅ | `lib/services/auth_service.dart:80-87` — exactly one emission via deterministic eventId. |
+| Rules deny cross-user | ✅ | `firestore.rules:5-7` — `isOwner(userId)` enforces unauthenticated denial and cross-user read/write protection. |
+
+### What is missing
+
+- **Rules-test for unauthenticated denial**: `firestore.rules` correctly guards access, but no automated emulator test exists to confirm this behavior. (Owned by Task 0.3)
+
+### Tests
+- **Task 0.3 Dependency**: Rules emulator tests are missing.
+
+### Risk if shipped as-is
+**LOW.** Implementation meets requirements and limits access appropriately, but lacks test coverage for `firestore.rules`.
