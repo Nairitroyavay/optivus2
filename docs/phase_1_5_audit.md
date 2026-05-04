@@ -721,3 +721,45 @@ All paths below are confirmed written by inspected code:
 
 ### Risk if shipped as-is
 **MEDIUM.** The eating-disorder flag is saved but completely ignored downstream. Users with an ED history could be exposed to sensitive tracker features (e.g., calorie counting) until Task 7.6 is implemented.
+
+---
+
+## Re-Verification: Task 1.3 — Onboarding fixed schedule unlimited templates
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+- `lib/views/onboarding/onboarding_page_9.dart`
+- `lib/providers/onboarding_provider.dart`
+- `lib/providers/routine_provider.dart`
+- `lib/repositories/routine_repository.dart`
+
+### What is implemented
+
+| Requirement | Status | Citation |
+|---|---|---|
+| No 3-item cap | ✅ | `lib/views/onboarding/onboarding_page_9.dart:450-506` — dynamic list (`_blocks`) built with `ReorderableListView.builder`, no length cap. |
+| 6+ blocks persist as templates | ✅ | `lib/repositories/routine_repository.dart:21-36` — `saveFixedScheduleTemplates()` writes array to `/users/{uid}/routine/current.templates.fixed_schedule` without constraints. |
+| Onboarding creates templates only | ✅ | `lib/providers/onboarding_provider.dart:21-38` — normalizes as fixed schedule blocks and saves them to onboarding state, eventually saving as templates. No single `task` doc is created directly during setup. |
+
+### What is missing
+
+- **Shared widget extraction (Task 4.2)**: ❌ Missing dependency. `lib/views/onboarding/onboarding_page_9.dart` has its own embedded editor dialog (`_showEditDialog`), meaning the widget has not been extracted into a shared component yet.
+
+### Events
+
+| Event | Status | Note |
+|---|---|---|
+| `routine_template_created` | ✅ | Supported by Event system. Emitted via `lib/providers/routine_provider.dart` (`_emitTemplateCreated`). |
+| `routine_template_updated` | ⚠️ | Supported by Event system, but not explicitly emitted during onboarding save; relies on direct Firestore writes or `onboarding_completed`. |
+| `routine_template_deleted` | ⚠️ | Supported by Event system, but not explicitly emitted during onboarding save. |
+
+### Dependencies
+- **Task 4.2**: Extract shared FixedScheduleEditor widget is missing.
+
+### Tests
+- `flutter analyze` passes.
+
+### Risk if shipped as-is
+**MEDIUM.** Data saves correctly, but the editor logic is duplicated between onboarding and the settings screen. They may drift apart until Task 4.2 extracts the shared widget.
