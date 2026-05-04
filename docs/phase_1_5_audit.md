@@ -848,3 +848,42 @@ All paths below are confirmed written by inspected code:
 ### Risk if shipped as-is
 **LOW.** The core transactional logic, duplicate prevention, and envelope creation are fully implemented and robust. The missing event schemas mean dependent Phase 2+ features will either fail validation or fail to track properly, which will be resolved in Task 2.3.
 
+---
+
+## Re-Verification: Task 2.2 — Firestore schema, rules, indexes alignment
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+- `firestore.rules`
+- `firestore.indexes.json`
+- `lib/services/firestore_service.dart`
+- `docs/firestore_schema_v1_mapping.md`
+
+### What is implemented
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Rules deny cross-user reads/writes | ✅ | `firestore.rules:24-52` — `isOwner(userId)` enforces that all `/users/{userId}/*` collections require the current `request.auth.uid` to match `userId`. |
+| Append-only enforcement on `/events` and `/events_recent` | ✅ | `firestore.rules:56-72` — explicitly sets `allow update, delete: if false;` for both `events` and `events_recent` while allowing `create`. |
+| Indexes cover queries used by app today | ✅ | `firestore.indexes.json` — contains appropriate composite indexes used by `FirestoreService`, such as `scheduledDate`/`plannedStart`/`status`/`sourceRoutineType` for tasks, and `sessionId`/`createdAt` for coach messages. |
+
+### What is missing
+
+- **Missing explicit rules**: The wildcard rule (`firestore.rules:33-52`) handles all unspecified collections by granting full owner read/write access. As a result, system-generated or AI-generated collections such as `suggestions`, `coach_messages`, `coach_speak_log`, `ai_context_snapshots`, `dailySummaries`, and `weeklySummaries` lack tighter restrictions (e.g., read-only for the user) and rely on the general rule. (Owned by Task 17.1).
+- **Missing indexes**: Specific indexes for `notificationLog`, `weeklySummaries`, and `usage` are not present in `firestore.indexes.json`. (Owned by Task 2.4).
+
+### Events
+- (Read-only re-verification — emit nothing.)
+
+### Dependencies
+- **Task 17.1**: Update `firestore.rules` to apply strict read-only constraints for AI-managed collections (like `suggestions`, `coach_messages`).
+- **Task 2.4**: Add missing composite indexes for `notificationLog`, `weeklySummaries`, and `usage`.
+
+### Tests
+- `flutter analyze` passes.
+
+### Risk if shipped as-is
+**LOW.** Cross-user data isolation is correctly enforced and the event log is strictly append-only. The reliance on the wildcard rule for AI collections is secure (owner-only access), but users could theoretically mutate their own system-generated data until Task 17.1 tightens it. Missing indexes will only cause errors when newer unreleased UI starts querying them.
+
