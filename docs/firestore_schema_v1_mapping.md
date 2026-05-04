@@ -219,18 +219,67 @@ Admin SDK bypasses rules for trusted backend maintenance.
 
 Indexes live in `firestore.indexes.json`.
 
-Required v1 composite indexes:
+### tasks
 
-| Collection group | Fields |
+| Fields | Query |
 | --- | --- |
-| `tasks` | `scheduledDate ASC`, `plannedStart ASC`, `status ASC`, `sourceRoutineType ASC` |
-| `tasks` | `scheduledDate ASC`, `status ASC`, `sourceRoutineType ASC`, `plannedStart ASC` |
-| `tasks` | `scheduledDate ASC`, `plannedStart ASC` |
-| `tasks` | `status ASC`, `plannedStart ASC` |
-| `tasks` | `status ASC`, `plannedEnd ASC` |
-| `events_recent` | `eventName ASC`, `timestamp DESC` |
-| `events_recent` | `timestamp DESC` |
-| `suggestions` | `status ASC`, `createdAt DESC` |
-| `scheduled_notifications` | `status ASC`, `fireAt ASC` |
+| `scheduledDate ASC`, `plannedStart ASC`, `status ASC`, `sourceRoutineType ASC` | Day-view: fetch tasks for a date ordered by start time, filtered by status and routine type |
+| `scheduledDate ASC`, `status ASC`, `sourceRoutineType ASC`, `plannedStart ASC` | Day-view variant: filter by status + routine type first, then order by start time |
+| `scheduledDate ASC`, `plannedStart ASC` | Day-view: all tasks for a date ordered by start time |
+| `status ASC`, `plannedStart ASC` | Upcoming open tasks ordered by planned start (v1 `status` field) |
+| `status ASC`, `plannedEnd ASC` | Overdue detection: open tasks ordered by planned end |
+| `state ASC`, `plannedStart ASC` | Upcoming open tasks ordered by planned start (runtime `state` field, written alongside `status` during migration) |
+| `parentRoutine ASC`, `plannedStart DESC` | Fetch all tasks spawned from a given routine template, most recent first |
 
-Additional compatibility indexes are currently retained for event history, habit logs, streaks, coach messages, and legacy `scheduledFor` notification queries.
+### events / events_recent
+
+| Collection group | Fields | Query |
+| --- | --- | --- |
+| `events_recent` | `eventName ASC`, `timestamp DESC` | Fetch recent events of a specific type, newest first |
+| `events_recent` | `timestamp DESC` | Fetch all recent events newest first (single-field, kept explicit for deploy consistency) |
+| `events` | `eventName ASC`, `timestamp DESC` | Same query on the full audit log |
+
+### suggestions
+
+| Fields | Query |
+| --- | --- |
+| `status ASC`, `createdAt DESC` | Fetch pending/accepted suggestions ordered newest first |
+
+### coach_messages
+
+| Fields | Query |
+| --- | --- |
+| `sessionId ASC`, `createdAt ASC` | Load all messages in a coach session in chronological order |
+| `threadId ASC`, `ts DESC` | Load messages in a thread ordered newest first (used by thread-view UI) |
+| `createdAt DESC` | Global feed of coach messages newest first |
+
+### scheduled_notifications
+
+| Fields | Query |
+| --- | --- |
+| `status ASC`, `scheduledFor ASC` | Legacy: fetch pending notifications by legacy `scheduledFor` field |
+| `status ASC`, `fireAt ASC` | Fetch pending notifications by `fireAt` (v1 field, used by notification dispatcher) |
+| `state ASC`, `fireAt ASC` | Fetch pending notifications by `state` (runtime field written alongside `status` during migration) |
+
+### notificationLog
+
+| Fields | Query |
+| --- | --- |
+| `notifId ASC`, `ts DESC` | Fetch delivery/tap/suppression audit entries for a notification, newest first |
+
+### weeklySummaries
+
+| Fields | Query |
+| --- | --- |
+| `weekKey DESC` | Fetch the N most recent weekly summaries (e.g., for coach context window) |
+
+### habits / habit_logs / streaks / coach_speak_log
+
+| Collection group | Fields | Query |
+| --- | --- | --- |
+| `habits` | `type ASC`, `createdAt ASC` | Fetch habits by type in creation order |
+| `habit_logs` | `habitId ASC`, `occurredAt ASC` | Habit history oldest-first for streak calculation |
+| `habit_logs` | `habitId ASC`, `occurredAt DESC` | Habit history newest-first for display |
+| `habit_logs` | `occurredAt DESC` | Global log feed newest first |
+| `streaks` | `habitId ASC`, `lastHitDate DESC` | Current streak state per habit |
+| `coach_speak_log` | `decision ASC`, `createdAt DESC` | Filter coach decisions by outcome, newest first |
