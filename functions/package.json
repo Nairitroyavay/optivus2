@@ -6,7 +6,8 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "mocha 'test/**/*.test.js' --exit --timeout 10000"
   },
   "engines": {
     "node": "20"
@@ -18,7 +19,9 @@
     "firebase-functions": "^6.0.1"
   },
   "devDependencies": {
-    "firebase-functions-test": "^3.1.0"
+    "firebase-functions-test": "^3.1.0",
+    "mocha": "^10.8.2",
+    "sinon": "^18.0.1"
   },
   "private": true
 }
