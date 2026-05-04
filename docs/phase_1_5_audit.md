@@ -1527,3 +1527,177 @@ No production Dart or JS files were modified.
 
 **Risk if shipped as-is: LOW.** Manual modes are production-ready for all five screens. AI paths degrade gracefully. The main action items are Task 12.7 (add AI UI to Fixed Schedule) and Task 12.2 (extract shared review widget).
 
+---
+
+## Task 3.5 — Day lifecycle: day_started / day_closed / summary rollup
+
+> Re-verification run: 2026-05-04
+> Constraint: read-only audit — no Dart or JS files modified.
+
+### Files inspected
+
+- `lib/services/routine_service.dart`
+- `lib/models/day_summary_model.dart`
+- `lib/views/tabs/home_tab.dart`
+- `lib/core/providers.dart`
+- `functions/jobs/dayClose.js`
+- `lib/core/constants/event_names.dart` (supplementary)
+- `lib/models/identity_profile_model.dart` (supplementary)
+
+### Files changed
+
+- `docs/phase_1_5_audit.md` (this file — new section appended)
+
+---
+
+### Requirement 1 — `day_started` emits once per local date (idempotent)
+
+**Status: ✅ SATISFIED**
+
+| Check | Evidence |
+|---|---|
+| Idempotency gate | `routine_service.dart:100–107` — `eventId = _eventId('day_started', uid, dateStr)` produces a deterministic doc ID; `eventRef.get()` is checked before any write; returns early if doc already exists |
+| Called on launch | `routine_service.dart:71` — `runDayStartIfNeeded()` is called inside `runDayCloseIfNeeded()` on every app open |
+| EventService writes the gate doc | `event_service.dart` (not in scope) is called with `eventId`; the same doc ID is used as the Firestore event record, making double-emit impossible across restarts |
+| Constant defined | `event_names.dart:95` — `dayStarted = 'day_started'` |
+
+**Gap noted:** `day_started` is **client-only**. The server safety-net (`dayClose.js`) never emits it. A day on which the user does not open the app produces no `day_started` event. Downstream listeners that strictly require `day_started` before acting will silently miss those days.
+
+---
+
+### Requirement 2 — `day_close` handles missed days in chronological order
+
+**Status: ✅ SATISFIED (both client and server)**
+
+**Client (`routine_service.dart:54–91`):**
+
+| Step | Line | Behaviour |
+|---|---|---|
+| Read `lastDayClosed` from user doc | 64 | Starting anchor |
+| Compute yesterday | 68 | `now - 1 day` |
+| Set `dateToClose` to either `lastDayClosed+1` or yesterday | 78–80 | Handles null (first run) |
+| While `dateToClose < today` → call `_closeDate()` → advance by 1 day | 82–87 | Chronological, one day at a time |
+| `_closeDate()` skips already-written summaries | 337–343 | Idempotent on re-run |
+
+**Server (`dayClose.js:441–616`):**
+
+| Step | Line | Behaviour |
+|---|---|---|
+| Runs hourly, gates on user-local hour == 1 | 435 | Safety-net at 1am local |
+| Same `lastDayClosed + 1` / yesterday anchor | 441–443 | Matches client logic |
+| `while (dateStr <= yesterday)` loop | 445 | Chronological |
+| Skips existing summary docs | 451–460 | Idempotent |
+| `batch.commit()` + advance `dateStr` | 611–616 | Atomic per day |
+
+---
+
+### Requirement 3 — Summary fields
+
+**Status: ✅ SATISFIED — all 8 required field groups present and populated**
+
+Verification against `day_summary_model.dart` fields and `computeDailySummary()` in `routine_service.dart`:
+
+| Required group | Model field(s) | Populated from | Client cite | Server cite |
+|---|---|---|---|---|
+| Task completion | `tasksCompleted`, `tasksAbandoned`, `tasksSkipped`, `tasksScheduled` | Task query on `plannedStart` range | `routine_service.dart:439–441` | `dayClose.js:155–157` |
+| Routine completion | `routinesCompleted`, `routinesMissed`, `perRoutinePct`, `overallPct` | Per-task `_routineContribution()` | `routine_service.dart:464–472, 504–506` | `dayClose.js:179–202` |
+| Focus minutes | `focusMinutes` | `task.actualDurationMin` | `routine_service.dart:433` | `dayClose.js:158` |
+| Habit completion | `habitsCompleted`, `habitsBadLogged` | `StreakService.runDayCloseRollup()` result | `routine_service.dart:497–498` | `dayClose.js:467–473` |
+| Slips | `slipCounts` (Map\<String,int\>) | `habit_logs` where `logType == 'slip'` | `routine_service.dart:478–484` | `dayClose.js:519–521` |
+| Streak inputs | `streaksActive`, `streaksMilestonesHit` | Rollup result / `updateStreaksFromProgress()` | `routine_service.dart:507–508` | `dayClose.js:494–498` |
+| Identity inputs | `identityProgress`, `identityAlignedCompletedValue`, `nonAlignedCompletedValue`, `maxPossibleValueToday` | `/users/{uid}/identity_profile/main` read | `routine_service.dart:413–427, 493–496` | `dayClose.js:483–510` |
+| Mission score | `missionScore`, `missionPct` | `(alignedCompleted + nonAligned) / maxPossible` | `routine_service.dart:473–477, 488–489` | `dayClose.js:70–84` |
+
+All `toFirestore()` keys confirmed at `day_summary_model.dart:107–136`. Server summary write at `dayClose.js:512–545` uses the same key names.
+
+---
+
+### Requirement 4 — Mission-ring identity-aligned weighting (Task 5.3) still pending
+
+**Status: ✅ CONFIRMED PENDING — flag raised**
+
+The current implementation in both client and server uses a **binary proxy weight**:
+
+- `weight = aligned ? 1.0 : 0.5` — `routine_service.dart:453`
+- `const weight = aligned ? 1 : 0.5` — `dayClose.js:171`
+
+`identityProgress` stored in the summary is populated as `{identityName: progressPct}` where `progressPct` is a **single shared scalar** from the identity profile doc (not per-identity):
+
+- `routine_service.dart:422–427` — all identities receive the same `identityProfile.data()?['progressPct']` value
+- `dayClose.js:507–510` — same: `identityProgress[identity] = Number(identityProfile.progressPct || 0)`
+- `identity_profile_model.dart:5` — `progressPct` is a single `int` field on the profile, not a per-identity map
+
+**Task 5.3 (identity-aligned weighting for mission ring) is not implemented.** The infrastructure for per-identity weights (a `Map<String, double>` in the summary model) exists but is populated with the same global value for every identity. A proper Task 5.3 implementation would need:
+1. Per-identity weight factors (e.g. derived from individual identity progress or user-configured priority)
+2. Gradient weighting (not just binary 1.0/0.5) in the mission score formula
+3. The `_MissionRing` widget in `home_tab.dart:991–1029` currently renders a single aggregate progress value — no per-identity breakdown
+
+**The `home_tab.dart:266–358` mission ring** reads live from `todayTasksProvider` and `identityProvider`, not from the saved `DaySummary.missionScore`. It applies the same binary weight. So even the real-time display is Task-5.3-incomplete.
+
+---
+
+### Events
+
+| Event name | Constant | Client emitted | Server emitted | Citation |
+|---|---|---|---|---|
+| `day_started` | `EventNames.dayStarted` (`event_names.dart:95`) | ✅ | ❌ | `routine_service.dart:111–119` |
+| `day_closed` | `EventNames.dayClosed` (`event_names.dart:96`) | ✅ | ✅ | `routine_service.dart:385–399`; `dayClose.js:585–601` |
+| `routine_block_completed` | `EventNames.routineBlockCompleted` (`event_names.dart:60`) | ✅ | ✅ | `routine_service.dart:614–625`; `dayClose.js:547–565` |
+| `routine_day_summarized` | `EventNames.routineDaySummarized` (`event_names.dart:61`) | ✅ | ✅ | `routine_service.dart:368–384`; `dayClose.js:566–584` |
+
+Event system exists and is used throughout. All four required events are registered constants and have emit call sites.
+
+---
+
+### Firestore paths
+
+| Path | Operation | Citation |
+|---|---|---|
+| `/users/{uid}/dailySummaries/{date}` | Write (batch.set) once per closed day | `routine_service.dart:335–336, 355–356`; `dayClose.js:447–461, 512–545` |
+| `/users/{uid}/tasks/{taskId}` | Read (query by `plannedStart` range); write (overdue mark) | `routine_service.dart:628–639` (read), `571–578` (write); `dayClose.js:123–133` (read), `221–242` (write) |
+| `/users/{uid}/habit_logs/{logId}` | Read (query by `occurredAt` range) | `routine_service.dart:642–654`; `dayClose.js:465` via `getEventsForLocalDay` |
+| `/users/{uid}/streaks/{streakId}` | Read + write (via StreakService rollup / `updateStreaksFromProgress`) | `routine_service.dart:348` (calls `StreakService.runDayCloseRollup`); `dayClose.js:305–418` |
+| `/users/{uid}/identity_profile/main` | Read (identities + progressPct for mission score) | `routine_service.dart:413–421`; `dayClose.js:483–490` |
+
+---
+
+### Dependencies
+
+| Task | Status | Evidence |
+|---|---|---|
+| Task 5.3 (mission-ring identity-aligned weighting) | ❌ NOT IMPLEMENTED | Binary 1.0/0.5 proxy in place; per-identity weights, gradient scoring, and ring breakdown absent from both client and server |
+
+---
+
+### Analyzer result
+
+```
+Analyzing optivus2...
+No issues found! (ran in 5.4s)
+```
+
+No production Dart or JS files were modified.
+
+---
+
+### Gaps and remaining risks
+
+| # | Gap | Severity | Owning task |
+|---|---|---|---|
+| G1 | `day_started` is client-only; server safety-net (`dayClose.js`) never emits it. Days where the user does not open the app have no `day_started` event — any downstream listener requiring the event will silently miss those days. | LOW | No current owner; could be added to `dayClose.js` safety-net as a server-originated `day_started` with `source: 'server_backfill'` |
+| G2 | `identityProgress` in the summary is populated as `{identity: globalProgressPct}` — same scalar for every identity, not per-identity. Task 5.3 per-identity weighting is the fix. | MEDIUM | Task 5.3 |
+| G3 | Mission ring in `home_tab.dart` reads live tasks, not `DaySummary.missionScore`. If Task 5.3 adds per-identity weights to the summary, the real-time ring must also be updated to match. | MEDIUM | Task 5.3 |
+| G4 | `_closeDate()` reads tasks with a UTC `plannedStart` range (`routine_service.dart:628–639`). If the user's local timezone differs from UTC, tasks near midnight may fall into the wrong day's close. The server resolves this via `getLocalDayBounds(dateStr, timeZone)` (`dayClose.js:6`); the client does not. | MEDIUM | No current owner |
+| G5 | `routine_day_summarized` payload emits `perRoutinePct` but the event payload in `dayClose.js:576` uses the same key (consistent). Both sides match schema. Low risk, confirming no drift. | INFO | None |
+
+### Summary
+
+| Requirement | Status | Notes |
+|---|---|---|
+| `day_started` emits once per local date (idempotent) | ✅ | Firestore event doc gates duplicate emits; client-only — no server coverage |
+| `day_close` handles missed days in order | ✅ | While-loop on both client and server; chronological; idempotent |
+| Summary contains all required fields | ✅ | All 8 field groups present in model and populated by both client and server |
+| Task 5.3 mission-ring identity-aligned weighting | ❌ PENDING | Binary 1.0/0.5 proxy in place; per-identity gradient weighting not implemented |
+
+**Risk if shipped as-is: LOW–MEDIUM.** The day lifecycle, rollup, and summary write are production-ready. The `day_started` server gap and UTC timezone handling for client day-close are worth a follow-up before scaling to multi-timezone users. Task 5.3 is the only significant feature gap.
+
