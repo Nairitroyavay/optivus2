@@ -689,3 +689,35 @@ All paths below are confirmed written by inspected code:
 
 ### Risk if shipped as-is
 **LOW.** Implementation meets requirements and limits access appropriately, but lacks test coverage for `firestore.rules`.
+
+---
+
+## Re-Verification: Task 1.2 — About You onboarding (3 sub-pages)
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+- `lib/views/onboarding/onboarding_page_5.dart`
+- `lib/providers/onboarding_provider.dart`
+- `lib/repositories/user_repository.dart`
+- `lib/models/user_model.dart`
+- `lib/models/identity_profile_model.dart`
+
+### What is implemented
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Three sub-pages exist (Body basics, Lifestyle rhythm, Sensitive context) | ✅ | `lib/views/onboarding/onboarding_page_5.dart:118-132` — `PageView` renders `_BodyBasicsView`, `_LifestyleView`, and `_SensitiveContextView`. |
+| Sensitive-context skip works (fields nullable) | ✅ | `lib/models/user_model.dart:185-188` — sensitive fields are `bool?` and `String?`. `lib/views/onboarding/onboarding_page_5.dart:514-518` — 'Skip' sets `value == null`. |
+| No `biometrics_updated` emitted during draft | ✅ | `lib/repositories/user_repository.dart:288-348` — `saveOnboardingData` saves directly to Firestore via batch subdocument operations without emitting events. |
+
+### What is missing
+
+- **Eating-disorder flag is consumed downstream by Tracker (Task 7.6)**: ❌ Missing dependency. The `eatingDisorderFlag` is stored but a codebase search confirms it is never read or used outside the onboarding flow and user models. Tracker consumption is missing.
+
+### Tests
+- `flutter analyze` passes.
+
+### Risk if shipped as-is
+**MEDIUM.** The eating-disorder flag is saved but completely ignored downstream. Users with an ED history could be exposed to sensitive tracker features (e.g., calorie counting) until Task 7.6 is implemented.
