@@ -1384,3 +1384,146 @@ No production Dart files were modified. No issues introduced.
 
 **Risk if shipped as-is: LOW.** All required UI paths work. The only actionable gap is Task 5.2's repeat-rule presets.
 
+---
+
+## Task 3.4 — Re-verification (2026-05-04)
+
+### Files inspected
+
+- `lib/views/routine/fixed_schedule_setup_screen.dart`
+- `lib/views/routine/skin_care_setup_screen.dart`
+- `lib/views/routine/eating_setup_screen.dart`
+- `lib/views/routine/class_setup_screen.dart`
+- `lib/views/routine/supplement_setup_screen.dart`
+- `lib/views/routine/routine_settings_sheet.dart`
+- `lib/views/tabs/routine_settings_screen.dart`
+- `lib/providers/routine_provider.dart`
+- `lib/repositories/routine_repository.dart`
+
+### Files changed
+
+- `docs/phase_1_5_audit.md` (this section only)
+
+### Requirement 1 — 5 setup screens render and save manual templates
+
+| Screen | Save path | Firestore key | Status |
+|---|---|---|---|
+| `FixedScheduleSetupScreen` | `setFixedBlocks()` → `setFixedScheduleTemplates()` → `_saveDebounced()` → `_repo.saveRoutine(state)` | `templates.fixed_schedule` | ✅ |
+| `SkinCareSetupScreen` | `_save()` (line 811) → `notifier.setRoutineTemplates('skin_care', ...)` → `_repo.saveRoutineTemplates(...)` | `templates.skin_care` | ✅ |
+| `EatingSetupScreen` | `_save()` (line 729) → `notifier.setRoutineTemplates('eating', ...)` + `setMealPlan()` | `templates.eating` | ✅ |
+| `ClassSetupScreen` | `_save()` (line 749) → `notifier.setRoutineTemplates('classes', ...)` + `setClasses()` | `templates.classes` | ✅ |
+| `SupplementSetupScreen` | `_save()` (line 234) → `notifier.setRoutineTemplates('supplements', ...)` | `templates.supplements` | ✅ |
+
+All five screens render a timeline or list UI and write to `/users/{uid}/routine/current.templates.{routineType}` via `RoutineRepository`. **Confirmed PASS.**
+
+**Gap noted:** `FixedScheduleSetupScreen` uses the full-state save path (`saveRoutine`) instead of the targeted `saveRoutineTemplates` path, so it does **not** emit `routine_template_created` events (see Requirement 5 below) and does not record `importMetadata`. This is consistent with the screen having no AI import UI, but is a divergence from the other four screens.
+
+### Requirement 2 — AI text/photo tabs scaffolded; real wiring deferred to Phase 12
+
+| Screen | AI UI present | Mechanism | Status |
+|---|---|---|---|
+| `SkinCareSetupScreen` | ✅ FAB "AI / Photo" (line 1124); bottom-sheet with text field + two buttons (lines 882–929) | Calls `_repo.previewRoutineImport('skin_care', mode, ...)` with try/catch fallback | ⚠️ Beyond scaffold — Firebase Function `routineImport` is invoked |
+| `EatingSetupScreen` | ✅ FAB "AI / Menu" (line 1011); bottom-sheet with text field + photo button (lines 793–838) | Same pattern | ⚠️ Beyond scaffold |
+| `ClassSetupScreen` | ✅ FAB "Upload" (line 1018); bottom-sheet with notes field + image button (lines 819–855) | Same pattern | ⚠️ Beyond scaffold |
+| `SupplementSetupScreen` | ✅ `SegmentedButton` Manual/Text AI tabs (lines 285–293); text-area + generate icon (lines 295–317) | Same pattern | ⚠️ Beyond scaffold |
+| `FixedScheduleSetupScreen` | ❌ **No AI button or tab present** | n/a | ❌ Gap |
+
+**Summary:** Four of five screens call `previewRoutineImport` (which forwards to `FirebaseFunctions.instance.httpsCallable('routineImport')`). This is a live Firebase Function call with a graceful fallback to locally-generated stub items, not a purely deferred placeholder. The original Task 3.4 audit described this as "scaffolded only," which understates the current state. If the `routineImport` Cloud Function is not deployed, all four screens degrade silently to local fallback — behaviour is safe.
+
+`FixedScheduleSetupScreen` has no AI UI at all. This is a **real gap** if Phase 12 AI support is intended for that screen. Follow-up owner: whoever implements Task 12.3+ for fixed-schedule.
+
+### Requirement 3 — Review-before-save widget is reusable
+
+Each setup screen defines its own inline review modal bottom sheet:
+
+| Screen | Method | Reusable? |
+|---|---|---|
+| `SkinCareSetupScreen` | `_showSkinReview()` (line 1016) | ❌ Local private method |
+| `EatingSetupScreen` | `_showMealReview()` (line 911) | ❌ Local private method |
+| `ClassSetupScreen` | `_showClassReview()` (line 916) | ❌ Local private method |
+| `SupplementSetupScreen` | `_showSupplementReview()` (line 163) | ❌ Local private method |
+
+No shared `ReviewBeforeSaveSheet` or equivalent widget exists anywhere in the codebase. All four inline sheets share the same structure (editable list, Remove/Regenerate/Accept-all buttons, `StatefulBuilder` for live state) and could be extracted. **Task 12.2 owns this extraction.** Confirmed NOT yet reusable.
+
+### Requirement 4 — All setup screens listed in Routine settings hub
+
+**`RoutineSettingsSheet` (`routine_settings_sheet.dart:23–64`):**
+
+| Entry | `RoutineFilter` | Present |
+|---|---|---|
+| Skin Care Routine | `RoutineFilter.skinCare` | ✅ |
+| Class Routine | `RoutineFilter.classes` | ✅ |
+| Supplements | `RoutineFilter.supplements` | ✅ |
+| Eating Routine | `RoutineFilter.eating` | ✅ |
+| Fixed Schedule | `RoutineFilter.fixedSchedule` | ✅ |
+
+**`RoutineSettingsScreen` (`routine_settings_screen.dart:73–129`):** same five entries, each wired to `_doSetup()` (lines 14–29) which pushes the corresponding setup screen.
+
+No setup screen is missing from either hub entry-point. **Task 6.5 is IMPLEMENTED** for this aspect. Full Task 6.5 audit is out of scope here.
+
+### Firestore paths
+
+| Path | Confirmed write site |
+|---|---|
+| `/users/{uid}/routine/current.templates.skin_care` | `SkinCareSetupScreen._save()` → `setRoutineTemplates('skin_care', ...)` → `repo.saveRoutineTemplates()` |
+| `/users/{uid}/routine/current.templates.eating` | `EatingSetupScreen._save()` → `setRoutineTemplates('eating', ...)` |
+| `/users/{uid}/routine/current.templates.classes` | `ClassSetupScreen._save()` → `setRoutineTemplates('classes', ...)` |
+| `/users/{uid}/routine/current.templates.supplements` | `SupplementSetupScreen._save()` → `setRoutineTemplates('supplements', ...)` |
+| `/users/{uid}/routine/current.templates.fixed_schedule` | `FixedScheduleSetupScreen._saveToProvider()` → `setFixedBlocks()` → `_saveDebounced()` → `saveRoutine()` (full-doc write) |
+
+All paths confirmed. The fixed-schedule path uses a full-doc overwrite rather than a targeted field merge; the others use `saveRoutineTemplates` which does a targeted merge of only `templates.{type}` and the corresponding setup flag.
+
+### Events
+
+| Event | Constant | Emitted | Call site |
+|---|---|---|---|
+| `routine_template_created` | `EventNames.routineTemplateCreated` (event_names.dart:62) | ✅ | `RoutineNotifier._emitTemplateCreated()` (routine_provider.dart:1403–1419), called from `setRoutineTemplates` and `addCustomRoutineTemplate` |
+| `routine_template_updated` | `EventNames.routineTemplateUpdated` (event_names.dart:63) | ❌ | Constant defined; validator rule registered (event_payload_validator.dart:141); no emit call site found anywhere in `lib/` |
+| `routine_template_deleted` | `EventNames.routineTemplateDeleted` (event_names.dart:64) | ❌ | Constant defined; validator rule registered (event_payload_validator.dart:142); no emit call site found anywhere in `lib/` |
+
+**Note on `routine_template_created` scope:** The event is only emitted by `setRoutineTemplates` and `addCustomRoutineTemplate`. `FixedScheduleSetupScreen` goes through `setFixedBlocks` → `setFixedScheduleTemplates` → `_saveDebounced`, which does **not** call `_emitTemplateCreated`. Fixed-schedule template saves produce **no** `routine_template_created` events.
+
+### Dependencies
+
+| Task | Status | Evidence |
+|---|---|---|
+| Task 6.5 (Routine Settings Hub) | ✅ Implemented | Both `RoutineSettingsSheet` and `RoutineSettingsScreen` list all 5 screens with correct `RoutineFilter` dispatch |
+| Task 12.2 (Harden review-before-save widget) | ❌ Not done | No shared widget exists; each screen has its own inline review sheet |
+| Task 12.3 (AI wiring for skin care) | ❌ Not done | `previewRoutineImport` call exists but relies on unverified Cloud Function deployment |
+| Task 12.4 (AI wiring for eating) | ❌ Not done | Same |
+| Task 12.5 (AI wiring for classes) | ❌ Not done | Same |
+| Task 12.6 (AI wiring for supplements) | ❌ Not done | Same |
+| Task 12.7 (AI wiring for fixed schedule) | ❌ Not done | No AI UI on `FixedScheduleSetupScreen` at all |
+
+### Analyzer result
+
+```
+Analyzing 9 items...
+No issues found! (ran in 2.7s)
+```
+
+No production Dart or JS files were modified.
+
+### Gaps and remaining risks
+
+| # | Gap | Severity | Owning task |
+|---|---|---|---|
+| G1 | `FixedScheduleSetupScreen` has no AI button/tab; all other screens scaffold Phase 12 AI via `previewRoutineImport`. | MEDIUM | Task 12.7 |
+| G2 | Fixed-schedule saves go through full-state `saveRoutine()` instead of `saveRoutineTemplates()`, so `routine_template_created` is never emitted for fixed-schedule blocks. | LOW | No current owner; could be resolved by routing `setFixedScheduleTemplates` through `setRoutineTemplates`. |
+| G3 | `routine_template_updated` and `routine_template_deleted` events have constants + validator rules but zero emit call sites. Any edit or delete of a template is silently untracked. | LOW | No current owner |
+| G4 | Review-before-save sheets are duplicated across four screens with near-identical code. Extraction deferred to Task 12.2. | LOW | Task 12.2 |
+| G5 | AI modes call a live Firebase Function (`routineImport`) — if the function is not deployed or returns unexpected shape, all four screens fall back to locally-constructed stub items silently. No user-facing error is shown. | LOW–MEDIUM | Task 12.3–12.6 |
+
+### Summary
+
+| Requirement | Result |
+|---|---|
+| 5 setup screens render and save manual templates | ✅ All confirmed |
+| AI text/photo tabs scaffolded, defer to Phase 12 | ⚠️ 4/5 screens; FixedSchedule missing AI UI entirely; live Firebase Function call present (not pure scaffold) |
+| Review-before-save widget is reusable | ❌ Not yet — four inline duplicates; Task 12.2 owns extraction |
+| All setup screens in Routine Settings hub (Task 6.5) | ✅ All 5 listed in both sheet and screen variants |
+| `routine_template_created` event | ✅ Emitted for 4/5 types; fixed_schedule excluded |
+| `routine_template_updated` / `_deleted` events | ❌ Constants + validator exist; zero emit call sites |
+
+**Risk if shipped as-is: LOW.** Manual modes are production-ready for all five screens. AI paths degrade gracefully. The main action items are Task 12.7 (add AI UI to Fixed Schedule) and Task 12.2 (extract shared review widget).
+
