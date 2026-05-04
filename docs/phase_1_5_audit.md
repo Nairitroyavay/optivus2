@@ -808,3 +808,43 @@ All paths below are confirmed written by inspected code:
 ### Risk if shipped as-is
 **LOW.** The onboarding completion process accurately persists the scheduled documents and fires the specified events. The routine correctly surfaces the fixed schedule blocks configured during onboarding.
 
+---
+
+## Re-Verification: Task 2.1 — EventService production-grade
+
+> Date: 2026-05-04
+> Status: Re-verified against codebase. No changes made.
+
+### Files inspected
+- `lib/services/event_service.dart`
+- `lib/services/event_payload_validator.dart`
+- `lib/models/event_model.dart`
+- `lib/core/constants/event_names.dart`
+- `lib/core/utils/uuid_generator.dart`
+- `test/services/event_service_contract_test.dart`
+
+### What is implemented
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Event envelope fields | ✅ | `lib/services/event_service.dart:67-78` — creates `EventModel` with `eventId`, `eventName`, `uid`, `timestamp`, `source`, `schemaVersion`, `payloadVersion`, `payload`, `deviceId`, and `appVersion`. |
+| Duplicate eventId is a no-op | ✅ | `lib/services/event_service.dart:88-92` — `_firestore.runTransaction` calls `transaction.get(eventRef)` and returns `false` (no-op) if `existingSnap.exists`. |
+| Transactional identical writes | ✅ | `lib/services/event_service.dart:94-95` — `transaction.set(eventRef, eventDoc)` and `transaction.set(_eventsRecentRef.doc(generatedId), eventDoc)` executed in the same transaction block. |
+
+### What is missing
+
+- **Unvalidated / Missing Event Names**: `slip_log_dismissed`, `bad_day_detected`, `weekly_insight_ready`, `comeback_path_chosen`, `notification_missed`, and `coach_re_enabled` are documented as needed but are completely missing from both `lib/core/constants/event_names.dart` and `lib/services/event_payload_validator.dart`. These will be patched in Task 2.3.
+
+### Events
+
+- (Read-only re-verification — emit nothing. Verified existing logic handles event names robustly.)
+
+### Dependencies
+- **Task 2.3**: Unvalidated event names need to be added to `event_names.dart` and `event_payload_validator.dart` validation rules.
+
+### Tests
+- `flutter analyze` passes.
+
+### Risk if shipped as-is
+**LOW.** The core transactional logic, duplicate prevention, and envelope creation are fully implemented and robust. The missing event schemas mean dependent Phase 2+ features will either fail validation or fail to track properly, which will be resolved in Task 2.3.
+
