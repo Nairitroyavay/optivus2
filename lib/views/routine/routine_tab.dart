@@ -549,7 +549,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   }
 
   Future<void> _handleAddTask(AddTaskRequest request) async {
-    if (request.mode == AddTaskMode.oneOff) {
+    if (request.isOneOff) {
       await _createOneOffTask(request);
     } else {
       await _createRepeatingTemplate(request);
@@ -573,13 +573,14 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       updatedAt: now,
     );
 
+    // createTask writes state, plannedStart/End and emits task_scheduled in one batch.
     await ref.read(taskServiceProvider).createTask(task);
+    // Merge extra metadata fields not covered by TaskModel.toFirestore().
     await ref.read(firestoreServiceProvider).saveUserSubdocument(
       'tasks',
       taskId,
       {
         'scheduledDate': _dateKey(request.date),
-        'status': TaskState.scheduled.toJson(),
         'sourceRoutineType': request.routineType,
         'category': request.category,
         'notes': request.notes,
@@ -597,6 +598,9 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     }
   }
 
+  // repeatRule is already in Firestore format (computed by AddTaskSheet)
+  String _toFirestoreRepeatRule(AddTaskRequest request) => request.repeatRule;
+
   Future<void> _createRepeatingTemplate(AddTaskRequest request) async {
     final now = DateTime.now().toIso8601String();
     final templateId = generateId();
@@ -606,7 +610,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       'routineType': request.routineType,
       'startTime': request.startTime,
       'endTime': request.endTime,
-      'repeatRule': 'daily',
+      'repeatRule': _toFirestoreRepeatRule(request),
       'category': request.category,
       'notes': request.notes,
       'isActive': true,
@@ -1070,7 +1074,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                   todayTasks: (ref.read(customTasksProvider)[_todayKey] ?? []),
                   onAddTask: (t) async {
                     await _createOneOffTask(AddTaskRequest(
-                      mode: AddTaskMode.oneOff,
+                      repeatRule: 'none',
                       title: t.title,
                       date: t.date,
                       time: TimeOfDay(

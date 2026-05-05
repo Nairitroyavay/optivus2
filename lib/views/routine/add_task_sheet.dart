@@ -4,10 +4,12 @@ const _kInk = Color(0xFF0F111A);
 const _kSub = Color(0xFF6B7280);
 const _kAmber = Color(0xFFFFB830);
 
-enum AddTaskMode { oneOff, repeating }
+// 'none' = one-off task; 'daily'/'weekdays'/'weekends'/'weekly' = repeating template
+typedef RepeatRule = String;
 
 class AddTaskRequest {
-  final AddTaskMode mode;
+  /// Repeat rule: 'none' (one-off), 'daily', 'weekdays', 'weekends', 'weekly'.
+  final String repeatRule;
   final String title;
   final DateTime date;
   final TimeOfDay time;
@@ -20,7 +22,7 @@ class AddTaskRequest {
   final Color color;
 
   const AddTaskRequest({
-    required this.mode,
+    required this.repeatRule,
     required this.title,
     required this.date,
     required this.time,
@@ -32,6 +34,8 @@ class AddTaskRequest {
     required this.emoji,
     required this.color,
   });
+
+  bool get isOneOff => repeatRule == 'none';
 
   DateTime get plannedStart => DateTime(
         date.year,
@@ -72,28 +76,26 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
 
   late DateTime _selectedDate;
   TimeOfDay _selectedTime = TimeOfDay.now();
-  AddTaskMode _mode = AddTaskMode.oneOff;
+  // UI repeat mode: 'none' | 'daily' | 'weekdays' | 'weekends' | 'custom'
+  String _repeatRule = 'none';
+  // Active weekdays for 'custom' mode. 1=Mon … 7=Sun. Always ≥1 when custom.
+  Set<int> _customDays = {};
   String _routineType = 'custom';
   String _category = 'Personal';
   String _selectedEmoji = '📌';
   Color _selectedColor = _kAmber;
+  // true once the user manually taps an emoji → stops auto-matching
+  bool _userOverrodeEmoji = false;
   bool _reminderEnabled = false;
   bool _saving = false;
   String? _error;
 
+  // Expanded grid — covers all auto-matched emojis so the highlight always lands.
   static const _quickEmojis = [
-    '📌',
-    '🏋️',
-    '📚',
-    '🧘',
-    '💧',
-    '☕',
-    '🎯',
-    '💼',
-    '🌿',
-    '🎓',
-    '🍽️',
-    '💊',
+    '📌', '🏋️', '📚', '🧘', '💧', '☕',
+    '🎯', '💼', '🌿', '🎓', '🍽️', '💊',
+    '🏏', '⚽', '🏃', '✍️', '🎵', '🎨',
+    '🏊', '🚴', '💻', '😴', '🛒', '🙏',
   ];
 
   static const _colors = [
@@ -125,6 +127,137 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     'Errands',
   ];
 
+  // Returns the best emoji for [title] based on keywords, or null if no match.
+  // Rules are checked in order — put more-specific phrases first.
+  static String? _emojiForTitle(String title) {
+    final t = title.toLowerCase();
+    const rules = <(List<String>, String)>[
+      // Sports & physical activity
+      (['cricket'], '🏏'),
+      (['badminton'], '🏸'),
+      (['volleyball'], '🏐'),
+      (['basketball'], '🏀'),
+      (['football', 'soccer'], '⚽'),
+      (['baseball'], '⚾'),
+      (['rugby'], '🏉'),
+      (['hockey'], '🏒'),
+      (['tennis'], '🎾'),
+      (['golf'], '⛳'),
+      (['chess'], '♟️'),
+      (['boxing', 'martial', 'karate', 'judo', 'mma'], '🥊'),
+      (['swim', 'pool'], '🏊'),
+      (['cycling', 'cycle', 'bicycle', 'biking'], '🚴'),
+      (['bike', 'ride'], '🚴'),
+      (['ski', 'snowboard'], '⛷️'),
+      (['hike', 'hiking', 'trek'], '🥾'),
+      (['run', 'jog', 'sprint', 'marathon'], '🏃'),
+      (['gym', 'workout', 'lift', 'weights', 'exercise', 'training'], '🏋️'),
+      (['yoga'], '🧘'),
+      (['dance', 'dancing', 'zumba'], '💃'),
+      (['walk', 'stroll'], '🚶'),
+      // Learning & work
+      (['study', 'revision', 'revise', 'exam', 'test', 'assignment'], '📚'),
+      (['read', 'reading', 'book', 'novel'], '📚'),
+      (['lecture', 'class', 'college', 'university', 'school'], '🎓'),
+      (['code', 'coding', 'programming', 'develop', 'debug'], '💻'),
+      (['meeting', 'standup', 'sprint', 'scrum'], '💼'),
+      (['work', 'office', 'job', 'internship'], '💼'),
+      (['project', 'deadline', 'task', 'deliverable'], '📋'),
+      (['write', 'writing', 'blog', 'essay', 'journal', 'diary'], '✍️'),
+      (['teach', 'teacher', 'tutor', 'mentor', 'professor'], '🎓'),
+      (['practice', 'rehearsal', 'rehearse'], '🎵'),
+      // Food & health
+      (['dinner', 'lunch', 'breakfast', 'brunch', 'supper'], '🍽️'),
+      (['cook', 'cooking', 'bake', 'baking', 'kitchen', 'meal prep'], '🍳'),
+      (['eat', 'food', 'meal', 'snack'], '🍽️'),
+      (['coffee', 'cafe', 'espresso', 'latte'], '☕'),
+      (['water', 'hydrate', 'hydration', 'drink'], '💧'),
+      (['medicine', 'medication', 'pill', 'supplement', 'vitamin', 'capsule'], '💊'),
+      (['doctor', 'hospital', 'clinic', 'checkup', 'check-up', 'health'], '🏥'),
+      (['dentist', 'teeth', 'dental'], '🦷'),
+      (['skincare', 'skin care', 'moistur', 'face', 'serum', 'cleanser'], '🌿'),
+      (['sleep', 'nap', 'rest', 'bed', 'bedtime'], '😴'),
+      // Daily life
+      (['shop', 'shopping', 'grocery', 'groceries', 'market', 'supermarket'], '🛒'),
+      (['clean', 'cleaning', 'laundry', 'dishes', 'vacuum', 'mop', 'wash'], '🧹'),
+      (['travel', 'trip', 'flight', 'airport', 'vacation', 'holiday'], '✈️'),
+      (['birthday', 'party', 'celebrat', 'anniversary'], '🎉'),
+      (['call', 'phone', 'zoom', 'video call', 'facetime'], '📞'),
+      (['pray', 'prayer', 'worship', 'church', 'temple', 'mosque', 'namaz'], '🙏'),
+      (['drive', 'driving', 'car', 'commute'], '🚗'),
+      (['hair', 'haircut', 'barber', 'grooming', 'salon'], '✂️'),
+      (['music', 'guitar', 'piano', 'sing', 'singing', 'drum', 'violin'], '🎵'),
+      (['art', 'draw', 'drawing', 'sketch', 'paint', 'painting', 'design'], '🎨'),
+      (['photo', 'camera', 'shoot', 'photography'], '📷'),
+      (['money', 'pay', 'bank', 'finance', 'invest', 'budget', 'bill'], '💰'),
+      (['friend', 'family', 'social', 'hangout', 'catch up'], '👥'),
+      (['movie', 'film', 'cinema', 'netflix', 'show', 'series', 'watch'], '🎬'),
+      (['game', 'gaming', 'play', 'playstation', 'xbox'], '🎮'),
+      (['goal', 'target', 'aim'], '🎯'),
+      (['appointment', 'schedule', 'calendar', 'reminder'], '📅'),
+      (['meditation', 'mindful', 'breathe', 'breathing'], '🧘'),
+      (['plant', 'garden', 'water plant', 'gardening'], '🌿'),
+      (['pack', 'packing', 'unpack', 'luggage'], '🧳'),
+    ];
+    for (final (keywords, emoji) in rules) {
+      for (final kw in keywords) {
+        if (t.contains(kw)) return emoji;
+      }
+    }
+    return null;
+  }
+
+  void _autoMatchEmoji(String title) {
+    if (_userOverrodeEmoji) return;
+    final matched = _emojiForTitle(title);
+    if (matched != null && matched != _selectedEmoji) {
+      _selectedEmoji = matched;
+    } else if (title.trim().isEmpty && _selectedEmoji != '📌') {
+      _selectedEmoji = '📌'; // reset to default when title cleared
+    }
+  }
+
+  // Translates UI repeat mode + custom days into the Firestore-ready repeatRule
+  // string passed to AddTaskRequest.
+  String get _computedRepeatRule {
+    switch (_repeatRule) {
+      case 'none':
+        return 'none';
+      case 'daily':
+        return 'daily';
+      case 'weekdays':
+        return 'weekly:1,2,3,4,5';
+      case 'weekends':
+        return 'weekly:6,7';
+      case 'custom':
+        final sorted = _customDays.toList()..sort();
+        return sorted.isEmpty ? 'daily' : 'weekly:${sorted.join(',')}';
+      case 'monthly':
+        return 'monthly:${_selectedDate.day}';
+      default:
+        return 'daily';
+    }
+  }
+
+  static String _ordinal(int n) {
+    if (n >= 11 && n <= 13) return '${n}th';
+    switch (n % 10) {
+      case 1:
+        return '${n}st';
+      case 2:
+        return '${n}nd';
+      case 3:
+        return '${n}rd';
+      default:
+        return '${n}th';
+    }
+  }
+
+  bool get _canSave =>
+      !_saving &&
+      _titleCtrl.text.trim().isNotEmpty &&
+      !(_repeatRule == 'custom' && _customDays.isEmpty);
+
   @override
   void initState() {
     super.initState();
@@ -135,6 +268,9 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     );
     final now = TimeOfDay.now();
     _selectedTime = TimeOfDay(hour: (now.hour + 1).clamp(0, 23), minute: 0);
+    _titleCtrl.addListener(() => setState(() {
+      _autoMatchEmoji(_titleCtrl.text);
+    }));
   }
 
   @override
@@ -150,7 +286,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 730)),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.light(primary: _kAmber),
@@ -187,7 +323,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
       return;
     }
     if (duration <= 0 || duration > 480) {
-      setState(() => _error = 'Duration must be between 1 and 480 minutes.');
+      setState(() => _error = 'Duration must be 1–480 minutes (max 8 hours).');
       return;
     }
 
@@ -198,7 +334,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
 
     try {
       await widget.onSubmit(AddTaskRequest(
-        mode: _mode,
+        repeatRule: _computedRepeatRule,
         title: title,
         date: _selectedDate,
         time: _selectedTime,
@@ -260,25 +396,60 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _ModeChip(
-                    label: 'One-off',
-                    selected: _mode == AddTaskMode.oneOff,
-                    onTap: () => setState(() => _mode = AddTaskMode.oneOff),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _ModeChip(
-                    label: 'Repeating',
-                    selected: _mode == AddTaskMode.repeating,
-                    onTap: () => setState(() => _mode = AddTaskMode.repeating),
-                  ),
-                ),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final rule in const [
+                    ('none', 'None'),
+                    ('daily', 'Daily'),
+                    ('weekdays', 'Weekdays'),
+                    ('weekends', 'Weekends'),
+                    ('custom', 'Custom days'),
+                    ('monthly', 'Monthly'),
+                  ]) ...[
+                    _ModeChip(
+                      label: rule.$2,
+                      selected: _repeatRule == rule.$1,
+                      onTap: () => setState(() {
+                        _repeatRule = rule.$1;
+                        // Pre-select the chosen date's weekday so the day picker
+                        // is never empty when the user first opens custom mode.
+                        if (rule.$1 == 'custom' && _customDays.isEmpty) {
+                          _customDays = {_selectedDate.weekday};
+                        }
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
             ),
+            if (_repeatRule == 'custom') ...[
+              const SizedBox(height: 10),
+              _WeekdayPicker(
+                selected: _customDays,
+                color: _selectedColor,
+                onChanged: (days) => setState(() => _customDays = days),
+              ),
+            ],
+            if (_repeatRule == 'monthly') ...[
+              const SizedBox(height: 10),
+              _RepeatHint(
+                icon: Icons.calendar_month_rounded,
+                label: 'Repeats every month on the '
+                    '${_ordinal(_selectedDate.day)}',
+                color: _selectedColor,
+              ),
+            ],
+            if (_repeatRule == 'none') ...[
+              const SizedBox(height: 6),
+              _RepeatHint(
+                icon: Icons.event_rounded,
+                label: 'One-time task — pick any date up to 2 years ahead',
+                color: _kSub,
+              ),
+            ],
             const SizedBox(height: 14),
             _TextField(
               controller: _titleCtrl,
@@ -347,6 +518,51 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
               maxLines: 3,
             ),
             const SizedBox(height: 12),
+            Row(
+              children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, anim) => ScaleTransition(
+                    scale: anim,
+                    child: FadeTransition(opacity: anim, child: child),
+                  ),
+                  child: Text(
+                    _selectedEmoji,
+                    key: ValueKey(_selectedEmoji),
+                    style: const TextStyle(fontSize: 30),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                if (!_userOverrodeEmoji &&
+                    _titleCtrl.text.trim().isNotEmpty &&
+                    _emojiForTitle(_titleCtrl.text) != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _selectedColor.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'auto-matched',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _selectedColor,
+                      ),
+                    ),
+                  ),
+                const Spacer(),
+                Text(
+                  'Tap below to change',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _kSub.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -356,7 +572,10 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                   label: emoji,
                   selected: selected,
                   color: _selectedColor,
-                  onTap: () => setState(() => _selectedEmoji = emoji),
+                  onTap: () => setState(() {
+                    _selectedEmoji = emoji;
+                    _userOverrodeEmoji = true;
+                  }),
                 );
               }).toList(),
             ),
@@ -417,7 +636,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                 ),
-                onPressed: _saving ? null : _save,
+                onPressed: _canSave ? _save : null,
                 child: _saving
                     ? const SizedBox(
                         width: 18,
@@ -428,7 +647,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                         ),
                       )
                     : Text(
-                        _mode == AddTaskMode.oneOff
+                        _repeatRule == 'none'
                             ? 'Add Task'
                             : 'Add Repeating Template',
                         style: const TextStyle(
@@ -656,6 +875,108 @@ class _IconChoice extends StatelessWidget {
         ),
         child: Center(child: Text(label, style: const TextStyle(fontSize: 19))),
       ),
+    );
+  }
+}
+
+class _RepeatHint extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _RepeatHint({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F4F5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeekdayPicker extends StatelessWidget {
+  final Set<int> selected; // 1=Mon … 7=Sun
+  final Color color;
+  final ValueChanged<Set<int>> onChanged;
+
+  const _WeekdayPicker({
+    required this.selected,
+    required this.color,
+    required this.onChanged,
+  });
+
+  static const _labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  static const _fullLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List.generate(7, (i) {
+        final day = i + 1; // 1=Mon … 7=Sun
+        final isSelected = selected.contains(day);
+        return Tooltip(
+          message: _fullLabels[i],
+          child: GestureDetector(
+            onTap: () {
+              final next = Set<int>.from(selected);
+              if (isSelected) {
+                // Require at least one day to stay selected
+                if (next.length > 1) next.remove(day);
+              } else {
+                next.add(day);
+              }
+              onChanged(next);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isSelected ? color : const Color(0xFFF4F4F5),
+                borderRadius: BorderRadius.circular(10),
+                border: isSelected
+                    ? Border.all(color: color.withValues(alpha: 0.6), width: 1)
+                    : null,
+              ),
+              child: Center(
+                child: Text(
+                  _labels[i],
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: isSelected ? Colors.white : _kSub,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 }

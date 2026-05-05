@@ -135,6 +135,12 @@ bool _repeatRuleMatchesDate(String repeatRule, DateTime date) {
       RegExp(r'^(weekday|mess_menu_weekday):(\d)$').firstMatch(rule);
   if (weekday != null) return int.parse(weekday.group(2)!) == date.weekday;
 
+  // monthly:14 → matches every 14th of the month
+  final monthly = RegExp(r'^monthly:(\d{1,2})$').firstMatch(rule);
+  if (monthly != null) {
+    return int.tryParse(monthly.group(1)!) == date.day;
+  }
+
   return true;
 }
 
