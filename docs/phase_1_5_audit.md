@@ -2151,3 +2151,117 @@ Preference tags persist and are used in all future AI suggestions.
 - Recurring gap-fill templates (same weekday) may conflict with user-set templates. Dedup by checking if a template with the same `repeatRule` + similar `startTime` already exists before inserting.
 - Preference steering without a delete option can frustrate users if the AI keeps suggesting foods they dislike. Consider a "Dismiss for today" option (hides suggestion for the day without deleting the template).
 
+---
+
+## Task 6.2 Re-verification — Supplement Manual Setup
+
+**Date:** 2026-05-05
+**Scope:** Audit only — no production Dart or JS files modified.
+
+---
+
+### Files inspected
+
+| File | Purpose |
+|---|---|
+| `lib/views/routine/supplement_setup_screen.dart` | Full UI and save flow |
+| `lib/providers/routine_provider.dart` (lines 1401–1443) | `setRoutineTemplates` + event emission |
+| `lib/repositories/routine_repository.dart` (lines 50–76) | Firestore write |
+| `lib/core/constants/event_names.dart` (line 62) | `routine_template_created` constant |
+
+---
+
+### Requirement 1 — Manual mode saves name, dosage, time, repeat
+
+**Result: ✅ CONFIRMED**
+
+All four fields are captured in `_SupplementCard` and persisted end-to-end:
+
+| Field | UI widget | `_SupplementItem` field | `toTemplate()` key | Location |
+|---|---|---|---|---|
+| Name | `TextFormField` (label: Name) | `title` | `'title': title.trim()` | `supplement_setup_screen.dart:379–384, 42` |
+| Dosage | `TextFormField` (label: Dosage) | `dosage` | `'dosage': dosage.trim()` | `supplement_setup_screen.dart:394–400, 47` |
+| Time | `TextFormField` (label: Time) | `time` | `'startTime': time` | `supplement_setup_screen.dart:404–411, 44` |
+| Repeat | `DropdownButtonFormField` (label: Repeat days) | `repeatRule` | `'repeatRule': repeatRule` | `supplement_setup_screen.dart:424–438, 46` |
+
+Save path:
+1. `_save()` at `supplement_setup_screen.dart:234–246` collects `_items` → calls `setRoutineTemplates('supplements', templates, ...)`.
+2. `routine_provider.dart:1401–1424` normalises and writes state, then calls `_repo.saveRoutineTemplates(...)`.
+3. `routine_repository.dart:50–76` merges into the existing Firestore document and writes `templates.supplements: [...]`.
+
+Firestore path written: `/users/{uid}/routine/current` → field `templates.supplements` (an array of template maps, each containing `title`, `dosage`, `startTime`, `repeatRule`, `dosage`, `notes`, `reminderEnabled`, `isActive`, `createdAt`, `updatedAt`, `templateId`, `routineType`).
+
+---
+
+### Requirement 2 — Text AI mode (Task 12.4) status
+
+**Result: ⚠️ UI STUB ONLY — pending Cloud Function**
+
+The Text AI tab is scaffolded in the supplement screen:
+
+- `SegmentedButton` with `'Manual'` / `'Text AI'` segments: `supplement_setup_screen.dart:284–294`
+- Text field + sparkle icon button visible when `_mode == 'Text AI'`: `supplement_setup_screen.dart:295–317`
+- `_generateFromText()` at lines 108–131 calls `previewRoutineImport(routineType: 'supplements', mode: 'text_ai', sourceText: ...)` via `routine_repository.dart:81–105`
+- That method calls the Firebase Function `routineImport` which **does not exist** (`functions/src/` directory absent; all contract tests skipped — confirmed in prior audit entries at lines 1491–1496 of this document)
+- On CF failure the try/catch at lines 119–121 leaves `generated` empty; the fallback `_supplementsFromText()` (lines 133–148) locally parses comma/pipe/dash-delimited lines into stub items — **no crash, but no AI**
+
+Note on task numbering: the existing audit table (line 1495 of this document) maps **Task 12.6 = AI wiring for supplements** (not Task 12.4). The prompt for this re-verification references Task 12.4 by name, which the audit table maps to **AI wiring for eating**. Regardless of the task number used, the conclusion is identical: the supplement Text AI path is a UI stub and must not be presented to users as functional until the `routineImport` Cloud Function is deployed. The owning task per the audit table is **Task 12.6**.
+
+---
+
+### Event — `routine_template_created`
+
+**Result: ✅ IMPLEMENTED AND FIRES CORRECTLY**
+
+- Constant defined: `EventNames.routineTemplateCreated = 'routine_template_created'` at `event_names.dart:62`.
+- `setRoutineTemplates` iterates over all saved templates and calls `_emitTemplateCreated(template, fallbackRoutineType: 'supplements')` at `routine_provider.dart:1421–1422`.
+- `_emitTemplateCreated` (lines 1427–1443) calls `_eventService.emit(eventName: EventNames.routineTemplateCreated, source: 'routine_setup', payload: {templateId, routineType: 'supplements'})`.
+- Therefore one `routine_template_created` event fires per supplement template on every save. The event system exists; the event name is registered and used.
+
+---
+
+### Firestore paths affected
+
+| Path | Written by | Content |
+|---|---|---|
+| `/users/{uid}/routine/current` → `templates.supplements` | `routine_repository.dart:saveRoutineTemplates` | Array of supplement template maps (`title`, `dosage`, `startTime`, `repeatRule`, `notes`, `reminderEnabled`, `isActive`, `createdAt`, `updatedAt`, `templateId`, `routineType`) |
+| `/users/{uid}/routine/current` → `imports.supplements` | Same (when `importMetadata != null`) | Import metadata map (`mode`, `sourceText`, `createdAt`) — only written for Text AI saves |
+| `/users/{uid}/routine/current` → `supplementsSetUp` | Same | `true` when at least one template exists |
+
+---
+
+### Dependency check — Task 12.4 / Task 12.6
+
+| Dependency | Status | Impact |
+|---|---|---|
+| `routineImport` Cloud Function | ❌ Not deployed | Text AI mode degrades silently to local stub; manual mode unaffected |
+| Task 12.6 (AI wiring for supplements) | ❌ Not done | Must be completed before surfacing the Text AI tab to users |
+
+No missing dependency blocks the manual mode. Manual mode is production-ready.
+
+---
+
+### Analyzer result
+
+```
+flutter analyze lib/views/routine/supplement_setup_screen.dart
+No issues found! (ran in 1.7s)
+```
+
+---
+
+### Summary
+
+| Check | Result |
+|---|---|
+| Manual mode saves name | ✅ `supplement_setup_screen.dart:42` |
+| Manual mode saves dosage | ✅ `supplement_setup_screen.dart:47` |
+| Manual mode saves time | ✅ `supplement_setup_screen.dart:44` |
+| Manual mode saves repeat | ✅ `supplement_setup_screen.dart:46` |
+| Firestore path confirmed | ✅ `/users/{uid}/routine/current.templates.supplements` |
+| `routine_template_created` event | ✅ Fires per template via `routine_provider.dart:1422` |
+| Text AI mode (Task 12.4 / Task 12.6) | ⚠️ UI stub — CF not deployed |
+| Production files modified | ✅ None |
+
+**Overall risk: LOW (manual mode) / HIGH (Text AI mode).** Manual supplement entry is complete and correct. The Text AI tab must remain hidden from users until Task 12.6 deploys the `routineImport` CF.
+
