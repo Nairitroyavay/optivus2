@@ -2457,3 +2457,322 @@ Minor coverage gaps (non-blocking):
 
 **LOW.** All 9 CRUD/logging methods exist, are validated, and emit the correct lifecycle events. The canonical flat log path is confirmed. Test coverage is solid (15 tests, all passing). The only architectural gap (`slip_streak_detected`) is correctly delegated and not a HabitService concern.
 
+---
+
+## Re-Verification: Task 7.2 — Habit editor / detail / quick-log
+
+> Date: 2026-05-05
+> Status: Re-verified against codebase. No production files modified.
+
+### Files inspected
+
+| File | Lines | Purpose |
+|---|---|---|
+| `lib/views/tabs/home_tab.dart` | 1212 | Home tab with habit pills + `_openHabitLogSheet` |
+| `lib/views/tabs/tracker_tab.dart` | 1482 | Tracker tab with habit cards + `_undoLatest` |
+| `lib/views/habits/log_habit_sheet.dart` | 438 | Log sheet for good/bad habit logging |
+| `lib/views/habits/habit_editor_screen.dart` | 589 | Create/edit habit form |
+| `lib/views/habits/habit_detail_screen.dart` | 528 | Detail view with variant routing + lifecycle actions |
+| `lib/views/habits/variants/tracker_variant_base.dart` | 477 | Shared variant base (status, history, insight, log) |
+| `lib/views/habits/variants/smoking_tracker_view.dart` | 25 | Smoking variant stub |
+| `lib/views/habits/variants/screen_time_tracker_view.dart` | — | Screen time variant stub |
+| `lib/views/habits/variants/mindful_eating_tracker_view.dart` | — | Mindful eating variant stub |
+| `lib/views/habits/variants/procrastination_tracker_view.dart` | — | Procrastination variant stub |
+| `lib/views/habits/variants/hydration_tracker_view.dart` | — | Hydration variant stub |
+| `lib/views/habits/variants/meditation_tracker_view.dart` | — | Meditation variant stub |
+| `lib/views/habits/variants/money_saving_tracker_view.dart` | — | Money saving variant stub |
+| `lib/views/habits/variants/reading_tracker_view.dart` | — | Reading variant stub |
+| `lib/views/habits/variants/exercise_tracker_view.dart` | 25 | Exercise variant stub |
+| `lib/views/habits/variants/routine_completion_tracker_view.dart` | 26 | Routine completion variant stub |
+| `lib/services/habit_service.dart` | 583 | Service layer (cross-reference) |
+| `lib/core/constants/event_names.dart` | 104 | Event constants (cross-reference) |
+| `lib/core/providers.dart` | — | `habitServiceProvider`, `habitsProvider`, `todayHabitLogsProvider` |
+
+### Files changed
+
+- `docs/phase_1_5_audit.md` — this section appended only. No production Dart or JS file modified.
+
+---
+
+### Requirement 1 — Home pills render
+
+**Status: ✅ CONFIRMED**
+
+| Check | Citation | Notes |
+|---|---|---|
+| `habitsProvider` watched | `home_tab.dart:479` | StreamProvider wrapping `habitService.habits()` — returns active habits |
+| `todayHabitLogsProvider` watched | `home_tab.dart:481` | StreamProvider wrapping `habitService.watchHabitLogsForDate(today)` |
+| Habits render as `_HabitPill` | `home_tab.dart:543-549` | Each habit gets a pill with name, emoji, completion state, and slip count |
+| Completed pills show ✅ | `home_tab.dart:865-866` | `completedToday ? '✅' : (hasSlip ? '!' : habit.emoji)` |
+| Tap opens log sheet | `home_tab.dart:548` | `onTap: () => _openHabitLogSheet(h)` |
+| `_openHabitLogSheet` opens `LogHabitSheet` | `home_tab.dart:558-564` | `showModalBottomSheet(builder: (_) => LogHabitSheet(habit: habit))` |
+| Loading state | `home_tab.dart:498-512` | `isLoading ? CircularProgressIndicator : content` |
+| Error state | `home_tab.dart:514-524` | Inline text: "Unable to load habit check-ins." |
+| Empty state | `home_tab.dart:525-533` | "No habits yet." placeholder |
+
+**Home pills render correctly with loading, error, and empty states.**
+
+---
+
+### Requirement 2 — Log sheet renders
+
+**Status: ✅ CONFIRMED**
+
+| Check | Citation | Notes |
+|---|---|---|
+| Sheet class | `log_habit_sheet.dart:8-15` | `LogHabitSheet` — `ConsumerStatefulWidget`, optional `habit` param |
+| Habit picker (no pre-selected habit) | `log_habit_sheet.dart:126-190` | Shows scrollable list of all active habits via `habitsProvider` |
+| Good habit form | `log_habit_sheet.dart:246-275` | Amount field + unit field |
+| Bad habit form | `log_habit_sheet.dart:276-318` | Count field + trigger field + compassionate message |
+| Note field | `log_habit_sheet.dart:320-324` | Optional note for both kinds |
+| Submit calls `logGood` or `logSlip` | `log_habit_sheet.dart:70-88` | `habitService.logGood(...)` for good, `habitService.logSlip(...)` for bad |
+| Amount validation | `log_habit_sheet.dart:60-63` | Rejects non-positive values |
+| Loading state | `log_habit_sheet.dart:327` | Button shows "Logging..." while `_isLogging` |
+| Error feedback | `log_habit_sheet.dart:91-92` | SnackBar on failure |
+
+**The log sheet is fully functional for both good and bad habits.**
+
+---
+
+### Requirement 3 — Editor renders (create + edit)
+
+**Status: ✅ CONFIRMED**
+
+| Check | Citation | Notes |
+|---|---|---|
+| Create mode | `habit_editor_screen.dart:39` | `_isEditing = widget.habitId != null` — false for new habits |
+| Edit mode | `habit_editor_screen.dart:76-114` | `_loadHabit()` fetches existing habit from service |
+| Kind selector | `habit_editor_screen.dart:304-307` | `SegmentedButton` for Build/Break |
+| Category dropdown | `habit_editor_screen.dart:309-326` | 14 categories including all tracker types |
+| Name field | `habit_editor_screen.dart:328-332` | `TextField` with `_nameController` |
+| Target/unit fields | `habit_editor_screen.dart:358-383` | Conditional on kind |
+| Bad habit goal type | `habit_editor_screen.dart:341-357` | Dropdown for eliminate/reduce/awareness |
+| Schedule days | `habit_editor_screen.dart:389-411` | 7 `FilterChip` widgets for weekdays |
+| Money value | `habit_editor_screen.dart:417-424` | Optional per-unit cost |
+| Reminders | `habit_editor_screen.dart:434-457` | Toggle + time input; writes to `scheduled_notifications` |
+| Save creates or updates | `habit_editor_screen.dart:186-190` | `createHabit(habit)` for new, `updateHabit(habit)` for existing |
+| Reminder intent written | `habit_editor_screen.dart:204-245` | Writes to `/users/{uid}/scheduled_notifications/habit_reminder_{id}` |
+| Client-side validation | `habit_editor_screen.dart:119-150` | Blank name, invalid target, negative cost, bad time format |
+| Error handling | `habit_editor_screen.dart:195-198` | Catches `AppError` and generic exceptions |
+| Loading/error states | `habit_editor_screen.dart:292-295` | Loading spinner while fetching; error state with retry |
+| Navigate on save | `habit_editor_screen.dart:194` | `context.go('/habits/${habit.id}')` |
+
+**Editor is fully functional for both create and edit modes.**
+
+---
+
+### Requirement 4 — Detail screen renders
+
+**Status: ✅ CONFIRMED**
+
+| Check | Citation | Notes |
+|---|---|---|
+| Detail loads from Firestore stream | `habit_detail_screen.dart:46-52` | `StreamBuilder` on `habits/{habitId}` document |
+| Header: name + kind + trackerType | `habit_detail_screen.dart:110-125` | Emoji/icon + name + "good • water" subtitle |
+| State chip | `habit_detail_screen.dart:129` | Shows active/paused/archived with colour coding |
+| Streak shortcut card | `habit_detail_screen.dart:134` | Links to `/streaks/{habitId}` |
+| Variant view embedded | `habit_detail_screen.dart:136` | `_variantFor(habit)` — dispatches to 10 variant views |
+| Target info card | `habit_detail_screen.dart:138-150` | Unit, daily target or goal type, money value |
+| Schedule info card | `habit_detail_screen.dart:151-168` | Days, reminders, accountability |
+| Lifecycle info card | `habit_detail_screen.dart:169-179` | Created, updated, paused, archived dates |
+| Pause/Resume button | `habit_detail_screen.dart:426-448` | Calls `service.pauseHabit()` or `service.resumeHabit()` |
+| Archive button + confirmation | `habit_detail_screen.dart:452-494` | Dialog confirmation → `service.archiveHabit()` |
+| Edit button in AppBar | `habit_detail_screen.dart:37-41` | Routes to `/habits/$habitId/edit` |
+| Loading state | `habit_detail_screen.dart:54-59` | `CircularProgressIndicator` |
+| Error state | `habit_detail_screen.dart:60-66` | `_DetailError` with message |
+
+**Detail screen renders all required information and exposes lifecycle actions.**
+
+---
+
+### Requirement 5 — Undo latest works
+
+**Status: ✅ CONFIRMED**
+
+| Check | Citation | Notes |
+|---|---|---|
+| `_undoLatest` method | `tracker_tab.dart:248-271` | Async method accepting habit + latest log |
+| Calls `deleteLog` with `confirmDestructive: true` | `tracker_tab.dart:250-254` | `ref.read(habitServiceProvider).deleteLog(habit.id, log.logId, confirmDestructive: true)` |
+| Latest log computed | `tracker_tab.dart:228-237` | `_latestLogsByHabit()` finds the most recent log per habit by `occurredAt` |
+| Undo null-guarded | `tracker_tab.dart:137-139, 180-182` | `onUndoLatest: latestLog == null ? null : () => _undoLatest(...)` — button disabled when no log exists |
+| Available on good habits | `tracker_tab.dart:137-139` | Wired into `_GoodHabitCard.onUndoLatest` |
+| Available on bad habits | `tracker_tab.dart:180-182` | Wired into `_BadHabitCard.onUndoLatest` |
+| Success feedback | `tracker_tab.dart:255-258` | SnackBar: "Latest habit log removed." |
+| Error handling | `tracker_tab.dart:260-270` | SnackBar with error message |
+| Service-level guard | `habit_service.dart:452-456` | `confirmDestructive: false` throws — prevents accidental deletion |
+| Deletes both canonical + legacy | `habit_service.dart:473-474` | `batch.delete(canonicalRef)` + `batch.delete(_itemsRef(...))` |
+| Emits `habit_log_deleted` event | `habit_service.dart:476-486` | Event includes `habitId`, `logId`, `logType`, `occurredAt` |
+
+**Undo latest is correctly implemented end-to-end: UI → service → Firestore delete + event.**
+
+---
+
+### Requirement 6 — 10 tracker variants exist and route
+
+**Status: ✅ ALL 10 FILES EXIST — ⚠️ ALL ARE STUBS**
+
+#### Variant file inventory
+
+| # | Variant | File | Lines | Task |
+|---|---|---|---|---|
+| 1 | Smoking | `smoking_tracker_view.dart` | 25 | Task 7.4 |
+| 2 | Screen Time | `screen_time_tracker_view.dart` | ~25 | Task 7.5 |
+| 3 | Mindful Eating | `mindful_eating_tracker_view.dart` | ~25 | Task 7.6 |
+| 4 | Procrastination | `procrastination_tracker_view.dart` | ~25 | Task 7.7 |
+| 5 | Hydration | `hydration_tracker_view.dart` | ~25 | Task 7.8 |
+| 6 | Meditation | `meditation_tracker_view.dart` | ~25 | Task 7.9 |
+| 7 | Money Saving | `money_saving_tracker_view.dart` | ~25 | Task 7.10 |
+| 8 | Reading | `reading_tracker_view.dart` | ~25 | Task 7.11 |
+| 9 | Exercise | `exercise_tracker_view.dart` | 25 | Task 7.12 |
+| 10 | Routine Completion | `routine_completion_tracker_view.dart` | 26 | Task 7.13 |
+
+#### Variant routing in `_variantFor()` (`habit_detail_screen.dart:190-220`)
+
+| `trackerType` string | Routed to | Status |
+|---|---|---|
+| `'smoking'` | `SmokingTrackerView` | ✅ |
+| `'screen_time'` | `ScreenTimeTrackerView` | ✅ |
+| `'junk_food'` / `'mindful_eating'` | `MindfulEatingTrackerView` | ✅ |
+| `'procrastination'` | `ProcrastinationTrackerView` | ✅ |
+| `'water'` / `'hydration'` | `HydrationTrackerView` | ✅ |
+| `'meditation'` | `MeditationTrackerView` | ✅ |
+| `'money_saving'` | `MoneySavingTrackerView` | ✅ |
+| `'reading'` | `ReadingTrackerView` | ✅ |
+| `'exercise'` / `'steps'` | `ExerciseTrackerView` | ✅ |
+| `'routine_completion'` | `RoutineCompletionTrackerView` | ✅ |
+| Default (unknown type) | Bad→Procrastination, Good→Exercise | ✅ Fallback exists |
+
+All 10 imports are present at `habit_detail_screen.dart:9-18`. Routing is exhaustive with a sensible fallback.
+
+#### Stub nature confirmed
+
+Every variant file (except `routine_completion_tracker_view.dart`) is a thin `StatelessWidget` that returns `TrackerVariantView(...)` from `tracker_variant_base.dart` with only these customizations: `title`, `statusLabel`, `emptyLabel`, `insightCopy` (placeholder text), `icon`, and `accent`. None implement the per-variant features specified in their respective tasks:
+
+| Task | Required feature | Current state |
+|---|---|---|
+| 7.4 (Smoking) | Trigger picker, money-saved card, health milestones, recovery alarms | ❌ Stub only — placeholder insight text |
+| 7.5 (Screen Time) | UsageStats import, per-app caps, unlock heuristic | ❌ Stub only |
+| 7.6 (Mindful Eating) | ED-safe swap, mood slider, no counts/goals/streaks | ❌ Stub only — still shows counts and streaks |
+| 7.7 (Procrastination) | Auto-detect via task overdue, planned-vs-actual | ❌ Stub only |
+| 7.8 (Hydration) | Volume quick-add, glass animation, daily timeline | ❌ Stub only |
+| 7.9 (Meditation) | Built-in timer, session history, breathing exercise | ❌ Stub only |
+| 7.10 (Money Saving) | Cross-habit aggregation, savings pot, weekly goal | ❌ Stub only |
+| 7.11 (Reading) | Page tracker, reading time, book/chapter log | ❌ Stub only |
+| 7.12 (Exercise) | HealthKit/Google Fit import, volume chart, recovery | ❌ Stub only |
+| 7.13 (Routine Completion) | `dailySummaries` data mode, per-routine breakdown | ⚠️ Partially done — uses `VariantDataMode.dailySummaries` but no breakdown |
+
+**The `TrackerVariantView` base** (`tracker_variant_base.dart:14-223`) does provide real functionality:
+- Status card with streak count (reads `/users/{uid}/streaks/{habitId}`)
+- 7-day history bar chart (reads `/users/{uid}/habit_logs` for habit, or `/dailySummaries` for routine completion)
+- AI insight placeholder card
+- Log/Log Slip button (calls `habitServiceProvider.logGood()` or `logSlip()`)
+
+**⚠️ IMPORTANT: `tracker_variant_base.dart:40-65` makes direct Firestore calls from a widget** — `FirebaseFirestore.instance.collection('users').doc(uid).collection('habit_logs')` — rather than going through `habitServiceProvider`. This violates GEMINI.md §3 (no direct Firestore from UI widgets). The violation exists in the base, so it affects all 10 variants.
+
+---
+
+### Events
+
+| Event | Constant | UI trigger | Service emitter | Status |
+|---|---|---|---|---|
+| `good_habit_logged` | `event_names.dart:44` | `LogHabitSheet._submit()` → `logGood()` | `habit_service.dart:361-380` | ✅ |
+| `bad_habit_slip_logged` | `event_names.dart:45` | `LogHabitSheet._submit()` → `logSlip()` | `habit_service.dart:423-441` | ✅ |
+| `habit_log_deleted` | `event_names.dart:46` | `TrackerTab._undoLatest()` → `deleteLog()` | `habit_service.dart:476-486` | ✅ |
+| `habit_created` | `event_names.dart:40` | `HabitEditorScreen._save()` → `createHabit()` | `habit_service.dart:165-170` | ✅ |
+| `habit_updated` | `event_names.dart:41` | `HabitEditorScreen._save()` → `updateHabit()` | `habit_service.dart:195-200` | ✅ |
+| `habit_paused` | `event_names.dart:42` | `HabitDetailScreen._LifecycleActions` → `pauseHabit()` | `habit_service.dart:223-230` | ✅ |
+| `habit_resumed` | `event_names.dart:43` | `HabitDetailScreen._LifecycleActions` → `resumeHabit()` | `habit_service.dart:252-259` | ✅ |
+| `habit_archived` | `event_names.dart:47` | `HabitDetailScreen._LifecycleActions` → `archiveHabit()` | `habit_service.dart:280-291` | ✅ |
+
+**All 8 required events are wired end-to-end from UI → Service → Firestore.**
+
+---
+
+### Firestore paths
+
+| Path | Read by | Written by | Status |
+|---|---|---|---|
+| `/users/{uid}/habits/{habitId}` | `habitsProvider` (via `watchHabits`), `HabitDetailScreen` (direct stream), `HabitEditorScreen._loadHabit()` | `createHabit()`, `updateHabit()`, `pauseHabit()`, `resumeHabit()`, `archiveHabit()`, `deleteHabit()` | ✅ |
+| `/users/{uid}/habit_logs/{logId}` | `todayHabitLogsProvider` (via `watchHabitLogsForDate`), `TrackerVariantView` (direct query) | `logGood()`, `logSlip()`, `deleteLog()` | ✅ |
+| `/users/{uid}/habits/{habitId}/logs/{date}/items/{logId}` | Not read by any UI | Dual-written by `logGood()`, `logSlip()`, deleted by `deleteLog()` | ✅ (legacy) |
+| `/users/{uid}/scheduled_notifications/{notifId}` | Not read in these files | `HabitEditorScreen._writeReminderIntent()` | ✅ |
+| `/users/{uid}/streaks/{habitId}` | `TrackerVariantView` (direct stream), `_StreakShortcutCard` (link only) | Not written by these files | ✅ |
+
+---
+
+### Dependency status — Tasks 7.3–7.13
+
+| Task | Title | Status | Evidence |
+|---|---|---|---|
+| 7.3 | Tracker home with AI insight surface | ❌ NOT STARTED | `tracker_tab.dart` uses a simple good/bad list layout; no mission ring, no filter chips, no AI insight card. Task 7.3 per TODO is "Not started". |
+| 7.4 | Smoking tracker variant | ❌ STUB ONLY | `smoking_tracker_view.dart` (25 lines) delegates to `TrackerVariantView` with placeholder text. No trigger picker, money-saved, health milestones, or recovery alarms. |
+| 7.5 | Screen time tracker variant | ❌ STUB ONLY | `screen_time_tracker_view.dart` (~25 lines) delegates to `TrackerVariantView`. Note: `TrackerTab` already has a `_ScreenTimeSection` (lines 920-1002) with Android UsageStats import + permission flow + top-apps — but this is on the tracker home, not the detail variant. |
+| 7.6 | Junk food / Mindful eating swap | ❌ STUB ONLY | `mindful_eating_tracker_view.dart` delegates to `TrackerVariantView`. No ED-safe mode, no mood slider, still shows counts/goals/streaks — violates the "no counts, no goals, no streaks" requirement for ED-flagged users. |
+| 7.7 | Procrastination tracker | ❌ STUB ONLY | `procrastination_tracker_view.dart` delegates to `TrackerVariantView`. No auto-detect, no planned-vs-actual. |
+| 7.8 | Hydration tracker | ❌ STUB ONLY | `hydration_tracker_view.dart` delegates to `TrackerVariantView`. No quick-add glasses, no daily timeline. |
+| 7.9 | Meditation tracker + timer | ❌ STUB ONLY | `meditation_tracker_view.dart` delegates to `TrackerVariantView`. No timer, no breathing exercise. |
+| 7.10 | Money saving aggregator | ❌ STUB ONLY | `money_saving_tracker_view.dart` delegates to `TrackerVariantView`. No cross-habit aggregation. |
+| 7.11 | Reading tracker | ❌ STUB ONLY | `reading_tracker_view.dart` delegates to `TrackerVariantView`. No page tracker, no book log. |
+| 7.12 | Exercise / running tracker | ❌ STUB ONLY | `exercise_tracker_view.dart` delegates to `TrackerVariantView`. No HealthKit/Google Fit import. |
+| 7.13 | Routine completion meta-tracker | ⚠️ PARTIAL | `routine_completion_tracker_view.dart` uses `VariantDataMode.dailySummaries` — reads from `/dailySummaries` instead of `/habit_logs`. But no per-routine breakdown exists. |
+
+**All 11 dependency tasks are either not started or stub-only.** The current stubs render safely (no crashes) but provide no per-variant functionality.
+
+---
+
+### Architecture observation — Direct Firestore in `TrackerVariantView`
+
+`tracker_variant_base.dart:40-65` constructs three Firestore streams directly in the widget's `build()` method:
+
+```dart
+final logsStream = FirebaseFirestore.instance
+    .collection('users').doc(uid).collection('habit_logs')
+    .where('habitId', isEqualTo: habit.id)
+    .where('occurredAt', isGreaterThanOrEqualTo: ...)
+    .snapshots();
+final streakStream = FirebaseFirestore.instance
+    .collection('users').doc(uid).collection('streaks')
+    .doc(habit.id).snapshots();
+final summariesStream = FirebaseFirestore.instance
+    .collection('users').doc(uid).collection('dailySummaries')
+    .orderBy('date', descending: true).limit(7).snapshots();
+```
+
+This pattern:
+1. Bypasses the service layer (`habitServiceProvider`) for habit logs
+2. Bypasses any streak provider for streaks
+3. Creates new Firestore stream subscriptions on every widget rebuild
+4. Violates GEMINI.md §3 (no direct Firestore from UI widgets)
+
+**Recommendation:** When implementing Tasks 7.4–7.13, refactor `TrackerVariantView` to use Riverpod providers instead of inline `StreamBuilder` + direct Firestore. This is not a Task 7.2 fix — it is a prerequisite for the variant tasks.
+
+---
+
+### Gaps and follow-ups
+
+| # | Gap | Severity | Owning task |
+|---|---|---|---|
+| G1 | `TrackerVariantView` makes direct Firestore calls from the widget instead of using Riverpod providers — violates GEMINI.md §3. All 10 variants inherit this violation. | MEDIUM | Task 7.3 or 7.4 (first variant to be built should refactor the base) |
+| G2 | All 10 tracker variants are thin stubs (~25 lines each) that delegate to the generic `TrackerVariantView`. None implement their task-specific features. | HIGH | Tasks 7.4–7.13 individually |
+| G3 | Task 7.3 (tracker home layout) is not started. The current `TrackerTab` uses a simple good/bad sliver list — no mission ring, filter chips, or AI insight card. | MEDIUM | Task 7.3 |
+| G4 | Mindful eating variant shows counts, goals, and streaks — violating the eating-disorder safety requirement (no counts/goals/streaks when `eatingDisorderHistory=true`). | HIGH | Task 7.6 |
+| G5 | `HabitEditorScreen._writeReminderIntent()` writes directly to Firestore (`habit_editor_screen.dart:209-244`) rather than through a service. This is a minor GEMINI.md §3 deviation but is consistent with the existing notification pattern used elsewhere. | LOW | No current owner |
+| G6 | `HabitDetailScreen` reads the habit document via a direct `StreamBuilder` on Firestore (`habit_detail_screen.dart:46-52`) rather than using `habitsProvider` or a dedicated provider. Same pattern as G1. | LOW | Task 7.3 follow-up |
+| G7 | No test file exists for any of the five UI files inspected (no widget tests for `HomeTab` habit pills, `TrackerTab`, `LogHabitSheet`, `HabitEditorScreen`, or `HabitDetailScreen`). | LOW | Future test task |
+
+### Summary
+
+| Requirement | Status |
+|---|---|
+| Home pills render | ✅ Confirmed — `home_tab.dart:534-551` |
+| Log sheet renders | ✅ Confirmed — `log_habit_sheet.dart:8-346` |
+| Editor renders (create + edit) | ✅ Confirmed — `habit_editor_screen.dart:12-468` |
+| Detail screen renders | ✅ Confirmed — `habit_detail_screen.dart:20-528` |
+| Undo latest works | ✅ Confirmed — `tracker_tab.dart:248-254` calls `deleteLog(confirmDestructive: true)` |
+| 10 tracker variant files exist | ✅ Confirmed — all 10 in `lib/views/habits/variants/` |
+| 10 tracker variants route correctly | ✅ Confirmed — `_variantFor()` at `habit_detail_screen.dart:190-220` |
+| 10 tracker variants have per-variant features | ❌ All stubs — Tasks 7.4–7.13 not started |
+| All 8 required events wired | ✅ Confirmed |
+
+**Risk if shipped as-is: LOW for Task 7.2 core scope.** The five UI surfaces (home pills, log sheet, editor, detail, undo) are fully functional and correctly wired to the service layer with proper event emission. The 10 tracker variants render safely via the shared base but are all stubs. **MEDIUM overall** when accounting for the eating-disorder safety gap (G4) and the GEMINI.md §3 violations (G1, G6) that should be resolved before building Tasks 7.4–7.13.
+
