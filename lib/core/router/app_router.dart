@@ -13,8 +13,13 @@ import '../../views/habits/habit_editor_screen.dart';
 import '../../views/streaks/streak_detail_screen.dart';
 import '../../views/tabs/routine_settings_screen.dart';
 import '../../views/routine/fixed_schedule_setup_screen.dart';
+import '../../views/routine/skin_care_setup_screen.dart';
+import '../../views/routine/eating_setup_screen.dart';
+import '../../views/routine/class_setup_screen.dart';
+import '../../views/routine/supplement_setup_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
+import '../../providers/routine_provider.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   // A ValueNotifier used solely as a refresh signal for GoRouter.
@@ -112,7 +117,36 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/settings/fixed-schedule',
-        builder: (_, __) => FixedScheduleSetupScreen(onComplete: () {}),
+        builder: (context, __) => FixedScheduleSetupScreen(
+          onComplete: () => context.pop(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/skin-care',
+        builder: (context, __) => SkinCareSetupScreen(
+          onComplete: () {
+            ref.read(routineProvider.notifier).markSkinCareSetUp();
+            context.pop();
+          },
+        ),
+      ),
+      GoRoute(
+        path: '/settings/eating',
+        builder: (context, __) => EatingSetupScreen(
+          onComplete: () => context.pop(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/classes',
+        builder: (context, __) => ClassSetupScreen(
+          onComplete: () => context.pop(),
+        ),
+      ),
+      GoRoute(
+        path: '/settings/supplements',
+        builder: (context, __) => SupplementSetupScreen(
+          onComplete: () => context.pop(),
+        ),
       ),
     ],
   );

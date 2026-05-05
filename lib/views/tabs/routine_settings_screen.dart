@@ -3,30 +3,90 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/providers/routine_provider.dart';
-import 'package:optivus2/views/routine/skin_care_setup_screen.dart';
-import 'package:optivus2/views/routine/eating_setup_screen.dart';
-import 'package:optivus2/views/routine/class_setup_screen.dart';
-import 'package:optivus2/views/routine/supplement_setup_screen.dart';
+
+String _countLabel(RoutineState s, RoutineFilter filter) {
+  switch (filter) {
+    case RoutineFilter.fixedSchedule:
+      final n = s.fixedScheduleTemplates.length;
+      if (n == 0) return 'Not set up yet';
+      return '$n block${n == 1 ? '' : 's'}';
+    case RoutineFilter.skinCare:
+      final nNew = (s.routineTemplates['skin_care'] ?? const []).length;
+      if (nNew > 0) return '$nNew step${nNew == 1 ? '' : 's'}';
+      if (!s.skinCareSetUp) return 'Not set up yet';
+      final nLeg = s.skinCarePlans.fold<int>(
+          0, (acc, d) => acc + d.morning.length + d.afternoon.length + d.night.length);
+      return nLeg > 0 ? '$nLeg step${nLeg == 1 ? '' : 's'}' : 'Configured';
+    case RoutineFilter.supplements:
+      final n = (s.routineTemplates['supplements'] ?? const []).length;
+      return n == 0 ? 'Not set up yet' : '$n supplement${n == 1 ? '' : 's'}';
+    case RoutineFilter.classes:
+      final nNew = (s.routineTemplates['classes'] ?? const []).length;
+      if (nNew > 0) return '$nNew class${nNew == 1 ? '' : 'es'}';
+      if (!s.classesSetUp) return 'Not set up yet';
+      final nLeg = s.classes.length;
+      return nLeg > 0 ? '$nLeg class${nLeg == 1 ? '' : 'es'}' : 'Configured';
+    case RoutineFilter.eating:
+      final nNew = (s.routineTemplates['eating'] ?? const []).length;
+      if (nNew > 0) return '$nNew meal${nNew == 1 ? '' : 's'}';
+      if (!s.eatingSetUp) return 'Not set up yet';
+      final nLeg = s.mealPlans.fold<int>(0, (acc, d) => acc + d.meals.length);
+      return nLeg > 0 ? '$nLeg meal${nLeg == 1 ? '' : 's'}' : 'Configured';
+    default:
+      return '';
+  }
+}
+
+/// Row descriptor for each routine type (canonical order shared with the
+/// bottom-sheet in routine_settings_sheet.dart).
+class _RoutineRow {
+  final String emoji;
+  final String title;
+  final RoutineFilter filter;
+  final String route;
+  const _RoutineRow({
+    required this.emoji,
+    required this.title,
+    required this.filter,
+    required this.route,
+  });
+}
+
+const _routineRows = [
+  _RoutineRow(
+    emoji: '📅',
+    title: 'Fixed Schedule',
+    filter: RoutineFilter.fixedSchedule,
+    route: '/settings/fixed-schedule',
+  ),
+  _RoutineRow(
+    emoji: '🌿',
+    title: 'Skin Care Routine',
+    filter: RoutineFilter.skinCare,
+    route: '/settings/skin-care',
+  ),
+  _RoutineRow(
+    emoji: '🎓',
+    title: 'Class Routine',
+    filter: RoutineFilter.classes,
+    route: '/settings/classes',
+  ),
+  _RoutineRow(
+    emoji: '💊',
+    title: 'Supplements',
+    filter: RoutineFilter.supplements,
+    route: '/settings/supplements',
+  ),
+  _RoutineRow(
+    emoji: '🍽️',
+    title: 'Eating Routine',
+    filter: RoutineFilter.eating,
+    route: '/settings/eating',
+  ),
+];
 
 class RoutineSettingsScreen extends ConsumerWidget {
   const RoutineSettingsScreen({super.key});
-
-  void _doSetup(BuildContext context, WidgetRef ref, RoutineFilter f) {
-    if (f == RoutineFilter.skinCare) {
-      Navigator.push(context, slideRoute(SkinCareSetupScreen(onComplete: () {
-        ref.read(routineProvider.notifier).markSkinCareSetUp();
-      })));
-    } else if (f == RoutineFilter.eating) {
-      Navigator.push(context, slideRoute(EatingSetupScreen(onComplete: () {})));
-    } else if (f == RoutineFilter.classes) {
-      Navigator.push(context, slideRoute(ClassSetupScreen(onComplete: () {})));
-    } else if (f == RoutineFilter.supplements) {
-      Navigator.push(
-          context, slideRoute(SupplementSetupScreen(onComplete: () {})));
-    } else if (f == RoutineFilter.fixedSchedule) {
-      context.push('/settings/fixed-schedule');
-    }
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -62,67 +122,21 @@ class RoutineSettingsScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 12),
 
-                      // Options Container
+                      // Routine rows — canonical order
                       LiquidCard(
                         frosted: true,
                         padding: EdgeInsets.zero,
                         radius: 20,
                         child: Column(
                           children: [
-                            _buildPrefTile(
-                              emoji: '🌿',
-                              title: 'Skin Care Routine',
-                              subtitle:
-                                  'Set up morning, afternoon & night steps',
-                              hasArrow: !s.skinCareSetUp,
-                              isDone: s.skinCareSetUp,
-                              onTap: () => _doSetup(
-                                  context, ref, RoutineFilter.skinCare),
-                            ),
-                            _buildDivider(),
-                            _buildPrefTile(
-                              emoji: '🎓',
-                              title: 'Class Routine',
-                              subtitle: 'Upload or enter your class timetable',
-                              hasArrow: !s.classesSetUp,
-                              isDone: s.classesSetUp,
-                              onTap: () =>
-                                  _doSetup(context, ref, RoutineFilter.classes),
-                            ),
-                            _buildDivider(),
-                            _buildPrefTile(
-                              emoji: '🍽️',
-                              title: 'Eating Routine',
-                              subtitle: 'Plan your daily meals',
-                              hasArrow: !s.eatingSetUp,
-                              isDone: s.eatingSetUp,
-                              onTap: () =>
-                                  _doSetup(context, ref, RoutineFilter.eating),
-                            ),
-                            _buildDivider(),
-                            _buildPrefTile(
-                              emoji: '💊',
-                              title: 'Supplements',
-                              subtitle: 'Plan dosage, timing and reminders',
-                              hasArrow: (s.routineTemplates['supplements'] ??
-                                      const [])
-                                  .isEmpty,
-                              isDone: (s.routineTemplates['supplements'] ??
-                                      const [])
-                                  .isNotEmpty,
-                              onTap: () => _doSetup(
-                                  context, ref, RoutineFilter.supplements),
-                            ),
-                            _buildDivider(),
-                            _buildPrefTile(
-                              emoji: '📅',
-                              title: 'Fixed Schedule',
-                              subtitle: 'Base daily activities, sleep & work',
-                              hasArrow: !s.fixedScheduleSetUp,
-                              isDone: s.fixedScheduleSetUp,
-                              onTap: () => _doSetup(
-                                  context, ref, RoutineFilter.fixedSchedule),
-                            ),
+                            for (int i = 0; i < _routineRows.length; i++) ...[
+                              if (i > 0) _buildDivider(),
+                              _buildRoutineTile(
+                                context,
+                                row: _routineRows[i],
+                                subtitle: _countLabel(s, _routineRows[i].filter),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -196,12 +210,92 @@ class RoutineSettingsScreen extends ConsumerWidget {
     );
   }
 
+  /// Builds a routine-type tile with icon, name, count, and chevron.
+  Widget _buildRoutineTile(
+    BuildContext context, {
+    required _RoutineRow row,
+    required String subtitle,
+  }) {
+    final isConfigured = subtitle != 'Not set up yet';
+
+    return InkWell(
+      onTap: () => context.push(row.route),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x0D000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2)),
+                ],
+              ),
+              child: Center(
+                child: Text(row.emoji, style: const TextStyle(fontSize: 20)),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F111A), // kInk
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isConfigured
+                          ? const Color(0xFF1A8A5A)
+                          : const Color(0xFF6B7280),
+                      fontWeight:
+                          isConfigured ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isConfigured)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF60D4A0).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('Done',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1A8A5A),
+                    )),
+              ),
+            const Icon(Icons.chevron_right_rounded,
+                size: 20, color: Color(0xFF6B7280)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPrefTile({
     required String emoji,
     required String title,
     required String subtitle,
-    bool hasArrow = false,
-    bool isDone = false,
     VoidCallback? onTap,
   }) {
     return InkWell(
@@ -251,23 +345,8 @@ class RoutineSettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            if (isDone)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF60D4A0).withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text('Done',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A8A5A),
-                    )),
-              )
-            else if (hasArrow)
-              const Icon(Icons.chevron_right_rounded,
-                  size: 20, color: Color(0xFF6B7280)),
+            const Icon(Icons.chevron_right_rounded,
+                size: 20, color: Color(0xFF6B7280)),
           ],
         ),
       ),

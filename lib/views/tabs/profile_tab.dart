@@ -360,7 +360,7 @@ class ProfileTab extends StatelessWidget {
           _buildPrefTile(
             icon: Icons.settings_suggest_outlined,
             iconColor: const Color(0xFF5E4B9C),
-            title: 'Routine Setting',
+            title: 'Routine Settings',
             hasArrow: true,
             onTap: () {
               context.push('/settings/routine');
