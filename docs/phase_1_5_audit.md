@@ -1771,3 +1771,84 @@ No production Dart or JS file was modified by this audit pass.
 
 **LOW (manual mode) / HIGH (AI import modes).** Manual mode is functionally correct — all five template fields are written to Firestore and `routine_template_created` fires per template. The two gaps (weekday encoding, notes derivation) are minor schema conventions, not runtime errors. AI import modes (Tasks 12.2/12.3) must not be surfaced to users until the `routineImport` Cloud Function is deployed and the photo capture flow is implemented.
 
+---
+
+## Task 6.3 — Class Setup Screen (manual mode)
+
+> Audit date: 2026-05-05
+> Auditor: re-verify pass (read-only — no Dart or JS files modified)
+
+### Files inspected
+
+- `lib/views/routine/class_setup_screen.dart`
+- `lib/providers/routine_provider.dart` (lines 118–136, 444–479, 668–669, 921–950, 1343–1360, 1401–1431)
+- `lib/views/routine/routine_tab.dart` (lines 255–268)
+- `lib/core/constants/event_names.dart` (line 62)
+- `functions/test/routineImport.contract.test.js` (dependency probe)
+
+### Files changed
+
+- `docs/phase_1_5_audit.md` — this section appended only. No production Dart or JS file modified.
+
+### Firestore paths affected
+
+- `/users/{uid}/routine/current.templates.classes` — written by `routine_repository.dart:63–75` via `saveRoutine({..., 'templates': {..., 'classes': templates}})`.
+- `/users/{uid}/routine/current.classes` — also written via `state.toMap()` → `'classes': classes.map(e.toMap())`. This is the `ClassItem` list with explicit `weekday` int.
+
+### Requirements verification
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Manual mode saves **subject** | ✅ | `class_setup_screen.dart:782` — `'title': item.subject`; also `ClassItem.subject` at `:771` |
+| Manual mode saves **room** | ✅ | `class_setup_screen.dart:787` — `'room': item.room`; also `ClassItem.room` at `:772` |
+| Manual mode saves **professor** | ✅ | `class_setup_screen.dart:788` — `'professor': item.professor`; also `ClassItem.professor` at `:773` |
+| Manual mode saves **weekday** | ✅ | `class_setup_screen.dart:786` — `'repeatRule': 'weekly:$weekday'` in template. Additionally `ClassItem.weekday` (explicit int, `:777`) — unlike skin care, classes store weekday as a top-level int field in `ClassItem`. |
+| Manual mode saves **start/end** | ✅ | `class_setup_screen.dart:784–785` — `'startTime': format24h(item.start)`, `'endTime': format24h(item.start + item.duration)` |
+
+All five required fields are saved correctly. Weekday is doubly encoded: as an explicit int in `ClassItem` (used by `classesForDay`) and as `repeatRule: 'weekly:N'` in the template (used by materialization).
+
+### Per-day class logic
+
+| Mechanism | Status | Evidence |
+|---|---|---|
+| Setup: different blocks per day (Mon–Sun) | ✅ | `weeklyRoutines[0..6]` — one independent block list per day; 7-droplet day selector at `class_setup_screen.dart:1060–1086` |
+| Save: weekday encoded per block | ✅ | `class_setup_screen.dart:763` — `int weekday = d + 1` iterated 0–6; written into both `ClassItem.weekday` and `repeatRule` |
+| Load existing classes back into setup UI | ✅ | `class_setup_screen.dart:98–137` — `initState` reads `ref.read(routineProvider).classes` and rebuilds `weeklyRoutines` per `item.weekday` |
+| Routine tab shows correct day's classes | ✅ | `routine_tab.dart:256` — `s.classesForDay(date.weekday)` filters by weekday using actual `ClassItem.weekday` int; uses real `startTime` / `endTime` — no hardcoded slots |
+| Survives app restart | ✅ | `setClasses()` calls `_saveDebounced()` → `state.toMap()` includes `classes` list → persisted to Firestore; loaded back via `RoutineState.fromMap():732` |
+
+The per-day class logic is complete and correct. A user who sets Chemistry on Monday and Art on Sunday will see only Chemistry on Mondays and only Art on Sundays in the routine tab timeline, at the exact times set.
+
+### Dependency status
+
+| Dependency | Status | Evidence |
+|---|---|---|
+| **Task 12.5** — Photo OCR timetable import | ⚠️ UI STUB ONLY | `class_setup_screen.dart:836–849` — "Upload timetable image/screenshot" button calls `_loadGeneratedClasses()` with `mode: 'timetable_image'`. No image picker is invoked — hardcoded metadata `{'source': 'class_timetable_upload', 'createdAt': ...}` is passed with no actual image bytes. Calls `previewRoutineImport` → `routineImport` Cloud Function which does not exist (`functions/src/` absent, all contract tests skipped). Falls back silently to a dummy `ClassRoutineBlock` on CF failure (`class_setup_screen.dart:873–886`). |
+
+### Event system
+
+| Event | Status | Citation |
+|---|---|---|
+| `routine_template_created` | ✅ IMPLEMENTED | `event_names.dart:62` — `EventNames.routineTemplateCreated = 'routine_template_created'`. `setRoutineTemplates('classes', templates)` at `class_setup_screen.dart:799` calls `_emitTemplateCreated()` per template (`routine_provider.dart:1409–1411`), emitting `{templateId, routineType: 'classes'}`. |
+
+### Gaps and follow-up ownership
+
+| Gap ID | Description | Severity | Owner |
+|---|---|---|---|
+| G1 | Photo OCR mode: no image picker — the "Upload" button passes hardcoded metadata with no real image. | HIGH | **Task 12.5** |
+| G2 | `routineImport` Cloud Function does not exist. OCR import degrades silently to a dummy block with no user-visible error. | HIGH | **Task 12.5** |
+| G3 | Review sheet (`_showClassReview`) parses edited text as `subject: room` — professor is lost during text-field edits in the review step (`class_setup_screen.dart:956–964`). Only `subject` and `room` are written back; `professor` is discarded on any edit. | LOW | Task 6.3 follow-up |
+
+### Analyzer result
+
+```
+flutter analyze lib/views/routine/class_setup_screen.dart
+No issues found! (ran in 1.7s)
+```
+
+No production Dart or JS file was modified by this audit pass.
+
+### Risk if shipped as-is
+
+**LOW (manual mode) / HIGH (Photo OCR mode).** Manual class entry is complete — all five fields save correctly, per-day isolation works, the routine tab shows real times at the right weekday, and `routine_template_created` fires per class. The Photo OCR "Upload" button must not be surfaced to users until Task 12.5 deploys the `routineImport` CF and wires a real image picker.
+
