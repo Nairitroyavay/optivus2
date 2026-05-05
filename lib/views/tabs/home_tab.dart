@@ -290,7 +290,7 @@ class _HomeTabState extends ConsumerState<HomeTab>
           .map((tag) => tag.trim().toLowerCase())
           .any(identities.contains);
       final weight = aligned ? 1.0 : 0.5;
-      maxValue += weight;
+      maxValue += 1.0; // denominator = full task count; weight only penalises numerator
       if (task.state == TaskState.completed) completedValue += weight;
     }
     final progress = maxValue > 0 ? completedValue / maxValue : 0.0;

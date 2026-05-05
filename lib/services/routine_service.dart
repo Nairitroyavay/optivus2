@@ -451,7 +451,7 @@ class RoutineService {
           .map(_normalizeTag)
           .any((tag) => identities.contains(tag));
       final weight = aligned ? 1.0 : 0.5;
-      maxPossibleValue += weight;
+      maxPossibleValue += 1.0; // denominator = full task count; weight only penalises numerator
       if (task.state == TaskState.completed) {
         if (aligned) {
           alignedCompletedValue += weight;
