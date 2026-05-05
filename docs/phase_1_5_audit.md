@@ -1852,3 +1852,302 @@ No production Dart or JS file was modified by this audit pass.
 
 **LOW (manual mode) / HIGH (Photo OCR mode).** Manual class entry is complete — all five fields save correctly, per-day isolation works, the routine tab shows real times at the right weekday, and `routine_template_created` fires per class. The Photo OCR "Upload" button must not be surfaced to users until Task 12.5 deploys the `routineImport` CF and wires a real image picker.
 
+---
+
+## Task 6.4 — Eating Setup Screen (manual mode)
+
+> Audit date: 2026-05-05
+> Auditor: re-verify pass (read-only — no Dart or JS files modified)
+
+### Files inspected
+
+- `lib/views/routine/eating_setup_screen.dart`
+- `lib/providers/routine_provider.dart` (lines 118–136, 417–440, 664–665, 954–970, 1329–1334, 1401–1431)
+- `lib/views/routine/routine_tab.dart` (lines 261–277)
+- `lib/views/routine/timeline_section.dart` (lines 74–96)
+- `lib/core/constants/event_names.dart` (line 62)
+- `functions/test/routineImport.contract.test.js` (dependency probe)
+
+### Files changed
+
+- `docs/phase_1_5_audit.md` — this section appended only. No production Dart or JS file modified.
+
+### Firestore paths affected
+
+- `/users/{uid}/routine/current.templates.eating` — written by `routine_repository.dart:63–75` via `saveRoutine({..., 'templates': {..., 'eating': templates}})`.
+- `/users/{uid}/routine/current.mealPlans` — written via `state.toMap()` → `'mealPlans'` (7-element `DayMealPlan` list); loaded back by `RoutineState.fromMap():728`.
+
+### Requirements verification
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Manual mode saves **meal name** | ✅ | `eating_setup_screen.dart:751` — `'mealType': item.mealName`. Stored separately from food. |
+| Manual mode saves **food** | ✅ | `eating_setup_screen.dart:752` — `'notes': item.foodName`; also `'title': item.foodName.isNotEmpty ? item.foodName : item.mealName` at `:746` |
+| Manual mode saves **time** | ✅ | `eating_setup_screen.dart:748–749` — `'startTime': format24h(item.start)`, `'endTime': format24h(item.start + item.duration)` in HH:MM 24h |
+| Manual mode saves **repeat** | ✅ | `eating_setup_screen.dart:750` — `'repeatRule': 'mess_menu_weekday:${d + 1}'` per weekday (1=Mon…7=Sun); matched by `_repeatRuleMatchesDate` at `routine_provider.dart:135` |
+
+**Schema note on `title`:** The `title` field at `:746` is `foodName if non-empty else mealName`. If a user enters no food name, `title` becomes the meal name and `notes` is empty — the template loses a clean food/meal separation. The `mealType` key preserves the meal name regardless. Low severity; no data loss, just a schema convention inconsistency.
+
+### Routine tab eating display
+
+The routine tab reads eating from `mealPlanForDay(dayIdx).all` (`routine_tab.dart:262`), which returns `MealItem` objects. `MealItem.time` is set to `item.displayStartTime` (12h AM/PM format). `tlNormalizeTime()` (`timeline_section.dart:85`) converts it to HH:MM before display. The block title is derived from `tlMealLabel(normalizedTime)` (Breakfast / Lunch / Snack / Dinner by hour range at `:74`).
+
+**Gap:** The routine tab uses `tlMealLabel()` to re-derive the meal label from the time rather than using `item.mealName` directly. A custom meal the user named "Pre-workout" at 3:00 PM would appear in the timeline as "Snack" (hour 15 → `< 17` → Snack). The user-set meal name is not displayed.
+
+### Per-day eating logic
+
+| Mechanism | Status | Evidence |
+|---|---|---|
+| Setup: different meals per day (Mon–Sun) | ✅ | `weeklyRoutines[0..6]` — independent block list per day; 7-droplet selector at `eating_setup_screen.dart:1053–1078` |
+| Save: weekday encoded per block | ✅ | `eating_setup_screen.dart:750` — `'repeatRule': 'mess_menu_weekday:${d + 1}'` |
+| Routine tab shows correct day's meals | ✅ | `mealPlanForDay(dayIdx)` at `routine_tab.dart:262` — keyed by `(date.weekday - 1)` |
+| Survives app restart | ✅ | `setMealPlan()` → `_saveDebounced()` → `state.toMap()` includes `mealPlans` → Firestore; `RoutineState.fromMap():728` loads it back |
+
+### Dependency status
+
+| Dependency | Status | Evidence |
+|---|---|---|
+| **Task 12.6** — Mess Photo OCR | ⚠️ UI STUB ONLY | `eating_setup_screen.dart:819–833` — "Upload Mess Menu Photo" button calls `_loadGeneratedMeals(..., source: 'mess_menu_photo', imageMetadata: {...})`. No camera/file picker opened — hardcoded metadata only. Calls `previewRoutineImport` → `routineImport` CF which does not exist. Falls back to `_mealBlocksFromText('Mess menu photo import')` producing dummy blocks. |
+| **Task 12.7** — AI Goal eating | ❌ NOT PRESENT | No AI Goal entry-point exists anywhere in `eating_setup_screen.dart` or any referenced file. `_showImportOptions()` only exposes text-AI and mess-photo. Task 12.7 is not even stubbed. |
+
+### Event system
+
+| Event | Status | Citation |
+|---|---|---|
+| `routine_template_created` | ✅ IMPLEMENTED | `event_names.dart:62` — `EventNames.routineTemplateCreated`. `setRoutineTemplates('eating', templates)` at `eating_setup_screen.dart:768` calls `_emitTemplateCreated()` per template (`routine_provider.dart:1422`), emitting `{templateId, routineType: 'eating'}`. |
+
+### Gaps and follow-up ownership
+
+| Gap ID | Description | Severity | Owner |
+|---|---|---|---|
+| G1 | `title` template field merges food and meal name — if no food is entered, `title` = meal name and `notes` = empty string, losing clean schema separation. | LOW | Task 6.4 follow-up |
+| G2 | Routine tab shows `tlMealLabel()` (Breakfast/Lunch/Snack/Dinner by hour) instead of the user's actual meal name. A custom "Pre-workout" block at 3 PM appears as "Snack". | LOW | Task 6.4 follow-up |
+| G3 | Task 12.6 — Mess Photo: no image picker wired; `routineImport` CF missing; silent fallback to dummy blocks. | HIGH | **Task 12.6** |
+| G4 | Task 12.7 — AI Goal eating import: not present at all, not even a stub. | HIGH | **Task 12.7** |
+
+### Analyzer result
+
+```
+flutter analyze lib/views/routine/eating_setup_screen.dart
+No issues found! (ran in 2.7s)
+```
+
+No production Dart or JS file was modified by this audit pass.
+
+### Risk if shipped as-is
+
+**LOW (manual mode) / HIGH (AI import modes).** Manual meal entry is functionally correct — all four required fields save, per-day isolation works, persistence survives restart, and `routine_template_created` fires per template. G1 and G2 are cosmetic/schema gaps that don't cause data loss. Task 12.6 (Mess Photo) must not be surfaced until the CF and image picker are deployed. Task 12.7 (AI Goal) has no implementation at all and must be built from scratch.
+
+---
+
+## Feature Spec — Task 12.6 + Task 12.7 (Build Together)
+
+> Status: NOT BUILT — full specification below. Build 12.6 and 12.7 in the same sprint; they share the `routineImport` Cloud Function and the AI eating pipeline.
+
+---
+
+### Task 12.6 — Mess Menu Photo OCR
+
+#### What it does
+
+User taps "Upload Mess Menu Photo" in the Eating Setup screen, picks a photo of a printed/digital mess menu timetable (like a weekly college canteen board), and the app parses it into a full 7-day eating schedule automatically.
+
+#### Client-side (Flutter)
+
+1. **Image picker** — wire `image_picker` package on "Upload Mess Menu Photo" tap.
+   - Allow camera capture or gallery selection.
+   - Compress to ≤ 1 MB JPEG before upload (use `flutter_image_compress`).
+   - Upload to Firebase Storage at `gs://…/users/{uid}/mess_menu/{timestamp}.jpg`.
+   - Pass the Storage download URL to the Cloud Function as `imageUrl`.
+
+2. **Loading state** — show a shimmer or progress indicator while the CF processes.
+
+3. **Review sheet** — `_showMealReview()` already exists. After CF returns parsed blocks, pass them into the review sheet for user confirmation before committing.
+
+4. **Accept all** — calls `_save()` → `setRoutineTemplates('eating', templates)` → materialization.
+
+#### Cloud Function — `routineImport` (mode: `timetable_image` / `mess_menu_photo`)
+
+```
+POST (callable) routineImport
+Input:
+  routineType: 'eating'
+  mode: 'mess_menu_photo'
+  imageUrl: string          // Firebase Storage URL
+  commit: false             // preview only; client commits after review
+
+Steps:
+  1. Download image from Storage URL.
+  2. Call Claude Vision API (claude-sonnet-4-6) with the image.
+     Prompt: "Parse this mess menu timetable. Return a JSON array of
+     meal templates, one per row×column cell. Each object:
+     { day: 1-7 (1=Mon), mealType, food, startTime (HH:MM), endTime (HH:MM) }"
+  3. Validate returned JSON — drop malformed rows.
+  4. Return { templates: [...] } to client.
+
+Output template shape:
+  templateId, title (mealType), routineType: 'eating',
+  startTime, endTime, repeatRule: 'mess_menu_weekday:{day}',
+  mealType, notes (food items), emoji, isActive: true
+```
+
+#### Firestore path written
+`/users/{uid}/routine/current.templates.eating` — same path as manual entry. No new path needed.
+
+#### Events
+- `routine_template_created` fires per template via existing `_emitTemplateCreated()`.
+
+#### Error handling
+- CF timeout / Vision API failure → return `{ templates: [], error: 'parse_failed' }`.
+- Client falls back to showing an empty review sheet with a "Try again" prompt.
+- Never silently produce dummy blocks (remove existing fallback to `_mealBlocksFromText`).
+
+---
+
+### Task 12.7 — AI Adaptive Eating (Nutritional Gap-Fill + Missed Meal Recovery)
+
+#### Overview
+
+After the user has a meal routine set up, the AI monitors their daily nutritional intake against their profile targets. When a gap is found — either because a meal was missed or the day's food falls short of requirements — the AI adds a food suggestion automatically. The user cannot delete AI suggestions but can steer them via a preference chat (sweet / spicy / light / etc.).
+
+#### Two triggers
+
+| Trigger | Condition | AI action | Recurrence |
+|---|---|---|---|
+| **Meal marked done** | Running daily total still below target after completion | Add a gap-fill food suggestion for the remainder of the day | Repeats every same weekday (added as a template with `mess_menu_weekday:N`) |
+| **Meal marked skipped/abandoned** | A scheduled meal task goes to `skipped` or `abandoned` state | Add a one-off make-up meal for that day | One-time only (`repeatRule: 'once'`) |
+
+#### Nutritional baseline — from user profile
+
+Read from `/users/{uid}/main/biometrics` + `/users/{uid}/main/lifestyle`:
+
+| Field used | Source |
+|---|---|
+| `weightKg`, `heightCm`, `age` | `biometrics` |
+| `goal` (lose / maintain / gain) | `lifestyle.fitnessGoal` |
+| `activityLevel` | `lifestyle.activityLevel` |
+
+Derive daily targets server-side using **Mifflin-St Jeor**:
+
+```
+BMR (male)   = 10×weight + 6.25×height − 5×age + 5
+BMR (female) = 10×weight + 6.25×height − 5×age − 161
+TDEE         = BMR × activityMultiplier
+target_kcal  = TDEE + goalOffset   // -500 lose / 0 maintain / +300 gain
+target_protein_g = weight × 1.6    // standard lean mass target
+```
+
+Cache these derived targets in `/users/{uid}/routine/nutritional_targets` on first computation. Recompute only when profile changes.
+
+#### Nutritional estimation — AI-estimated
+
+No external food database. Claude estimates nutritional content from food names using its training data.
+
+```
+Prompt to Claude (on each meal-done event):
+"The user has eaten the following today: {foods_eaten}.
+ Their daily targets are {target_kcal} kcal and {target_protein_g}g protein.
+ Estimate the approximate nutrition of what they ate.
+ Then suggest one small food item (under 300 kcal) that fills the remaining gap.
+ Consider user preferences: {preference_tags}.
+ Return JSON: { estimated_kcal, estimated_protein_g, suggestion: { name, kcal, emoji } }"
+```
+
+#### Flow — meal marked done
+
+```
+User marks eating task → completed
+       ↓
+Client emits task_completed event
+       ↓
+Cloud Function: checkNutritionalGap(uid, date)
+  1. Read today's completed eating tasks from /users/{uid}/tasks
+  2. Fetch nutritional_targets from Firestore
+  3. Fetch today's accepted AI suggestions (if any)
+  4. Call Claude with foods_eaten + targets + preferences
+  5. If gap > 200 kcal OR protein gap > 10g:
+       a. Write suggestion to /users/{uid}/routine/ai_suggestions/{date}_{slot}
+       b. Add a non-deletable eating task for today
+       c. If this gap has occurred on the same weekday for 2+ consecutive weeks:
+            → add a recurring template: repeatRule: 'mess_menu_weekday:{weekday}'
+  6. Emit ai_meal_suggestion_created event
+```
+
+#### Flow — meal marked skipped/abandoned
+
+```
+User marks eating task → skipped | abandoned
+       ↓
+Cloud Function: handleMissedMeal(uid, date, missedTaskId)
+  1. Read the missed meal's food from the task
+  2. Call Claude: "User missed {mealType}. Suggest a quick replacement
+     under {kcal} kcal. Preferences: {preference_tags}."
+  3. Write a one-time task for today (repeatRule: 'once')
+  4. Write to /users/{uid}/routine/ai_suggestions/{date}_missed_{taskId}
+  5. Emit ai_meal_suggestion_created
+```
+
+#### User preference steering
+
+User can type "I want something sweet" / "spicy" / "light" / "vegetarian" etc. in a preference chat panel (new small widget below the AI suggestion card in the routine tab).
+
+```
+Preference flow:
+  User types preference → saved to /users/{uid}/routine/preferences.eating_tags
+  Cloud Function re-runs suggestion with new tags → updates the suggestion doc
+  Client shows updated suggestion → user sees new food
+  No delete option. User can keep requesting until satisfied.
+```
+
+Preference tags persist and are used in all future AI suggestions.
+
+#### Firestore paths (new)
+
+| Path | Content |
+|---|---|
+| `/users/{uid}/routine/nutritional_targets` | `{ target_kcal, target_protein_g, computed_at, bmr, tdee }` |
+| `/users/{uid}/routine/ai_suggestions/{date}_{slot}` | `{ suggestion, estimated_kcal, gap_kcal, weekday, source: 'gap_fill' | 'missed_meal', status: 'pending' | 'accepted', preference_tags }` |
+| `/users/{uid}/routine/preferences` | `{ eating_tags: ['vegetarian', 'no_spicy', ...] }` |
+
+#### Events (new — add to `event_names.dart`)
+
+| Event name | Fired when |
+|---|---|
+| `ai_meal_suggestion_created` | CF writes a new suggestion |
+| `ai_meal_preference_updated` | User updates preference tags |
+| `nutritional_target_computed` | Targets computed/recomputed from profile |
+
+#### UI changes needed
+
+1. **Routine tab eating block** — AI-suggested blocks show a small `✦ AI` badge. No delete icon rendered. A "Steer" button opens the preference input.
+
+2. **Preference input** — a single-line text field + submit below the AI card. Sends preference to CF; updates `eating_tags` in Firestore; re-triggers suggestion.
+
+3. **No delete** — AI suggestion tasks must have `deletable: false` flag. Task list and routine tab both check this flag before rendering a delete/swipe option.
+
+#### Build order
+
+```
+1. Add nutritional_targets CF helper (derive from profile on first load)
+2. Extend routineImport CF to handle 'mess_menu_photo' (Task 12.6) — shared CF
+3. Add checkNutritionalGap CF (Task 12.7a — gap-fill)
+4. Add handleMissedMeal CF (Task 12.7b — recovery)
+5. Add preference steering endpoint to CF
+6. Client: wire image picker for 12.6
+7. Client: render AI badge + Steer button on AI suggestion blocks
+8. Client: preference input widget
+9. Add new events to event_names.dart + payload validator
+```
+
+#### Dependencies before building
+
+- Task 12.6 and 12.7 share the same `routineImport` CF — build CF first, then client.
+- User profile (`biometrics`, `lifestyle.fitnessGoal`, `activityLevel`) must be populated from onboarding (Task 1.2) before nutritional targets can be derived.
+- `deletable: false` flag needs to be added to `TaskModel` (new field, safe default `true`).
+
+#### Risk
+
+- Claude nutritional estimates will be approximate. Frame suggestions as "around X kcal" not precise values.
+- Recurring gap-fill templates (same weekday) may conflict with user-set templates. Dedup by checking if a template with the same `repeatRule` + similar `startTime` already exists before inserting.
+- Preference steering without a delete option can frustrate users if the AI keeps suggesting foods they dislike. Consider a "Dismiss for today" option (hides suggestion for the day without deleting the template).
+

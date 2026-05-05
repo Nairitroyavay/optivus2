@@ -1499,7 +1499,11 @@ Return:
 
 #### Status
 
-- [x] Done (May 4 2026)
+- [x] Done (May 4 2026).
+- **Re-open required before Task 12.7:** Three new events must be added to `event_names.dart` and `event_payload_validator.dart`:
+  - `nutritional_target_computed` — payload: `{uid, tdeeKcal, source:'mifflin_st_jeor'}`
+  - `ai_meal_suggestion_created` — payload: `{uid, date, slot, mealName, calories, repeatRule}`
+  - `ai_meal_preference_updated` — payload: `{uid, flavorTags: [...]}`
 
 #### Why
 
@@ -1591,7 +1595,11 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [x] Done (May 4 2026)
+- [x] Done (May 4 2026).
+- **Re-open required before Task 12.7:** Add indexes for two new AI eating collections:
+  - `routine/ai_suggestions`: composite `date ASC, slot ASC` (used by timeline to load AI blocks for a date).
+  - `routine/nutritional_targets`: no composite index needed (single doc per user).
+  - `routine/preferences`: no composite index needed (single doc per user).
 
 #### Why
 
@@ -3056,6 +3064,8 @@ Return:
 #### Status
 
 - [x] Done (manual mode — May 2 2026).
+- G1 fixed (May 5 2026): template `title` field now always stores `mealName` (was ambiguous — sometimes stored `foodName`). Fix in `eating_setup_screen.dart`.
+- G2 fixed (May 5 2026): timeline meal block now shows user's meal name as title and `tlMealLabel()` (Breakfast/Lunch/etc.) as subtitle. Fix in `routine_tab.dart`.
 
 ---
 
@@ -3159,6 +3169,7 @@ Return:
 #### Status
 
 - [ ] Not started
+- Filter pill label fix resolved (May 5 2026): `GlassFilterDropdown` now shows active filter name (e.g., "Eating", "All") instead of hardcoded "Filter". Fix in `glass_filter_dropdown.dart` — `LiquidGlassPill` label is now dynamic from `filterMetaData[widget.selected]!.label`.
 
 #### Why
 
@@ -6580,7 +6591,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-Problem 8: Hostel users upload mess sheet → AI extracts meal times + items.
+Problem 8: Hostel users upload a weekly mess sheet photo → Claude Vision OCR extracts per-weekday meal times + items → populates eating templates automatically.
+
+**Note:** This task shares the `routineImport` Cloud Function with Tasks 12.2 (skin care photo), 12.3 (skin care text), 12.4 (class timetable photo), and 12.5 (skin care text). Build the CF once and route by `mode`. AI Goal text mode for eating is covered by the fully-redesigned **Task 12.7**.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -6610,10 +6623,11 @@ Only modify these files:
 
 ## Requirements
 
-- Modes tab: Manual / Mess Photo / AI Goal.
-- Mess Photo: pick → upload → callable `routineImport({mode:'eating_mess_photo'})`.
-- Output: weekly grid `{weekday, mealTime, mealName, items[]}`.
-- Review screen lets user adjust each meal.
+- Mess Photo button (already stubbed in `_showImportOptions`): pick → compress → upload Storage → callable `routineImport({mode:'eating_mess_photo', storagePath})`.
+- CF uses Claude Vision to OCR the sheet and returns weekly grid `{weekday, mealTime, mealName, items[]}`.
+- Review screen lets user adjust each meal before saving.
+- Saved templates use `repeatRule: 'mess_menu_weekday:N'` (N=1–7, 1=Mon).
+- AI Goal text mode (Task 12.7) is a separate button — do NOT add it here.
 
 ## Events
 
@@ -6621,11 +6635,12 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 6.4, 12.1, 12.2, 11.1.
+- Tasks 6.4, 12.1, 11.1.
+  - Note: 12.2 (skin care photo AI) is NOT a dependency — the `routineImport` CF is shared infrastructure but this task's mode is independent.
 
 ## Verification
 
-Mess sheet image → grid populated.
+Mess sheet image → weekly grid populated → templates saved with `mess_menu_weekday` repeat rule.
 
 ## Final response format
 
@@ -6634,11 +6649,12 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 6.4, 12.1, 12.2, 11.1.
+- Tasks 6.4, 12.1, 11.1.
 
 #### How to verify
 
 - Image → grid.
+- Templates stored with `mess_menu_weekday:N` repeatRule.
 
 #### Estimate
 
@@ -6646,12 +6662,13 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] Mess mode.
-- [ ] Grid.
+- [ ] Mess Photo mode functional end-to-end.
+- [ ] Grid review screen.
+- [ ] Templates persisted with correct repeatRule.
 
 ---
 
-### Task 12.7 — Eating goal-text AI mode (NEW — Problem 8)
+### Task 12.7 — AI Adaptive Eating — nutritional gap-fill, missed meal recovery, preference steering (NEW — Problem 8 extension)
 
 #### Status
 
@@ -6659,7 +6676,11 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-Problem 8: User describes goal ("hostel mass gain extras") → AI generates full eating routine.
+After the user marks meals done, Claude checks whether their nutritional targets (TDEE) were met. If short, Claude adds one or more "gap-fill" food blocks for the rest of the day. If a meal was skipped, Claude schedules a recovery snack. Gap-fill blocks repeat on the same weekday the following weeks (e.g., Monday gap-fill appears every Monday). The user can steer suggestions toward sweet / spicy / light etc. by sending a preference message; Claude adjusts on next suggestion cycle. AI blocks are non-deletable by the user (they can request flavour changes instead).
+
+**Spec source:** `docs/phase_1_5_audit.md` → "Feature Spec: Task 12.6 + Task 12.7 — AI Adaptive Eating".
+
+**Build order prerequisite:** Task 2.3 must be re-opened to add the new events below before this task ships. Task 2.4 must be re-opened to add the new Firestore indexes.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -6670,37 +6691,106 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Add eating-goal AI mode.
+Build AI Adaptive Eating: nutritional gap-fill after meal completion, missed-meal recovery, and preference steering.
 
 ## Files allowed to modify
 
 Only modify these files:
 
+- `lib/providers/routine_provider.dart`
+- `lib/views/routine/routine_tab.dart`
 - `lib/views/routine/eating_setup_screen.dart`
-- `functions/ai/routineImport.js`
+- `lib/models/task_model.dart`          ← add `deletable: bool` field (default true)
+- `functions/ai/adaptiveEating.js`      ← new callable Cloud Function
+- `functions/index.js`
+- `lib/core/constants/event_names.dart`
+- `lib/services/event_payload_validator.dart`
 
 ## Firestore paths
 
-- `/users/{uid}/routine/current.templates.eating`
+- `/users/{uid}/routine/current.templates.eating`           ← existing meal templates
+- `/users/{uid}/routine/ai_suggestions/{date}_{slot}`       ← AI-generated gap-fill blocks
+  Fields: `mealName`, `emoji`, `time`, `calories`, `repeatRule` (`weekly:N`), `deletable: false`, `source: 'ai'`, `createdAt`
+- `/users/{uid}/routine/nutritional_targets`                ← computed TDEE + macro targets
+  Fields: `tdeeKcal`, `proteinG`, `carbG`, `fatG`, `lastComputedAt`
+- `/users/{uid}/routine/preferences`                        ← user flavour steering
+  Fields: `flavorTags: ['sweet'|'spicy'|'light'|...]`, `updatedAt`
+- `/users/{uid}/profile/main`                               ← read-only: height, weight, age, sex, activityLevel, eatingDisorderFlag
+
+## Storage paths
+
+None for this task.
 
 ## Requirements
 
-- AI Goal mode: textarea ("Describe your eating goal / context") → callable `routineImport({mode:'eating_goal_text', sourceText})`.
-- Function reads About You biometrics for safety (eating-disorder flag → skip calorie talk).
-- Output: full weekly routine of meal blocks + AI-suggested extras.
-- Review screen lets user adjust per meal.
+### A — TDEE computation
+- On first run (or when biometrics change), callable `adaptiveEating({action:'compute_targets'})` computes TDEE using Mifflin-St Jeor formula:
+  - Men:   BMR = 10·weight(kg) + 6.25·height(cm) − 5·age + 5
+  - Women: BMR = 10·weight(kg) + 6.25·height(cm) − 5·age − 161
+  - TDEE = BMR × activityMultiplier (sedentary 1.2, light 1.375, moderate 1.55, active 1.725, very active 1.9)
+- Store result in `/users/{uid}/routine/nutritional_targets`.
+- If `eatingDisorderFlag == true`: skip calorie talk; use only meal-structure suggestions.
+- Emit `nutritional_target_computed` event.
+
+### B — Gap-fill flow (triggered after meal marked done)
+- Triggered: user marks a meal task done in routine_tab → provider calls `adaptiveEating({action:'check_gap', date, completedMealTime})`.
+- CF sums calories of all meals marked done that day vs. `tdeeKcal`.
+- If gap > 200 kcal and there are ≥ 2 hours left in the day:
+  - Generate 1–2 food blocks to close the gap (respect `preferences.flavorTags`).
+  - Store each block in `/users/{uid}/routine/ai_suggestions/{date}_{slot}` with `deletable: false`.
+  - Create a recurring template with `repeatRule: 'weekly:N'` (N = weekday of `date`) so the same suggestion appears every week on that weekday.
+  - Emit `ai_meal_suggestion_created` event per block.
+- If gap ≤ 200 kcal: no action.
+
+### C — Missed meal recovery
+- Triggered: routine_tab checks at end-of-day (or on next open after midnight) if any meal template for that date was never marked done.
+- Calls `adaptiveEating({action:'missed_meal_recovery', date, missedSlot})`.
+- CF generates a recovery snack for the following morning.
+- Stored in `ai_suggestions/{tomorrow}_{slot}`.
+- Non-recurring (one-off `repeatRule: 'once'`).
+- Emit `ai_meal_suggestion_created`.
+
+### D — Preference steering
+- In eating_setup_screen.dart: add a "Steer AI suggestions" chip bar (sweet / spicy / light / high-protein / vegan).
+- Tapping a chip saves to `/users/{uid}/routine/preferences.flavorTags` (toggle on/off).
+- CF reads this on every gap-fill cycle.
+- Emit `ai_meal_preference_updated` event.
+
+### E — Non-deletable display
+- `TaskModel` gains `deletable: bool` (default `true`).
+- AI suggestion blocks in routine_tab render with a lock icon instead of a delete affordance.
+- User can long-press to open a "Request change" bottom sheet: free-text preference → saved to `preferences` → triggers new gap-fill cycle.
+
+### F — TaskModel.deletable field
+- Add `deletable` to `TaskModel.fromMap()` / `toMap()` (default `true` when absent in Firestore).
+- `TaskService.deleteTask()` must check `deletable == false` and throw `PermissionDenied` error.
 
 ## Events
 
-- `suggestion_generated`, `suggestion_accepted`, `routine_template_created`.
+- `nutritional_target_computed` — payload: `{uid, tdeeKcal, source:'mifflin_st_jeor'}`
+- `ai_meal_suggestion_created` — payload: `{uid, date, slot, mealName, calories, repeatRule}`
+- `ai_meal_preference_updated` — payload: `{uid, flavorTags: [...]}`
+
+These three events must be registered in `event_names.dart` and validated in `event_payload_validator.dart` before this task is considered done. (Task 2.3 re-open required.)
 
 ## Dependencies
 
-- Tasks 6.4, 12.1, 12.2, 11.1, 1.2.
+- Task 6.4 (eating manual mode — templates exist).
+- Task 12.1 (routineImport CF skeleton — shared infra).
+- Task 12.6 (mess menu OCR — user's weekly meals populated before gap-fill makes sense).
+- Task 11.1 (About You biometrics — needed for TDEE).
+- Task 1.2 (profile/main — eatingDisorderFlag).
+- Task 3.1 (TaskModel base — adding `deletable` field here).
+- Task 2.3 re-open (new event validators).
+- Task 2.4 re-open (new Firestore indexes for `ai_suggestions` and `nutritional_targets`).
 
 ## Verification
 
-"I live in hostel, want mass gain, eat mess + need extra high-cal snacks" → full plan.
+1. Mark all meals done for today with 600 kcal gap → CF creates gap-fill block in Firestore + appears in timeline with lock icon.
+2. Skip breakfast → next morning recovery snack appears.
+3. Toggle "spicy" chip → regenerate gap-fill → suggestion uses spicy tags.
+4. Attempt to delete AI block → blocked with PermissionDenied.
+5. Long-press AI block → "Request change" sheet → preference saved → cycle re-runs.
 
 ## Final response format
 
@@ -6709,20 +6799,30 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 6.4, 12.1, 12.2, 11.1, 1.2.
+- Tasks 6.4, 12.1, 12.6, 11.1, 1.2, 3.1.
+- Task 2.3 must be re-opened to add: `nutritional_target_computed`, `ai_meal_suggestion_created`, `ai_meal_preference_updated`.
+- Task 2.4 must be re-opened to add indexes for `ai_suggestions` (date+slot) and `nutritional_targets`.
 
 #### How to verify
 
-- Sample input → routine.
+- Gap-fill block appears in timeline after calories fall short.
+- Missed meal → next-day recovery snack present.
+- Preference chips steer suggestions.
+- AI blocks non-deletable; "Request change" flow works.
 
 #### Estimate
 
-1 day
+3–4 days
 
 #### Done Criteria
 
-- [ ] Goal-text mode.
-- [ ] Eating-disorder safety.
+- [ ] TDEE computed and stored (Mifflin-St Jeor; eating-disorder flag respected).
+- [ ] Gap-fill CF creates recurring weekly AI blocks when daily shortfall > 200 kcal.
+- [ ] Missed meal recovery creates one-off next-morning block.
+- [ ] Preference chip bar saves `flavorTags`; CF respects them.
+- [ ] AI blocks render with lock icon; delete blocked; "Request change" sheet works.
+- [ ] `TaskModel.deletable` field added; `TaskService.deleteTask()` enforces it.
+- [ ] Three new events registered, validated, and emitted.
 
 ---
 

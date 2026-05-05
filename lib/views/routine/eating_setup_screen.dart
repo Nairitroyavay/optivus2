@@ -743,7 +743,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
         if (!item.isAdd) {
           templates.add({
             'templateId': 'eating_${d + 1}_${item.id}',
-            'title': item.foodName.isNotEmpty ? item.foodName : item.mealName,
+            'title': item.mealName,
             'routineType': 'eating',
             'startTime': format24h(item.start),
             'endTime': format24h(item.start + item.duration),

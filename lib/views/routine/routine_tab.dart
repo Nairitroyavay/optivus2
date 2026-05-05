@@ -268,8 +268,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
 
         scheduled.add(DisplayBlock(
             time: normalizedTime,
-            title: tlMealLabel(normalizedTime),
-            subtitle: m.name,
+            title: m.name,
+            subtitle: tlMealLabel(normalizedTime),
             accentColor: kRose,
             emoji: m.emoji,
             type: RoutineFilter.eating));

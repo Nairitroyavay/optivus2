@@ -233,7 +233,10 @@ class _GlassFilterDropdownState extends State<GlassFilterDropdown>
         onTap: () => _overlay == null ? _openDropdown() : _closeDropdown(),
         child: Container(
           color: Colors.transparent,
-          child: const LiquidGlassPill(label: 'Filter', width: _fixedWidth),
+          child: LiquidGlassPill(
+            label: filterMetaData[widget.selected]!.label,
+            width: _fixedWidth,
+          ),
         ),
       ),
     );
