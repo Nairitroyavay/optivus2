@@ -216,39 +216,29 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     }
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.skinCare) {
-      final p = s.skinPlanForDay(dayIdx);
-      if (p.morning.isNotEmpty &&
-          !firestoreTaskTimes.contains('07:30_Morning Skin Care')) {
+      for (final t in s.skinCareTemplatesForDate(date)) {
+        final title = t['title']?.toString() ?? 'Skin Care';
+        final startTime = t['startTime']?.toString() ?? '00:00';
+        final endTime = t['endTime']?.toString() ?? startTime;
+        final rawSteps = t['steps'];
+        final steps = rawSteps is List
+            ? rawSteps
+                .map((e) => e is Map
+                    ? (e['name']?.toString() ?? '')
+                    : e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList()
+            : <String>[];
+        if (firestoreTaskTimes.contains('${startTime}_$title')) continue;
         scheduled.add(DisplayBlock(
-            time: '07:30',
-            title: 'Morning Skin Care',
-            subtitle: p.morning.map((x) => x.name).join(' · '),
-            accentColor: kMint,
-            emoji: '🌿',
-            type: RoutineFilter.skinCare,
-            subtasks: p.morning.map((x) => x.name).toList()));
-      }
-      if (p.afternoon.isNotEmpty &&
-          !firestoreTaskTimes.contains('13:00_Afternoon Skin Care')) {
-        scheduled.add(DisplayBlock(
-            time: '13:00',
-            title: 'Afternoon Skin Care',
-            subtitle: p.afternoon.map((x) => x.name).join(' · '),
-            accentColor: kMint,
-            emoji: '💧',
-            type: RoutineFilter.skinCare,
-            subtasks: p.afternoon.map((x) => x.name).toList()));
-      }
-      if (p.night.isNotEmpty &&
-          !firestoreTaskTimes.contains('22:00_Night Skin Care')) {
-        scheduled.add(DisplayBlock(
-            time: '22:00',
-            title: 'Night Skin Care',
-            subtitle: p.night.map((x) => x.name).join(' · '),
-            accentColor: kPurple,
-            emoji: '🌙',
-            type: RoutineFilter.skinCare,
-            subtasks: p.night.map((x) => x.name).toList()));
+          time: startTime,
+          title: title,
+          subtitle: '$startTime – $endTime',
+          accentColor: kMint,
+          emoji: '🌿',
+          type: RoutineFilter.skinCare,
+          subtasks: steps,
+        ));
       }
     }
 

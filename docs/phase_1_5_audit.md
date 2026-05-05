@@ -1701,3 +1701,73 @@ No production Dart or JS files were modified.
 
 **Risk if shipped as-is: LOW–MEDIUM.** The day lifecycle, rollup, and summary write are production-ready. The `day_started` server gap and UTC timezone handling for client day-close are worth a follow-up before scaling to multi-timezone users. Task 5.3 is the only significant feature gap.
 
+---
+
+## Task 6.1 — Skin Care Setup Screen (manual mode)
+
+> Audit date: 2026-05-05
+> Auditor: re-verify pass (read-only — no Dart or JS files modified)
+
+### Files inspected
+
+- `lib/views/routine/skin_care_setup_screen.dart`
+- `lib/providers/routine_provider.dart` (lines 1389–1431)
+- `lib/repositories/routine_repository.dart` (lines 50–76)
+- `lib/views/tabs/routine_settings_screen.dart` (lines 1–30)
+- `lib/core/constants/event_names.dart` (line 62)
+- `functions/test/routineImport.contract.test.js` (dependency probe)
+
+### Files changed
+
+- `docs/phase_1_5_audit.md` — this section appended only.
+
+### Firestore paths affected
+
+- `/users/{uid}/routine/current.templates.skin_care` — written by `routine_repository.dart:63–75` via `saveRoutine({..., 'templates': {..., 'skin_care': templates}})`.
+
+### Requirements verification
+
+| Requirement | Status | Citation |
+|---|---|---|
+| Manual mode saves **title** | ✅ | `skin_care_setup_screen.dart:831` — `'title': item.title` |
+| Manual mode saves **time** | ✅ | `skin_care_setup_screen.dart:833–834` — `startTime` / `endTime` in HH:mm (24 h) |
+| Manual mode saves **weekday** | ⚠️ PARTIAL | `skin_care_setup_screen.dart:835` — encoded as `'repeatRule': 'weekly:${d + 1}'`; no explicit `weekday` key. Value is recoverable by parsing the rule string, but downstream consumers must parse it themselves. |
+| Manual mode saves **steps** | ✅ | `skin_care_setup_screen.dart:836` — `[{'name': step.name}, ...]` |
+| Manual mode saves **notes** | ⚠️ PARTIAL | `skin_care_setup_screen.dart:837` — field exists as `'notes': item.steps.map((step) => step.name).join(', ')`. It is auto-derived from step names; no dedicated notes text field exists in `SkinCareRoutineBlock` or the edit dialog (`_showEditDialog`). |
+
+### Dependency status
+
+| Dependency | Status | Evidence |
+|---|---|---|
+| **Task 4.3** — Settings entry-point | ✅ IMPLEMENTED | `routine_settings_screen.dart:15–18` — `RoutineFilter.skinCare` branch pushes `SkinCareSetupScreen`. |
+| **Task 12.2** — AI text mode | ⚠️ UI STUB ONLY | `skin_care_setup_screen.dart:867–929` wires a text input → `previewRoutineImport` (mode `text_ai`) → `routineImport` Cloud Function. The CF **does not exist** (`functions/src/` directory is absent). The contract-test file (`functions/test/routineImport.contract.test.js:4–6`) explicitly states the CF is "planned" with all tests skipped. Client falls back to a locally generated dummy block on failure (`skin_care_setup_screen.dart:951–952`), so the UI does not crash. |
+| **Task 12.3** — AI photo mode | ⚠️ UI STUB ONLY | `skin_care_setup_screen.dart:912–928` wires a "Photo Upload with AI" button. No camera/gallery picker is invoked — the call passes hardcoded metadata (`'source': 'skin_care_photo_upload'`) with no real image bytes. Same CF dependency gap as Task 12.2. |
+
+### Event system
+
+| Event | Status | Citation |
+|---|---|---|
+| `routine_template_created` | ✅ IMPLEMENTED | `event_names.dart:62` defines `EventNames.routineTemplateCreated = 'routine_template_created'`. `routine_provider.dart:1409–1411` calls `_emitTemplateCreated()` for every template saved by `setRoutineTemplates()`, which is the exact method called by `skin_care_setup_screen.dart:859`. Event payload contains `templateId` and `routineType`. |
+
+### Gaps and follow-up ownership
+
+| Gap ID | Description | Severity | Owner |
+|---|---|---|---|
+| G1 | `weekday` is not a top-level field — it is encoded in `repeatRule`. Any query or display code that expects a `weekday` key will fail silently. | LOW | Task 6.1 follow-up or Task 8.5 (materialization) |
+| G2 | `notes` is auto-derived from step names, not user-authored. The edit dialog has no notes input. Users cannot attach free-text notes to a skin care block. | LOW | Task 6.1 follow-up |
+| G3 | `routineImport` Cloud Function does not exist. Text-AI and Photo-AI modes degrade silently to a dummy block. No user-visible error is shown when the CF call fails. | HIGH | **Task 12.2 / Task 12.3** — do not ship AI import UI until CF is deployed. |
+| G4 | Photo mode passes hardcoded metadata — no actual image is captured or uploaded. The "Photo Upload" button is cosmetically present but non-functional. | HIGH | **Task 12.3** |
+
+### Analyzer result
+
+```
+flutter analyze lib/views/routine/skin_care_setup_screen.dart
+No issues found! (ran in 1.6s)
+```
+
+No production Dart or JS file was modified by this audit pass.
+
+### Risk if shipped as-is
+
+**LOW (manual mode) / HIGH (AI import modes).** Manual mode is functionally correct — all five template fields are written to Firestore and `routine_template_created` fires per template. The two gaps (weekday encoding, notes derivation) are minor schema conventions, not runtime errors. AI import modes (Tasks 12.2/12.3) must not be surfaced to users until the `routineImport` Cloud Function is deployed and the photo capture flow is implemented.
+

@@ -649,6 +649,18 @@ class RoutineState {
   DaySkinPlan skinPlanForDay(int weekdayIndex) =>
       skinCarePlans[weekdayIndex.clamp(0, 6)];
 
+  /// Returns skin care templates whose repeatRule matches [date], sorted by
+  /// startTime ascending. Used by the routine tab to show exact user-set times.
+  List<Map<String, dynamic>> skinCareTemplatesForDate(DateTime date) {
+    final templates = routineTemplates['skin_care'] ?? const [];
+    return (templates
+          .where((t) => _repeatRuleMatchesDate(
+              t['repeatRule']?.toString() ?? '', date))
+          .toList())
+      ..sort((a, b) => (a['startTime']?.toString() ?? '')
+          .compareTo(b['startTime']?.toString() ?? ''));
+  }
+
   DayMealPlan mealPlanForDay(int weekdayIndex) =>
       mealPlans[weekdayIndex.clamp(0, 6)];
 
