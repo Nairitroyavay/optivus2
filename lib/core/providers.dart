@@ -277,3 +277,29 @@ final screenTimeLogProvider = StreamProvider<ScreenTimeLogModel?>((ref) {
   final importer = ref.watch(screenTimeImporterProvider);
   return importer.watchToday();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tracker AI suggestions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Real-time stream of pending AI suggestions targeted at the tracker surface.
+///
+/// Returns raw maps because the Suggestion model does not exist yet (Task 11.1).
+/// Each map includes the document ID under the 'id' key.
+/// Limited to 1 doc — the tracker only shows one insight card at a time.
+final trackerSuggestionsProvider =
+    StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(const []);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('suggestions')
+      .where('status', isEqualTo: 'pending')
+      .where('targetSurface', isEqualTo: 'tracker')
+      .limit(1)
+      .snapshots()
+      .map((snap) =>
+          snap.docs.map((d) => <String, dynamic>{'id': d.id, ...d.data()}).toList());
+});

@@ -1,20 +1,51 @@
 import 'dart:io';
+import 'dart:math' as math;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/models/habit_log_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
 import 'package:optivus2/views/habits/log_habit_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Range & Filter enums for the tracker header
+// ─────────────────────────────────────────────────────────────────────────────
+enum _TrackerRange { today, week, month }
+enum _TrackerFilter { all, good, bad, phone }
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Accent colour pool for habit cards — cycles through vibrant LiquidGlass tones
 // ─────────────────────────────────────────────────────────────────────────────
 const _kGoodAccents = [kMint, kBlue, kPurple, kAmber, kCoral];
 const _kBadAccents = [kCoral, kRose, Color(0xFFFF5C93), kPurple];
+
+final _rangeHabitLogsProvider = StreamProvider.family<List<HabitLog>, _TrackerRange>((ref, range) {
+  if (range == _TrackerRange.today) {
+    return ref.watch(habitServiceProvider).watchHabitLogsForDate(DateTime.now());
+  }
+  final days = range == _TrackerRange.week ? 7 : 30;
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(const <HabitLog>[]);
+
+  final now = DateTime.now();
+  final start = DateTime(now.year, now.month, now.day).subtract(Duration(days: days - 1));
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('habit_logs')
+      .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+      .snapshots()
+      .map((snap) => snap.docs.map(HabitLog.fromFirestore).toList());
+});
 
 class TrackerTab extends ConsumerStatefulWidget {
   const TrackerTab({super.key});
@@ -24,22 +55,25 @@ class TrackerTab extends ConsumerStatefulWidget {
 }
 
 class _TrackerTabState extends ConsumerState<TrackerTab> {
+  _TrackerRange _range = _TrackerRange.today;
+  _TrackerFilter _filter = _TrackerFilter.all;
+
   @override
   Widget build(BuildContext context) {
     final habitsAsync = ref.watch(habitsProvider);
-    final logsAsync = ref.watch(todayHabitLogsProvider);
+    final logsAsync = ref.watch(_rangeHabitLogsProvider(_range));
     final logs = logsAsync.valueOrNull ?? const <HabitLog>[];
     final totals = _totalsByHabit(logs);
     final slipCounts = _slipCountsByHabit(logs);
     final latestLogs = _latestLogsByHabit(logs);
+    final summaryAsync = ref.watch(todaySummaryProvider);
+    final weekSummariesAsync = ref.watch(recentDailySummariesProvider(7));
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: habitsAsync.when(
-          loading: () => const Center(
-            child: CircularProgressIndicator(color: kAmber),
-          ),
+          loading: () => const _TrackerShimmer(),
           error: (err, _) => Center(
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -68,29 +102,54 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
             ),
           ),
           data: (habits) {
+            final showGood =
+                _filter == _TrackerFilter.all || _filter == _TrackerFilter.good;
+            final showBad =
+                _filter == _TrackerFilter.all || _filter == _TrackerFilter.bad;
+            final showPhone = _filter == _TrackerFilter.all ||
+                _filter == _TrackerFilter.phone;
+
             final goodHabits =
                 habits.where((h) => h.kind == HabitKind.good).toList();
             final badHabits =
                 habits.where((h) => h.kind == HabitKind.bad).toList();
 
+            // Compute mission ring value
+            final summary = summaryAsync.valueOrNull;
+            final missionPct = _computeMissionPct(
+              summary: summary,
+              weekSummaries: weekSummariesAsync.valueOrNull ?? [],
+              goodHabits: goodHabits,
+              totals: totals,
+            );
+            final habitsCompletedToday = _countCompleted(goodHabits, totals);
+
             return CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                // ── Header ──
+                // ── Header with range toggle + filter ──
                 SliverToBoxAdapter(
-                  child: _TrackerHeader(
+                  child: _TrackerHeaderV2(
+                    range: _range,
+                    filter: _filter,
+                    onRangeChanged: (r) => setState(() => _range = r),
+                    onFilterChanged: (f) => setState(() => _filter = f),
                     onAddHabit: () => context.push('/habits/new'),
                   ),
                 ),
 
-                // ── Screen Time Card (Android only) ──
-                if (Platform.isAndroid)
-                  SliverToBoxAdapter(
-                    child: _ScreenTimeSection(),
+                // ── Compact mission ring ──
+                SliverToBoxAdapter(
+                  child: _MissionRingSection(
+                    range: _range,
+                    missionPct: missionPct,
+                    habitsCompleted: habitsCompletedToday,
+                    totalHabits: goodHabits.length,
                   ),
+                ),
 
                 // ── Good Habits Section ──
-                if (goodHabits.isNotEmpty) ...[
+                if (showGood && goodHabits.isNotEmpty) ...[
                   const SliverToBoxAdapter(
                     child: LiquidSectionHeader(title: 'Good Habits'),
                   ),
@@ -111,47 +170,52 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                             'Unable to load today\'s habit logs: ${logsAsync.error}',
                       ),
                     ),
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 268,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: goodHabits.length,
+                        itemBuilder: (context, index) {
                           final habit = goodHabits[index];
                           final accent =
                               _kGoodAccents[index % _kGoodAccents.length];
                           final total = totals[habit.id] ?? 0;
-                          final goal = habit.dailyGoal ?? 1;
+                          final daysMultiplier = _range == _TrackerRange.week ? 7 : (_range == _TrackerRange.month ? 30 : 1);
+                          final goal = (habit.dailyGoal ?? 1) * daysMultiplier;
                           final progress =
                               (total / goal).clamp(0.0, 1.0).toDouble();
                           final latestLog = latestLogs[habit.id];
 
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: _GoodHabitCard(
-                              habit: habit,
-                              accent: accent,
-                              progress: progress,
-                              currentValue: total,
-                              goalValue: goal,
-                              onLog: () => _openLogSheet(habit),
-                              onUndoLatest: latestLog == null
-                                  ? null
-                                  : () => _undoLatest(habit, latestLog),
-                              onStreakDetails: () => _showStreakDetails(habit),
-                              onDetails: () => _showDetails(
-                                habit,
+                            padding: const EdgeInsets.only(right: 14),
+                            child: SizedBox(
+                              width: 280,
+                              child: _GoodHabitCard(
+                                habit: habit,
+                                accent: accent,
+                                progress: progress,
+                                currentValue: total,
+                                goalValue: goal,
+                                onLog: () => _openLogSheet(habit),
+                                onUndoLatest: latestLog == null
+                                    ? null
+                                    : () => _undoLatest(habit, latestLog),
+                                onStreakDetails: () => _showStreakDetails(habit),
+                                onDetails: () => _showDetails(habit),
                               ),
                             ),
                           );
                         },
-                        childCount: goodHabits.length,
                       ),
                     ),
                   ),
                 ],
 
                 // ── Bad Habits Section ──
-                if (badHabits.isNotEmpty) ...[
+                if (showBad && badHabits.isNotEmpty) ...[
                   const SliverToBoxAdapter(
                     child: LiquidSectionHeader(title: 'Habits to Break'),
                   ),
@@ -181,9 +245,7 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                                   ? null
                                   : () => _undoLatest(habit, latestLog),
                               onStreakDetails: () => _showStreakDetails(habit),
-                              onDetails: () => _showDetails(
-                                habit,
-                              ),
+                              onDetails: () => _showDetails(habit),
                             ),
                           );
                         },
@@ -192,12 +254,38 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                   ),
                 ],
 
+                // ── Screen Time Card (Android only) ──
+                if (Platform.isAndroid && showPhone)
+                  const SliverToBoxAdapter(child: _ScreenTimeSection()),
+
+                // ── Weekly Trend Strip ──
+                SliverToBoxAdapter(
+                  child: _WeeklyTrendStrip(
+                    summaries: weekSummariesAsync.valueOrNull ?? const [],
+                    isLoading: weekSummariesAsync.isLoading,
+                  ),
+                ),
+
+                // ── AI Insight Card ──
+                SliverToBoxAdapter(
+                  child: _AiInsightCard(
+                    onDismiss: _dismissSuggestion,
+                  ),
+                ),
+
                 // ── Empty State ──
                 if (habits.isEmpty)
-                  const SliverFillRemaining(
+                  SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _EmptyState(),
+                    child: _EmptyStateGlass(
+                      onAdd: () => context.push('/habits/new'),
+                    ),
                   ),
+
+                // ── Sync footer ──
+                SliverToBoxAdapter(
+                  child: _SyncFooter(summary: summary),
+                ),
 
                 // Bottom padding
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
@@ -208,6 +296,8 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
       ),
     );
   }
+
+  // ── Data helpers (preserved) ──────────────────────────────────────────────
 
   Map<String, num> _totalsByHabit(List<HabitLog> logs) {
     final totals = <String, num>{};
@@ -235,6 +325,53 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
     }
     return latest;
   }
+
+  double _computeMissionPct({
+    required DaySummary? summary,
+    required List<DaySummary> weekSummaries,
+    required List<HabitModel> goodHabits,
+    required Map<String, num> totals,
+  }) {
+    switch (_range) {
+      case _TrackerRange.today:
+        if (summary != null) return summary.missionPct;
+        // Live fallback: compute from habit progress
+        if (goodHabits.isEmpty) return 0;
+        double sum = 0;
+        for (final h in goodHabits) {
+          final goal = h.dailyGoal ?? 1;
+          final total = totals[h.id] ?? 0;
+          sum += (total / goal).clamp(0.0, 1.0);
+        }
+        return sum / goodHabits.length;
+      case _TrackerRange.week:
+        if (weekSummaries.isEmpty) return 0;
+        final avg = weekSummaries.fold<double>(
+                0, (s, d) => s + d.missionPct) /
+            weekSummaries.length;
+        return avg.clamp(0.0, 1.0);
+      case _TrackerRange.month:
+        // For month we use the week summaries provider with 30 days
+        // but we only have 7 from the current watch. Fall back to same data.
+        if (weekSummaries.isEmpty) return 0;
+        final avg = weekSummaries.fold<double>(
+                0, (s, d) => s + d.missionPct) /
+            weekSummaries.length;
+        return avg.clamp(0.0, 1.0);
+    }
+  }
+
+  int _countCompleted(List<HabitModel> goodHabits, Map<String, num> totals) {
+    int count = 0;
+    final daysMultiplier = _range == _TrackerRange.week ? 7 : (_range == _TrackerRange.month ? 30 : 1);
+    for (final h in goodHabits) {
+      final goal = (h.dailyGoal ?? 1) * daysMultiplier;
+      if ((totals[h.id] ?? 0) >= goal) count++;
+    }
+    return count;
+  }
+
+  // ── Actions (preserved) ──────────────────────────────────────────────────
 
   Future<void> _openLogSheet(HabitModel habit) async {
     await showModalBottomSheet<bool>(
@@ -276,51 +413,80 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
   void _showStreakDetails(HabitModel habit) {
     context.push('/streaks/${habit.id}');
   }
+
+  Future<void> _dismissSuggestion(String suggestionId) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('suggestions')
+          .doc(suggestionId)
+          .update({
+        'status': 'dismissed',
+        'dismissedAt': FieldValue.serverTimestamp(),
+      });
+
+      await ref.read(eventServiceProvider).emit(
+        eventName: EventNames.suggestionDismissed,
+        source: 'app',
+        payload: {'suggestionId': suggestionId},
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to dismiss insight: $e'),
+            backgroundColor: kCoral,
+          ),
+        );
+      }
+    }
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// HEADER
+// HEADER V2 — date, Today/Week/Month toggle, filter chips
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _TrackerHeader extends StatelessWidget {
+class _TrackerHeaderV2 extends StatelessWidget {
+  final _TrackerRange range;
+  final _TrackerFilter filter;
+  final ValueChanged<_TrackerRange> onRangeChanged;
+  final ValueChanged<_TrackerFilter> onFilterChanged;
   final VoidCallback onAddHabit;
 
-  const _TrackerHeader({required this.onAddHabit});
+  const _TrackerHeaderV2({
+    required this.range,
+    required this.filter,
+    required this.onRangeChanged,
+    required this.onFilterChanged,
+    required this.onAddHabit,
+  });
+
+  static const _dayNames = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+    'Friday', 'Saturday', 'Sunday',
+  ];
+  static const _monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final dayNames = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
-    ];
-    final monthNames = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Date + Add button ──
           Text(
-            '${dayNames[now.weekday - 1]}, ${monthNames[now.month - 1]} ${now.day}',
+            '${_dayNames[now.weekday - 1]}, ${_monthNames[now.month - 1]} ${now.day}',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -362,10 +528,237 @@ class _TrackerHeader extends StatelessWidget {
               ),
             ],
           ),
+
+          const SizedBox(height: 16),
+
+          // ── Today / Week / Month toggle ──
+          Row(
+            children: [
+              for (final r in _TrackerRange.values) ...[
+                if (r.index > 0) const SizedBox(width: 8),
+                _RangeChip(
+                  label: r.name[0].toUpperCase() + r.name.substring(1),
+                  selected: range == r,
+                  onTap: () => onRangeChanged(r),
+                ),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // ── Filter chips ──
+          SizedBox(
+            height: 36,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              children: [
+                for (final f in _TrackerFilter.values) ...[
+                  if (f.index > 0) const SizedBox(width: 8),
+                  LiquidChip(
+                    label: f.name[0].toUpperCase() + f.name.substring(1),
+                    selected: filter == f,
+                    accentColor: _filterColor(f),
+                    onTap: () => onFilterChanged(f),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
+
+  Color _filterColor(_TrackerFilter f) {
+    switch (f) {
+      case _TrackerFilter.all:
+        return kAmber;
+      case _TrackerFilter.good:
+        return kMint;
+      case _TrackerFilter.bad:
+        return kCoral;
+      case _TrackerFilter.phone:
+        return kBlue;
+    }
+  }
+}
+
+class _RangeChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _RangeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? kAmber : kWhite.withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? kAmber.withValues(alpha: 0.6)
+                : kWhite.withValues(alpha: 0.9),
+            width: 1.5,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: kAmber.withValues(alpha: 0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: selected ? kWhite : kInk,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MISSION RING SECTION — compact arc ring with score
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _MissionRingSection extends StatelessWidget {
+  final _TrackerRange range;
+  final double missionPct;
+  final int habitsCompleted;
+  final int totalHabits;
+
+  const _MissionRingSection({
+    required this.range,
+    required this.missionPct,
+    required this.habitsCompleted,
+    required this.totalHabits,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (missionPct * 100).round();
+    final rangeLabel = range.name[0].toUpperCase() + range.name.substring(1);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: LiquidCard(
+        frosted: true,
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 64,
+              height: 64,
+              child: CustomPaint(
+                painter: _MissionRingPainter(progress: missionPct),
+                child: Center(
+                  child: Text(
+                    '$pct%',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      color: kInk,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$rangeLabel Mission',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: kInk,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$habitsCompleted of $totalHabits habits completed',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: kSub.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MissionRingPainter extends CustomPainter {
+  final double progress;
+  const _MissionRingPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 5;
+    const strokeWidth = 6.0;
+    const startAngle = -math.pi / 2;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      0,
+      math.pi * 2,
+      false,
+      Paint()
+        ..color = kAmber.withValues(alpha: 0.12)
+        ..strokeWidth = strokeWidth
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round,
+    );
+
+    if (progress > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        math.pi * 2 * progress.clamp(0.0, 1.0),
+        false,
+        Paint()
+          ..shader = const LinearGradient(
+            colors: [kAmber, kMint],
+          ).createShader(Rect.fromCircle(center: center, radius: radius))
+          ..strokeWidth = strokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MissionRingPainter old) => old.progress != progress;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -855,54 +1248,65 @@ class _InlineError extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// EMPTY STATE
+// EMPTY STATE — glass card with CTA
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+class _EmptyStateGlass extends StatelessWidget {
+  final VoidCallback onAdd;
+  const _EmptyStateGlass({required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: kAmber.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: LiquidCard(
+          frosted: true,
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: kAmber.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.track_changes_rounded,
+                  size: 40,
+                  color: kAmber.withValues(alpha: 0.7),
+                ),
               ),
-              child: Icon(
-                Icons.track_changes_rounded,
-                size: 40,
-                color: kAmber.withValues(alpha: 0.7),
+              const SizedBox(height: 20),
+              const Text(
+                'No habits yet',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: kInk,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'No habits yet',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: kInk,
+              const SizedBox(height: 8),
+              Text(
+                'Add your first habit to start tracking your progress and building better routines.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: kSub.withValues(alpha: 0.7),
+                  height: 1.5,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Add your first habit to start tracking your progress and building better routines.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: kSub.withValues(alpha: 0.7),
-                height: 1.5,
+              const SizedBox(height: 20),
+              LiquidButton(
+                label: 'Add Habit',
+                leading: const Icon(Icons.add_rounded, color: kWhite, size: 20),
+                onTap: onAdd,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1479,3 +1883,315 @@ class _AppUsageRow extends StatelessWidget {
     );
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// WEEKLY TREND STRIP — 7-day bars from dailySummaries
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _WeeklyTrendStrip extends StatelessWidget {
+  final List<DaySummary> summaries;
+  final bool isLoading;
+
+  const _WeeklyTrendStrip({
+    required this.summaries,
+    required this.isLoading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading && summaries.isEmpty) return const SizedBox.shrink();
+
+    // Build 7-day data keyed by weekday (1=Mon … 7=Sun)
+    final today = DateTime.now();
+    final dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final values = List<double>.filled(7, 0);
+
+    for (final s in summaries) {
+      final dt = DateTime.tryParse(s.date);
+      if (dt == null) continue;
+      final diff = today.difference(dt).inDays;
+      if (diff >= 0 && diff < 7) {
+        // Map into 7-slot array: index 0 = 6 days ago, index 6 = today
+        values[6 - diff] = s.missionPct.clamp(0, 1);
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: LiquidCard(
+        frosted: true,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Weekly Trend',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: kInk,
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 60,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: List.generate(7, (i) {
+                  final isToday = i == 6;
+                  final h = (values[i] * 48).clamp(4.0, 48.0);
+                  // Compute the day label index from the actual calendar
+                  final dayDate = today.subtract(Duration(days: 6 - i));
+                  final labelIdx = (dayDate.weekday - 1) % 7;
+
+                  return Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          height: h,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(4),
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: isToday
+                                  ? [kAmber, kMint]
+                                  : [
+                                      kAmber.withValues(alpha: 0.3),
+                                      kMint.withValues(alpha: 0.3),
+                                    ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          dayLabels[labelIdx],
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight:
+                                isToday ? FontWeight.w800 : FontWeight.w600,
+                            color: isToday
+                                ? kInk
+                                : kSub.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// AI INSIGHT CARD — reads pending tracker suggestions
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _AiInsightCard extends ConsumerWidget {
+  final Future<void> Function(String suggestionId) onDismiss;
+
+  const _AiInsightCard({required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final suggestionsAsync = ref.watch(trackerSuggestionsProvider);
+
+    return suggestionsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (suggestions) {
+        if (suggestions.isEmpty) return const SizedBox.shrink();
+
+        final suggestion = suggestions.first;
+        final id = suggestion['id'] as String? ?? '';
+        final title =
+            suggestion['title'] as String? ?? 'AI Insight';
+        final body =
+            suggestion['body'] as String? ?? '';
+        final reason = suggestion['reason'] as String?;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+          child: LiquidCard(
+            frosted: true,
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: kPurple.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 18,
+                        color: kPurple.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: kInk,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => onDismiss(id),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 20,
+                        color: kSub.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+                if (body.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    body,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: kInk.withValues(alpha: 0.7),
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+                if (reason != null && reason.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    reason,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: kPurple.withValues(alpha: 0.65),
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SHIMMER LOADING SKELETON
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _TrackerShimmer extends StatelessWidget {
+  const _TrackerShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Fake date line
+          _shimmerBox(120, 14),
+          const SizedBox(height: 10),
+          // Fake title
+          _shimmerBox(200, 28),
+          const SizedBox(height: 20),
+          // Fake range chips
+          Row(
+            children: [
+              _shimmerBox(60, 32),
+              const SizedBox(width: 8),
+              _shimmerBox(60, 32),
+              const SizedBox(width: 8),
+              _shimmerBox(60, 32),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Fake mission ring card
+          _shimmerBox(double.infinity, 100),
+          const SizedBox(height: 16),
+          // Fake habit cards
+          _shimmerBox(double.infinity, 80),
+          const SizedBox(height: 12),
+          _shimmerBox(double.infinity, 80),
+          const SizedBox(height: 12),
+          _shimmerBox(double.infinity, 80),
+        ],
+      ),
+    );
+  }
+
+  Widget _shimmerBox(double width, double height) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 600),
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: kWhite.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SYNC FOOTER — "Synced X min ago"
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _SyncFooter extends StatelessWidget {
+  final DaySummary? summary;
+  const _SyncFooter({this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    String label;
+    if (summary != null) {
+      final diff = DateTime.now().difference(summary!.computedAt);
+      if (diff.inMinutes < 1) {
+        label = 'Synced just now';
+      } else if (diff.inMinutes < 60) {
+        label = 'Synced ${diff.inMinutes}m ago';
+      } else {
+        label = 'Synced ${diff.inHours}h ago';
+      }
+    } else {
+      label = 'Live';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+      child: Center(
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: kSub.withValues(alpha: 0.45),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
