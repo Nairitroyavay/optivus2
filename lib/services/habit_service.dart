@@ -327,6 +327,10 @@ class HabitService {
     String? note,
     String? source,
     DateTime? occurredAt,
+    int? durationSec,
+    String? type,
+    int? moodBefore,
+    int? moodAfter,
   }) async {
     final habit = await _requireHabit(habitId);
     _requireKind(habit, HabitKind.good);
@@ -351,6 +355,10 @@ class HabitService {
       unit: unit ?? habit.unit,
       note: note,
       source: source ?? 'manual',
+      durationSec: durationSec,
+      type: type,
+      moodBefore: moodBefore,
+      moodAfter: moodAfter,
       schemaVersion: 1,
     );
 
@@ -374,6 +382,10 @@ class HabitService {
         'goalHitToday':
             habit.dailyGoal == null ? null : totalAfter >= habit.dailyGoal!,
         if (note != null) 'note': note,
+        if (durationSec != null) 'durationSec': durationSec,
+        if (type != null) 'type': type,
+        if (moodBefore != null) 'moodBefore': moodBefore,
+        if (moodAfter != null) 'moodAfter': moodAfter,
         'source': source ?? 'manual',
       },
       batch: batch,

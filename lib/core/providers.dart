@@ -8,6 +8,7 @@ import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/habit_service.dart';
+import 'package:optivus2/services/meditation_audio_service.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/habit_log_model.dart';
@@ -73,6 +74,12 @@ final streakServiceProvider = Provider<StreakService>(
     eventService: ref.read(eventServiceProvider),
   ),
 );
+
+final meditationAudioServiceProvider = Provider.autoDispose<MeditationAudioService>((ref) {
+  final service = MeditationAudioService();
+  ref.onDispose(service.dispose);
+  return service;
+});
 
 final stateAggregatorServiceProvider = Provider<StateAggregatorService>(
   (_) => StateAggregatorService(),

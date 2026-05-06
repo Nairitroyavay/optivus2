@@ -23,6 +23,10 @@ class HabitLog {
   final String? avoidedWith; // for procrastination (what they did instead)
   final DateTime? dismissedAt; // for auto-logs
   final String? source; // manual | notification | coach | auto
+  final int? durationSec; // for meditation/session habits
+  final String? type; // for meditation type
+  final int? moodBefore; // for meditation lift
+  final int? moodAfter; // for meditation lift
   final int schemaVersion;
 
   const HabitLog({
@@ -40,6 +44,10 @@ class HabitLog {
     this.avoidedWith,
     this.dismissedAt,
     this.source = 'manual',
+    this.durationSec,
+    this.type,
+    this.moodBefore,
+    this.moodAfter,
     this.schemaVersion = 1,
   });
 
@@ -63,6 +71,10 @@ class HabitLog {
       avoidedWith: data['avoidedWith'] as String?,
       dismissedAt: _asDateTime(data['dismissedAt']),
       source: data['source'] as String? ?? 'manual',
+      durationSec: data['durationSec'] as int?,
+      type: data['type'] as String?,
+      moodBefore: data['moodBefore'] as int?,
+      moodAfter: data['moodAfter'] as int?,
       schemaVersion: data['schemaVersion'] as int? ?? 1,
     );
   }
@@ -83,6 +95,10 @@ class HabitLog {
       if (avoidedWith != null) 'avoidedWith': avoidedWith,
       if (dismissedAt != null) 'dismissedAt': Timestamp.fromDate(dismissedAt!),
       'source': source,
+      if (durationSec != null) 'durationSec': durationSec,
+      if (type != null) 'type': type,
+      if (moodBefore != null) 'moodBefore': moodBefore,
+      if (moodAfter != null) 'moodAfter': moodAfter,
       'schemaVersion': schemaVersion,
     };
   }
