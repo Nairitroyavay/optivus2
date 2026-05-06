@@ -397,6 +397,83 @@ void main() {
     });
   });
 
+  group('HabitService.logProcrastinationSlip', () {
+    test('writes procrastination slip and emits event', () async {
+      final now = DateTime(2026, 5, 2, 8);
+      final habit = HabitModel(
+        id: 'procrast',
+        name: 'Procrastination',
+        kind: HabitKind.bad,
+        trackerType: 'procrastination',
+        state: HabitState.active,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await service.createHabit(habit);
+
+      final occurred = DateTime(2026, 5, 2, 10);
+      final logId = await service.logProcrastinationSlip(
+        habitId: 'procrast',
+        trigger: 'late_start',
+        minutesLost: 45,
+        relatedTaskId: 'task_1',
+        avoidedWith: 'Cleaned kitchen',
+        source: 'auto',
+        occurredAt: occurred,
+      );
+
+      final canonical = await logsColl().doc(logId).get();
+      expect(canonical.exists, isTrue);
+      expect(canonical.data()!['logType'], 'slip');
+      expect(canonical.data()!['quantity'], 45);
+      expect(canonical.data()!['trigger'], 'late_start');
+      expect(canonical.data()!['relatedTaskId'], 'task_1');
+      expect(canonical.data()!['avoidedWith'], 'Cleaned kitchen');
+      expect(canonical.data()!['source'], 'auto');
+
+      final events = await eventsNamed(EventNames.badHabitSlipLogged);
+      expect(events.length, 1);
+      expect(events.first.data()['payload']['minutesLost'], 45);
+      expect(events.first.data()['payload']['relatedTaskId'], 'task_1');
+    });
+
+    test('dismissSlip updates document and emits event', () async {
+      final now = DateTime(2026, 5, 2, 8);
+      final habit = HabitModel(
+        id: 'procrast',
+        name: 'Procrastination',
+        kind: HabitKind.bad,
+        trackerType: 'procrastination',
+        state: HabitState.active,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await service.createHabit(habit);
+      final logId = await service.logProcrastinationSlip(
+        habitId: 'procrast',
+        trigger: 'no_show',
+        minutesLost: 60,
+      );
+
+      await service.dismissSlip('procrast', logId);
+
+      final doc = await logsColl().doc(logId).get();
+      expect(doc.data()!['dismissedAt'], isNotNull);
+
+      final events = await eventsNamed(EventNames.slipLogDismissed);
+      expect(events.length, 1);
+      expect(events.first.data()['payload']['logId'], logId);
+    });
+
+    test('getProcrastinationHabit finds the correct habit', () async {
+      final habit = _badHabit(id: 'p1').copyWith(trackerType: 'procrastination');
+      await service.createHabit(habit);
+
+      final found = await service.getProcrastinationHabit();
+      expect(found?.id, 'p1');
+    });
+  });
+
   group('HabitService.deleteLog', () {
     test('requires confirmation for destructive delete', () async {
       await service.createHabit(_goodHabit());

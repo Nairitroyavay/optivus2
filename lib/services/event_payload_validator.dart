@@ -123,6 +123,8 @@ class EventPayloadValidator {
         'log_id': (v) => v is String,
         'habitId': (v) => v is String,
         'habit_id': (v) => v is String,
+        'habitName': (v) => v is String,
+        'dismissedAt': (v) => v is String,
       },
     ),
     EventNames.streakExtended: _streakRule,

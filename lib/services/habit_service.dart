@@ -444,6 +444,121 @@ class HabitService {
     return logId;
   }
 
+  Future<String> logProcrastinationSlip({
+    required String habitId,
+    required String trigger,
+    required num minutesLost,
+    String? relatedTaskId,
+    String? avoidedWith,
+    String? note,
+    String? source,
+    DateTime? occurredAt,
+  }) async {
+    final habit = await _requireHabit(habitId);
+    _requireKind(habit, HabitKind.bad);
+    _requireActive(habit);
+
+    final now = DateTime.now();
+    final occurred = occurredAt ?? now;
+    final logId = generateId();
+    final countTodayAfter = await _slipCount(habitId, occurred) + 1;
+
+    final log = HabitLog(
+      logId: logId,
+      habitId: habitId,
+      habitKind: habit.kind.name,
+      logType: 'slip',
+      occurredAt: occurred,
+      loggedAt: now,
+      quantity: minutesLost,
+      unit: 'min',
+      trigger: trigger,
+      relatedTaskId: relatedTaskId,
+      avoidedWith: avoidedWith,
+      note: note,
+      source: source ?? 'manual',
+      schemaVersion: 1,
+    );
+
+    final batch = _firestore.batch();
+    batch.set(_habitLogsRef.doc(logId), log.toFirestore());
+    batch.set(_itemsRef(habitId, occurred).doc(logId), log.toFirestore());
+
+    await _eventService.emit(
+      eventName: EventNames.badHabitSlipLogged,
+      source: source ?? 'manual',
+      payload: {
+        'habitId': habitId,
+        'habitName': habit.name,
+        'logId': logId,
+        'count': 1,
+        'minutesLost': minutesLost,
+        'ts': occurred.toIso8601String(),
+        'occurredAt': occurred.toIso8601String(),
+        'loggedAt': now.toIso8601String(),
+        'countTodayAfter': countTodayAfter,
+        'trigger': trigger,
+        'triggerTag': trigger,
+        'trigger_tag': trigger,
+        if (relatedTaskId != null) 'relatedTaskId': relatedTaskId,
+        if (avoidedWith != null) 'avoidedWith': avoidedWith,
+        if (note != null) 'note': note,
+        'source': source ?? 'manual',
+      },
+      batch: batch,
+    );
+
+    await batch.commit();
+    return logId;
+  }
+
+  Future<void> dismissSlip(String habitId, String logId) async {
+    final habit = await _requireHabit(habitId);
+    final logRef = _habitLogsRef.doc(logId);
+    final snap = await logRef.get();
+    if (!snap.exists) return;
+
+    final log = HabitLog.fromFirestore(snap);
+    final now = DateTime.now();
+
+    final batch = _firestore.batch();
+    batch.update(logRef, {
+      'dismissedAt': Timestamp.fromDate(now),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // Also update nested copy
+    batch.update(_itemsRef(habitId, log.occurredAt).doc(logId), {
+      'dismissedAt': Timestamp.fromDate(now),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    await _eventService.emit(
+      eventName: EventNames.slipLogDismissed,
+      source: 'app',
+      payload: {
+        'habitId': habitId,
+        'habitName': habit.name,
+        'logId': logId,
+        'dismissedAt': now.toIso8601String(),
+      },
+      batch: batch,
+    );
+
+    await batch.commit();
+  }
+
+  Future<HabitModel?> getProcrastinationHabit() async {
+    final snap = await _habitsRef
+        .where('trackerType', isEqualTo: 'procrastination')
+        .where('state', isEqualTo: HabitState.active.name)
+        .limit(1)
+        .get();
+
+    if (snap.docs.isEmpty) return null;
+    return HabitModel.fromFirestore(snap.docs.first);
+  }
+
   Future<void> deleteLog(
     String habitId,
     String logId, {

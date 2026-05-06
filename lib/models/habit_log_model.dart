@@ -19,6 +19,9 @@ class HabitLog {
   final String? unit;
   final String? trigger; // for bad habits (stress, boredom, etc.)
   final String? note;
+  final String? relatedTaskId; // for procrastination
+  final String? avoidedWith; // for procrastination (what they did instead)
+  final DateTime? dismissedAt; // for auto-logs
   final String? source; // manual | notification | coach | auto
   final int schemaVersion;
 
@@ -33,9 +36,14 @@ class HabitLog {
     this.unit,
     this.trigger,
     this.note,
+    this.relatedTaskId,
+    this.avoidedWith,
+    this.dismissedAt,
     this.source = 'manual',
     this.schemaVersion = 1,
   });
+
+  bool get isDismissed => dismissedAt != null;
 
   factory HabitLog.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
@@ -51,6 +59,9 @@ class HabitLog {
       unit: data['unit'] as String?,
       trigger: data['trigger'] as String?,
       note: data['note'] as String?,
+      relatedTaskId: data['relatedTaskId'] as String?,
+      avoidedWith: data['avoidedWith'] as String?,
+      dismissedAt: _asDateTime(data['dismissedAt']),
       source: data['source'] as String? ?? 'manual',
       schemaVersion: data['schemaVersion'] as int? ?? 1,
     );
@@ -68,6 +79,9 @@ class HabitLog {
       if (unit != null) 'unit': unit,
       if (trigger != null) 'trigger': trigger,
       if (note != null) 'note': note,
+      if (relatedTaskId != null) 'relatedTaskId': relatedTaskId,
+      if (avoidedWith != null) 'avoidedWith': avoidedWith,
+      if (dismissedAt != null) 'dismissedAt': Timestamp.fromDate(dismissedAt!),
       'source': source,
       'schemaVersion': schemaVersion,
     };

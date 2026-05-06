@@ -25,6 +25,7 @@ import '../models/task_model.dart';
 import '../services/coach_service.dart';
 import '../services/event_service.dart';
 import '../services/gemini_service.dart';
+import '../services/habit_service.dart';
 import '../services/notification_service.dart';
 import '../services/rule_engine_service.dart';
 import '../services/state_aggregator_service.dart';
@@ -33,6 +34,7 @@ import '../services/streak_service.dart';
 class EventOrchestrator {
   final EventService _eventService;
   final StreakService _streakService;
+  final HabitService _habitService;
   final NotificationService _notificationService;
   final StateAggregatorService _stateAggregatorService;
   final RuleEngineService _ruleEngineService;
@@ -45,6 +47,7 @@ class EventOrchestrator {
   EventOrchestrator({
     required EventService eventService,
     required StreakService streakService,
+    required HabitService habitService,
     required NotificationService notificationService,
     required CoachService coachService,
     StateAggregatorService? stateAggregatorService,
@@ -53,6 +56,7 @@ class EventOrchestrator {
     FirebaseAuth? auth,
   })  : _eventService = eventService,
         _streakService = streakService,
+        _habitService = habitService,
         _notificationService = notificationService,
         _coachService = coachService,
         _stateAggregatorService =
@@ -235,9 +239,27 @@ class EventOrchestrator {
           try {
             final task = TaskModel.fromMap(event.payload);
             await _notificationService.scheduleTaskEndReminder(task, uid);
+
+            // ── Procrastination Auto-Detect (Late Start) ──────────────────
+            // If the task started more than 30 minutes after planned start.
+            final drift =
+                task.actualStart?.difference(task.plannedStart).inMinutes ?? 0;
+            if (drift > 30) {
+              final habit = await _habitService.getProcrastinationHabit();
+              if (habit != null) {
+                await _habitService.logProcrastinationSlip(
+                  habitId: habit.id,
+                  trigger: 'late_start',
+                  minutesLost: drift,
+                  relatedTaskId: task.id,
+                  source: 'auto',
+                  occurredAt: task.actualStart,
+                );
+              }
+            }
           } catch (e) {
             debugPrint(
-                '[EventOrchestrator] Failed to schedule task-end reminder: $e');
+                '[EventOrchestrator] Failed to handle task-start signals: $e');
           }
         }
         break;
@@ -248,9 +270,25 @@ class EventOrchestrator {
           try {
             final task = TaskModel.fromMap(event.payload);
             await _notificationService.cancelTaskEndReminder(task, uid);
+
+            // ── Procrastination Auto-Detect (No Show) ────────────────────
+            // If the task was abandoned automatically because it never started.
+            if (task.reasonCategory == AbandonReason.autoNoStart) {
+              final habit = await _habitService.getProcrastinationHabit();
+              if (habit != null) {
+                await _habitService.logProcrastinationSlip(
+                  habitId: habit.id,
+                  trigger: 'no_show',
+                  minutesLost: task.plannedDurationMin,
+                  relatedTaskId: task.id,
+                  source: 'auto',
+                  occurredAt: task.plannedStart,
+                );
+              }
+            }
           } catch (e) {
             debugPrint(
-                '[EventOrchestrator] Failed to cancel task-end reminder: $e');
+                '[EventOrchestrator] Failed to handle task-abandon signals: $e');
           }
         }
         break;

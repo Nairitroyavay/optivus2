@@ -90,6 +90,7 @@ final eventOrchestratorProvider = Provider<EventOrchestrator>((ref) {
   final orchestrator = EventOrchestrator(
     eventService: ref.read(eventServiceProvider),
     streakService: ref.read(streakServiceProvider),
+    habitService: ref.read(habitServiceProvider),
     notificationService: ref.read(notificationServiceProvider),
     coachService: ref.read(coachServiceProvider),
   );
