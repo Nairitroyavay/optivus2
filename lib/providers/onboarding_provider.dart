@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:optivus2/core/constants/event_names.dart';
@@ -86,6 +88,10 @@ class OnboardingState {
     this.isHydrated = false,
     this.isLoading = true,
   });
+
+  /// Convenience read of profile/main.sensitiveContext.eatingDisorderFlag.
+  bool get eatingDisorderFlag =>
+      aboutYou.sensitiveContext.eatingDisorderFlag ?? false;
 
   OnboardingState copyWith({
     List<String>? selectedCategories,
@@ -214,6 +220,21 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       state = state.copyWith(
         aboutYou: state.aboutYou.copyWith(sensitiveContext: sensitiveContext),
       );
+
+  void enableMindfulEating() {
+    updateSensitiveContext(
+      state.aboutYou.sensitiveContext.copyWith(eatingDisorderFlag: true),
+    );
+    saveToFirestoreDebounced(state.currentStep);
+  }
+
+  void forceDisableMindfulEating() {
+    updateSensitiveContext(
+      state.aboutYou.sensitiveContext
+          .copyWith(clearEatingDisorderFlag: true),
+    );
+    saveToFirestoreDebounced(state.currentStep);
+  }
 
   Future<int> loadFromFirestore() async {
     if (!_userRepo.isLoggedIn) {
@@ -359,3 +380,22 @@ final onboardingProvider =
     ref.read(eventServiceProvider),
   ),
 );
+
+/// Streams `profile/main.sensitiveContext.eatingDisorderFlag`.
+/// When true, junk_food and nutrition habit taps route to MindfulEatingLogSheet.
+final eatingDisorderFlagProvider = StreamProvider<bool>((ref) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(false);
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('profile')
+      .doc('main')
+      .snapshots()
+      .map((snap) {
+    final data = snap.data();
+    if (data == null) return false;
+    final ctx = data['sensitiveContext'] as Map?;
+    return (ctx?['eatingDisorderFlag'] as bool?) ?? false;
+  });
+});

@@ -13,7 +13,9 @@ import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/models/habit_log_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
+import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/views/habits/log_habit_sheet.dart';
+import 'package:optivus2/views/habits/variants/mindful_eating_tracker_view.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Range & Filter enums for the tracker header
@@ -68,6 +70,9 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
     final latestLogs = _latestLogsByHabit(logs);
     final summaryAsync = ref.watch(todaySummaryProvider);
     final weekSummariesAsync = ref.watch(recentDailySummariesProvider(7));
+    // Eating disorder flag: routes junk_food/nutrition onLog to mindful eating sheet.
+    final eatFlag = ref.watch(eatingDisorderFlagProvider).valueOrNull ?? false;
+
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -233,6 +238,11 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                               _kBadAccents[index % _kBadAccents.length];
                           final slips = slipCounts[habit.id] ?? 0;
                           final latestLog = latestLogs[habit.id];
+                          // Determine whether this specific habit uses
+                          // Mindful Eating mode.
+                          final isMindfulEatingHabit = eatFlag &&
+                              (habit.trackerType == 'junk_food' ||
+                                  habit.trackerType == 'nutrition');
 
                           return Padding(
                             padding: const EdgeInsets.only(right: 14),
@@ -240,7 +250,11 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                               habit: habit,
                               accent: accent,
                               slipCount: slips,
-                              onLog: () => _openLogSheet(habit),
+                              isMindfulEating: isMindfulEatingHabit,
+                              onLog: () => _openLogSheet(
+                                habit,
+                                isMindfulEating: isMindfulEatingHabit,
+                              ),
                               onUndoLatest: latestLog == null
                                   ? null
                                   : () => _undoLatest(habit, latestLog),
@@ -373,13 +387,35 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
 
   // ── Actions (preserved) ──────────────────────────────────────────────────
 
-  Future<void> _openLogSheet(HabitModel habit) async {
-    await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => LogHabitSheet(habit: habit),
-    );
+  Future<void> _openLogSheet(
+    HabitModel habit, {
+    bool isMindfulEating = false,
+  }) async {
+    if (isMindfulEating) {
+      // Route to Mindful Eating sheet: slider + note only, no count/goal/streak.
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => MindfulEatingLogSheet(habit: habit),
+      );
+    } else if (habit.trackerType == 'junk_food' ||
+        habit.trackerType == 'nutrition') {
+      // Standard Junk Food sheet: emojis, triggers, cost.
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => JunkFoodLogSheet(habit: habit),
+      );
+    } else {
+      await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => LogHabitSheet(habit: habit),
+      );
+    }
   }
 
   Future<void> _undoLatest(HabitModel habit, HabitLog log) async {
@@ -975,6 +1011,7 @@ class _BadHabitCard extends StatelessWidget {
   final HabitModel habit;
   final Color accent;
   final num slipCount;
+  final bool isMindfulEating;
   final VoidCallback onLog;
   final VoidCallback? onUndoLatest;
   final VoidCallback onStreakDetails;
@@ -984,6 +1021,7 @@ class _BadHabitCard extends StatelessWidget {
     required this.habit,
     required this.accent,
     required this.slipCount,
+    this.isMindfulEating = false,
     required this.onLog,
     required this.onUndoLatest,
     required this.onStreakDetails,
@@ -991,6 +1029,7 @@ class _BadHabitCard extends StatelessWidget {
   });
 
   String _goalLabel(BadHabitGoalType? type) {
+    if (isMindfulEating) return 'Mindful eating mode';
     switch (type) {
       case BadHabitGoalType.eliminate:
         return 'Goal: Zero today';
@@ -1060,50 +1099,54 @@ class _BadHabitCard extends StatelessWidget {
 
             const Spacer(),
 
-            // Slip counter
-            Row(
-              children: [
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: (isOver || isOverTarget)
-                        ? kCoral.withValues(alpha: 0.18)
-                        : kMint.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        (isOver || isOverTarget)
-                            ? Icons.warning_amber_rounded
-                            : Icons.check_circle_outline_rounded,
-                        size: 14,
-                        color: (isOver || isOverTarget) ? kCoral : kMint,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${slipCount.round()} slip${slipCount == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+            // Slip counter (Hidden if mindful eating)
+            if (!isMindfulEating) ...[
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (isOver || isOverTarget)
+                          ? kCoral.withValues(alpha: 0.18)
+                          : kMint.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          (isOver || isOverTarget)
+                              ? Icons.warning_amber_rounded
+                              : Icons.check_circle_outline_rounded,
+                          size: 14,
                           color: (isOver || isOverTarget) ? kCoral : kMint,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Text(
+                          '${slipCount.round()} slip${slipCount == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: (isOver || isOverTarget) ? kCoral : kMint,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
 
             Row(
               children: [
                 Expanded(
                   child: _HabitActionButton(
-                    icon: Icons.add_alert_rounded,
-                    label: 'Log',
+                    icon: isMindfulEating
+                        ? Icons.restaurant_menu_rounded
+                        : Icons.add_alert_rounded,
+                    label: isMindfulEating ? 'Check-in' : 'Log',
                     color: accent,
                     onTap: onLog,
                   ),
@@ -1115,13 +1158,15 @@ class _BadHabitCard extends StatelessWidget {
                   tooltip: 'Undo latest',
                   onTap: onUndoLatest,
                 ),
-                const SizedBox(width: 8),
-                _IconActionButton(
-                  icon: Icons.local_fire_department_rounded,
-                  color: kAmber,
-                  tooltip: 'Streak details',
-                  onTap: onStreakDetails,
-                ),
+                if (!isMindfulEating) ...[
+                  const SizedBox(width: 8),
+                  _IconActionButton(
+                    icon: Icons.local_fire_department_rounded,
+                    color: kAmber,
+                    tooltip: 'Streak details',
+                    onTap: onStreakDetails,
+                  ),
+                ],
                 const SizedBox(width: 8),
                 _IconActionButton(
                   icon: Icons.info_outline_rounded,
