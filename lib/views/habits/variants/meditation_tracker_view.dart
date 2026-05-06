@@ -5,6 +5,7 @@
 // lifetime stats + milestone badges, type breakdown chart,
 // last-session meditation lift, 7-day history.
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,20 @@ const _kMilestones = [10, 50, 100, 365];
 const _kMilestoneEmoji = ['🌱', '🌿', '🌳', '🏔️'];
 const _kMilestoneLabel = ['10h', '50h', '100h', '365h'];
 
+final _meditationLifetimeLogsProvider =
+    StreamProvider.family<List<HabitLog>, String>((ref, habitId) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(const <HabitLog>[]);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('habit_logs')
+      .where('habitId', isEqualTo: habitId)
+      .snapshots()
+      .map((snap) => snap.docs.map(HabitLog.fromFirestore).toList());
+});
+
 class MeditationTrackerView extends ConsumerStatefulWidget {
   final HabitModel habit;
 
@@ -29,8 +44,7 @@ class MeditationTrackerView extends ConsumerStatefulWidget {
       _MeditationTrackerViewState();
 }
 
-class _MeditationTrackerViewState
-    extends ConsumerState<MeditationTrackerView> {
+class _MeditationTrackerViewState extends ConsumerState<MeditationTrackerView> {
   Map<String, dynamic>? _lastSessionResult;
 
   Future<void> _openTimer() async {
@@ -59,14 +73,8 @@ class _MeditationTrackerViewState
       days: 7,
     )));
 
-    // For lifetime stats, we'll use a local stream provider or just watch a larger range
-    // but the existing habitLogsForRangeProvider works well for the history chart.
-    // For breakdown and lifetime, we might want more. Let's use 30 days for now or 
-    // keep it simple with the available providers.
-    final allLogsAsync = ref.watch(habitLogsForRangeProvider((
-      habitId: widget.habit.id,
-      days: 90, // reasonable window for breakdown
-    )));
+    final allLogsAsync =
+        ref.watch(_meditationLifetimeLogsProvider(widget.habit.id));
 
     return todayLogsAsync.when(
       loading: () => const _Loading(),
@@ -86,7 +94,7 @@ class _MeditationTrackerViewState
                   .where((l) => l.habitId == widget.habit.id)
                   .fold<num>(0, (s, l) => s + (l.quantity ?? 0));
 
-              // Lifetime stats (approximated from the watched range in this view)
+              // Lifetime stats from the canonical habit log collection.
               final totalMin =
                   allLogs.fold<num>(0, (s, l) => s + (l.quantity ?? 0));
               final totalHours = totalMin / 60;
@@ -97,6 +105,7 @@ class _MeditationTrackerViewState
 
               // Last session lift
               final lastLift = _extractLastLift(allLogs);
+              final visibleLift = _sessionLift(_lastSessionResult) ?? lastLift;
 
               // 7-day points
               final points = _buildWeeklyPoints(weekLogs);
@@ -124,13 +133,8 @@ class _MeditationTrackerViewState
                       _TypeBreakdownCard(typeMap: typeMap),
                       const SizedBox(height: 20),
                     ],
-                    if (lastLift != null || _lastSessionResult != null) ...[
-                      _LiftCard(
-                        lift: _lastSessionResult != null
-                            ? (_lastSessionResult!['moodAfter'] as int) -
-                                (_lastSessionResult!['moodBefore'] as int)
-                            : lastLift!,
-                      ),
+                    if (visibleLift != null) ...[
+                      _LiftCard(lift: visibleLift),
                       const SizedBox(height: 20),
                     ],
                     _HistoryCard(points: points),
@@ -165,11 +169,20 @@ class _MeditationTrackerViewState
     return null;
   }
 
+  int? _sessionLift(Map<String, dynamic>? result) {
+    if (result == null) return null;
+    final direct = result['meditationLift'];
+    if (direct is int) return direct;
+    final before = result['moodBefore'];
+    final after = result['moodAfter'];
+    if (before is int && after is int) return after - before;
+    return null;
+  }
+
   Map<String, num> _buildWeeklyPoints(List<HabitLog> logs) {
     final now = DateTime.now();
     final points = <String, num>{
-      for (var i = 6; i >= 0; i--)
-        _dateStr(now.subtract(Duration(days: i))): 0,
+      for (var i = 6; i >= 0; i--) _dateStr(now.subtract(Duration(days: i))): 0,
     };
     for (final log in logs) {
       final key = _dateStr(log.occurredAt);
@@ -180,8 +193,7 @@ class _MeditationTrackerViewState
     return points;
   }
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  static String _dateStr(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
@@ -529,8 +541,16 @@ class _LiftCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = lift > 0 ? kMint : lift < 0 ? kCoral : kAmber;
-    final emoji = lift > 0 ? '🌟' : lift < 0 ? '🌧' : '☀️';
+    final color = lift > 0
+        ? kMint
+        : lift < 0
+            ? kCoral
+            : kAmber;
+    final emoji = lift > 0
+        ? '🌟'
+        : lift < 0
+            ? '🌧'
+            : '☀️';
     final label = lift > 0 ? '+$lift' : '$lift';
 
     return LiquidCard(

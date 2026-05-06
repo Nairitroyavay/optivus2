@@ -51,7 +51,8 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
     with TickerProviderStateMixin {
   // ── Setup state ──
   String _selectedType = _kMeditationTypes.first;
-  int _moodBefore = 5;
+  bool _trackMood = true;
+  int? _moodBefore = 5;
   int _intervalMin = 0;
   int _targetMin = 0;
   MeditationTrack? _selectedTrack;
@@ -68,7 +69,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
   late final AnimationController _breathCtrl;
 
   // ── Post-session state ──
-  int _moodAfter = 5;
+  int? _moodAfter = 5;
   bool _isSaving = false;
 
   @override
@@ -107,7 +108,8 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
       _checkAutoComplete();
     });
 
-    if (_selectedTrack != null) {
+    if (_selectedTrack != null &&
+        await _selectedTrackAssetIsAvailable(_selectedTrack!)) {
       final audio = ref.read(meditationAudioServiceProvider);
       try {
         await audio.setTrack(_selectedTrack!);
@@ -124,8 +126,25 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
       }
     }
 
-    HapticFeedback.heavyImpact(); 
-    Future.delayed(const Duration(milliseconds: 300), () => HapticFeedback.heavyImpact()); // Start bell
+    _playBell();
+  }
+
+  Future<bool> _selectedTrackAssetIsAvailable(MeditationTrack track) async {
+    try {
+      await rootBundle.load(track.assetPath);
+      return true;
+    } catch (_) {
+      if (mounted) {
+        setState(() => _selectedTrack = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Background sound unavailable. Starting silently.'),
+            backgroundColor: kAmber,
+          ),
+        );
+      }
+      return false;
+    }
   }
 
   void _togglePause() {
@@ -144,17 +163,39 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
   }
 
   void _markComplete() {
+    if (_phase != _Phase.running) return;
     _stopwatch.stop();
     _tickTimer?.cancel();
     _breathCtrl.stop();
     ref.read(meditationAudioServiceProvider).stop();
-    HapticFeedback.heavyImpact(); 
-    Future.delayed(const Duration(milliseconds: 200), () => HapticFeedback.mediumImpact());
-    Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.lightImpact()); // End bell decay
+    _playBell(end: true);
     setState(() {
-      _moodAfter = _moodBefore;
+      _moodAfter = _trackMood ? _moodBefore : null;
       _phase = _Phase.postSession;
     });
+  }
+
+  void _discardSession() {
+    _tickTimer?.cancel();
+    _stopwatch.stop();
+    _breathCtrl.stop();
+    ref.read(meditationAudioServiceProvider).stop();
+    Navigator.pop(context);
+  }
+
+  void _playBell({bool end = false}) {
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.heavyImpact();
+    if (end) {
+      Future.delayed(
+        const Duration(milliseconds: 220),
+        () => HapticFeedback.mediumImpact(),
+      );
+      Future.delayed(
+        const Duration(milliseconds: 440),
+        () => HapticFeedback.lightImpact(),
+      );
+    }
   }
 
   void _checkIntervalBell() {
@@ -164,6 +205,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
         _elapsedSeconds % intervalSec == 0 &&
         _elapsedSeconds != _lastBellAt) {
       _lastBellAt = _elapsedSeconds;
+      SystemSound.play(SystemSoundType.click);
       HapticFeedback.mediumImpact();
     }
   }
@@ -200,6 +242,8 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
           'type': _selectedType,
           'moodBefore': _moodBefore,
           'moodAfter': _moodAfter,
+          if (_trackMood && _moodBefore != null && _moodAfter != null)
+            'meditationLift': _moodAfter! - _moodBefore!,
         });
       }
     } catch (e) {
@@ -225,9 +269,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _phase == _Phase.running
-          ? const Color(0xFF0F111A)
-          : kBg,
+      backgroundColor: _phase == _Phase.running ? const Color(0xFF0F111A) : kBg,
       body: SafeArea(
         child: switch (_phase) {
           _Phase.setup => _buildSetup(),
@@ -283,24 +325,46 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _kMeditationTypes.map((t) => LiquidChip(
-              label: t,
-              selected: _selectedType == t,
-              accentColor: kPurple,
-              onTap: () => setState(() => _selectedType = t),
-            )).toList(),
+            children: _kMeditationTypes
+                .map((t) => LiquidChip(
+                      label: t,
+                      selected: _selectedType == t,
+                      accentColor: kPurple,
+                      onTap: () => setState(() => _selectedType = t),
+                    ))
+                .toList(),
           ),
 
           const SizedBox(height: 28),
 
           // ── Pre-session mood ──
-          _sectionLabel('How do you feel right now?'),
-          const SizedBox(height: 10),
-          _MoodSlider(
-            value: _moodBefore,
-            onChanged: (v) => setState(() => _moodBefore = v),
-            accent: kPurple,
+          Row(
+            children: [
+              Expanded(child: _sectionLabel('Track mood lift')),
+              Switch.adaptive(
+                value: _trackMood,
+                activeThumbColor: kPurple,
+                activeTrackColor: kPurple.withValues(alpha: 0.25),
+                onChanged: (value) {
+                  setState(() {
+                    _trackMood = value;
+                    _moodBefore = value ? (_moodBefore ?? 5) : null;
+                    _moodAfter =
+                        value ? (_moodAfter ?? _moodBefore ?? 5) : null;
+                  });
+                },
+              ),
+            ],
           ),
+          const SizedBox(height: 10),
+          if (_trackMood)
+            _MoodSlider(
+              value: _moodBefore ?? 5,
+              onChanged: (v) => setState(() => _moodBefore = v),
+              accent: kPurple,
+            )
+          else
+            const _MoodSkippedCard(),
 
           const SizedBox(height: 28),
 
@@ -323,9 +387,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: selected
-                          ? kPurple
-                          : kWhite.withValues(alpha: 0.7),
+                      color: selected ? kPurple : kWhite.withValues(alpha: 0.7),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: selected
@@ -403,21 +465,25 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
           StreamBuilder<List<MeditationTrack>>(
             stream: ref.watch(meditationAudioServiceProvider).watchTracks(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator(color: kPurple));
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
+                return const Center(
+                    child: CircularProgressIndicator(color: kPurple));
               }
 
               final tracks = snapshot.data ?? [];
-              if (tracks.isEmpty && snapshot.connectionState == ConnectionState.active) {
+              if (tracks.isEmpty &&
+                  snapshot.connectionState == ConnectionState.active) {
                 return Text(
                   'No meditation tracks found. Check assets configuration.',
-                  style: TextStyle(color: kSub.withValues(alpha: 0.6), fontSize: 12),
+                  style: TextStyle(
+                      color: kSub.withValues(alpha: 0.6), fontSize: 12),
                 );
               }
 
               // Group tracks by subCategory
               final grouped = <String, List<MeditationTrack>>{};
-              
+
               // Helper to get display name for subCategory
               String getSubCategoryName(String sub) {
                 return switch (sub) {
@@ -448,44 +514,46 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
                     onTap: () => setState(() => _selectedTrack = null),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Groups
                   ...grouped.entries.map((entry) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12, top: 8),
-                        child: Text(
-                          entry.key,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w900,
-                            color: kInk.withValues(alpha: 0.8),
-                            letterSpacing: -0.2,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12, top: 8),
+                            child: Text(
+                              entry.key,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: kInk.withValues(alpha: 0.8),
+                                letterSpacing: -0.2,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 160,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: entry.value.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 14),
-                          itemBuilder: (_, i) {
-                            final track = entry.value[i];
-                            final selected = _selectedTrack?.id == track.id;
+                          SizedBox(
+                            height: 160,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: entry.value.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 14),
+                              itemBuilder: (_, i) {
+                                final track = entry.value[i];
+                                final selected = _selectedTrack?.id == track.id;
 
-                            return _TrackCard(
-                              track: track,
-                              selected: selected,
-                              onTap: () => setState(() => _selectedTrack = track),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  )),
+                                return _TrackCard(
+                                  track: track,
+                                  selected: selected,
+                                  onTap: () =>
+                                      setState(() => _selectedTrack = track),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      )),
                 ],
               );
             },
@@ -581,7 +649,8 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: kPurple.withValues(alpha: 0.25 + 0.2 * breathPhase),
+                        color:
+                            kPurple.withValues(alpha: 0.25 + 0.2 * breathPhase),
                         blurRadius: glowRadius,
                         spreadRadius: 5,
                       ),
@@ -633,8 +702,8 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.music_note_rounded, 
-                    color: Colors.white.withValues(alpha: 0.4), size: 16),
+                  Icon(Icons.music_note_rounded,
+                      color: Colors.white.withValues(alpha: 0.4), size: 16),
                   const SizedBox(width: 8),
                   Text(
                     _selectedTrack!.label,
@@ -669,9 +738,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
                     ),
                   ),
                   child: Icon(
-                    _isPaused
-                        ? Icons.play_arrow_rounded
-                        : Icons.pause_rounded,
+                    _isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
                     color: Colors.white70,
                     size: 28,
                   ),
@@ -725,7 +792,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
 
   void _confirmExit() {
     if (_elapsedSeconds < 5) {
-      Navigator.pop(context);
+      _discardSession();
       return;
     }
     showDialog(
@@ -743,7 +810,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              Navigator.pop(context);
+              _discardSession();
             },
             child: const Text('Discard', style: TextStyle(color: kSub)),
           ),
@@ -753,8 +820,7 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
               _markComplete();
             },
             child: const Text('Save',
-                style: TextStyle(
-                    color: kMint, fontWeight: FontWeight.w800)),
+                style: TextStyle(color: kMint, fontWeight: FontWeight.w800)),
           ),
         ],
       ),
@@ -766,9 +832,18 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildPostSession() {
-    final lift = _moodAfter - _moodBefore;
-    final liftColor = lift > 0 ? kMint : lift < 0 ? kCoral : kAmber;
-    final liftEmoji = lift > 0 ? '🌟' : lift < 0 ? '🌧' : '☀️';
+    final hasLift = _trackMood && _moodBefore != null && _moodAfter != null;
+    final lift = hasLift ? _moodAfter! - _moodBefore! : 0;
+    final liftColor = lift > 0
+        ? kMint
+        : lift < 0
+            ? kCoral
+            : kAmber;
+    final liftEmoji = lift > 0
+        ? '🌟'
+        : lift < 0
+            ? '🌧'
+            : '☀️';
     final liftLabel = lift > 0
         ? '+$lift lift'
         : lift < 0
@@ -809,72 +884,80 @@ class _MeditationTimerScreenState extends ConsumerState<MeditationTimerScreen>
               ),
             ),
           ),
-
           const SizedBox(height: 32),
-
-          // Post-session mood
-          _sectionLabel('How do you feel now?'),
-          const SizedBox(height: 10),
-          _MoodSlider(
-            value: _moodAfter,
-            onChanged: (v) => setState(() => _moodAfter = v),
-            accent: kPurple,
-          ),
-
-          const SizedBox(height: 28),
-
-          // Meditation lift card
-          LiquidCard(
-            tint: liftColor.withValues(alpha: 0.06),
-            child: Row(
-              children: [
-                Text(liftEmoji, style: const TextStyle(fontSize: 32)),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          if (_trackMood) ...[
+            // Post-session mood
+            _sectionLabel('How do you feel now?'),
+            const SizedBox(height: 10),
+            _MoodSlider(
+              value: _moodAfter ?? _moodBefore ?? 5,
+              onChanged: (v) => setState(() => _moodAfter = v),
+              accent: kPurple,
+            ),
+            const SizedBox(height: 28),
+          ],
+          if (hasLift)
+            LiquidCard(
+              tint: liftColor.withValues(alpha: 0.06),
+              child: Row(
+                children: [
+                  Text(liftEmoji, style: const TextStyle(fontSize: 32)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Meditation Lift',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: kInk,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          liftLabel,
+                          style: TextStyle(
+                            color: liftColor,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 22,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
                     children: [
-                      const Text(
-                        'Meditation Lift',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: kInk,
-                          fontSize: 16,
-                        ),
-                      ),
+                      Text('Before',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: kSub.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w700)),
+                      Text('$_moodBefore',
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: kInk)),
                       const SizedBox(height: 4),
-                      Text(
-                        liftLabel,
-                        style: TextStyle(
-                          color: liftColor,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 22,
-                        ),
-                      ),
+                      Text('After',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: kSub.withValues(alpha: 0.6),
+                              fontWeight: FontWeight.w700)),
+                      Text('$_moodAfter',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: liftColor)),
                     ],
                   ),
-                ),
-                Column(
-                  children: [
-                    Text('Before', style: TextStyle(
-                        fontSize: 11, color: kSub.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w700)),
-                    Text('$_moodBefore', style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w900, color: kInk)),
-                    const SizedBox(height: 4),
-                    Text('After', style: TextStyle(
-                        fontSize: 11, color: kSub.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w700)),
-                    Text('$_moodAfter', style: TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w900, color: liftColor)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
+                ],
+              ),
+            )
+          else
+            const _MoodSkippedCard(),
           const SizedBox(height: 36),
-
           LiquidButton(
             label: _isSaving ? 'Saving…' : 'Save & Close',
             color: kPurple,
@@ -927,7 +1010,7 @@ class _TrackCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isNone = track == null;
-    
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -945,13 +1028,15 @@ class _TrackCard extends StatelessWidget {
                 : kWhite.withValues(alpha: 0.9),
             width: 2,
           ),
-          boxShadow: selected ? [
-            BoxShadow(
-              color: kPurple.withValues(alpha: 0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ] : null,
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: kPurple.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ]
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -967,14 +1052,19 @@ class _TrackCard extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
-                    isNone ? Icons.music_off_rounded : (selected ? Icons.play_arrow_rounded : Icons.music_note_rounded),
+                    isNone
+                        ? Icons.music_off_rounded
+                        : (selected
+                            ? Icons.play_arrow_rounded
+                            : Icons.music_note_rounded),
                     color: selected ? kWhite : kSub,
                     size: 18,
                   ),
                 ),
                 if (!isNone && track!.isRoyaltyFree)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: kAmber.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(6),
@@ -1024,7 +1114,7 @@ class _TrackCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              
+
               // Available Status
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1037,8 +1127,11 @@ class _TrackCard extends StatelessWidget {
                   children: [
                     Icon(Icons.check_circle_rounded, color: kMint, size: 10),
                     SizedBox(width: 2),
-                    Text('READY', style: TextStyle(
-                      fontSize: 8, fontWeight: FontWeight.w900, color: kMint)),
+                    Text('READY',
+                        style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w900,
+                            color: kMint)),
                   ],
                 ),
               ),
@@ -1061,7 +1154,18 @@ class _MoodSlider extends StatelessWidget {
     required this.accent,
   });
 
-  static const _emojis = ['😞', '😟', '😕', '😐', '🙂', '😊', '😄', '😁', '🤩', '🧘'];
+  static const _emojis = [
+    '😞',
+    '😟',
+    '😕',
+    '😐',
+    '🙂',
+    '😊',
+    '😄',
+    '😁',
+    '🤩',
+    '🧘'
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1109,13 +1213,57 @@ class _MoodSlider extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Low', style: TextStyle(
-                  fontSize: 11, color: kSub.withValues(alpha: 0.5),
-                  fontWeight: FontWeight.w700)),
-              Text('High', style: TextStyle(
-                  fontSize: 11, color: kSub.withValues(alpha: 0.5),
-                  fontWeight: FontWeight.w700)),
+              Text('Low',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: kSub.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w700)),
+              Text('High',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: kSub.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w700)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoodSkippedCard extends StatelessWidget {
+  const _MoodSkippedCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return LiquidCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      tint: kSub.withValues(alpha: 0.04),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: kSub.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.remove_red_eye_outlined,
+              color: kSub.withValues(alpha: 0.7),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Mood tracking skipped',
+              style: TextStyle(
+                color: kSub.withValues(alpha: 0.75),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ],
       ),
