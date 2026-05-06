@@ -44,6 +44,9 @@ class HabitService {
   CollectionReference<Map<String, dynamic>> get _habitLogsRef =>
       _firestore.collection('users').doc(_uid).collection('habit_logs');
 
+  CollectionReference<Map<String, dynamic>> get _moneySavedRef =>
+      _firestore.collection('users').doc(_uid).collection('money_saved');
+
   CollectionReference<Map<String, dynamic>> _itemsRef(
     String habitId,
     DateTime date,
@@ -615,6 +618,125 @@ class HabitService {
     await batch.commit();
   }
 
+  /// Public accessor for today's slip count (used by money-saving aggregator).
+  Future<int> slipCountToday(String habitId, DateTime date) =>
+      _slipCount(habitId, date);
+
+  /// Recomputes the derived money-saving aggregate for [date].
+  ///
+  /// Passive savings are derived from bad-habit slips:
+  /// max(0, baseline_per_day - slips_today) * cost_per_unit.
+  ///
+  /// This preserves manual deposits already stored on money_saved/{date}.
+  Future<Map<String, dynamic>> syncMoneySavedAggregateForDate(
+    DateTime date,
+  ) async {
+    final dateKey = _dateString(date);
+    final (startOfDay, endOfDay) = _dayBounds(date);
+
+    final habitsSnap = await _habitsRef
+        .where('state', isEqualTo: HabitState.active.name)
+        .get();
+    final logsSnap = await _habitLogsRef
+        .where('logType', isEqualTo: 'slip')
+        .where('occurredAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('occurredAt', isLessThan: Timestamp.fromDate(endOfDay))
+        .get();
+
+    final slipsByHabit = <String, num>{};
+    for (final doc in logsSnap.docs) {
+      final data = doc.data();
+      if (data['dismissedAt'] != null) continue;
+      final habitId = data['habitId'] as String? ?? '';
+      if (habitId.isEmpty) continue;
+      slipsByHabit[habitId] =
+          (slipsByHabit[habitId] ?? 0) + ((data['quantity'] as num?) ?? 1);
+    }
+
+    final passiveSources = <String, num>{
+      'cigarettes': 0,
+      'junk': 0,
+      'alcohol': 0,
+    };
+    final habitBreakdown = <Map<String, dynamic>>[];
+    num totalPassive = 0;
+    var relapsePaused = false;
+
+    for (final doc in habitsSnap.docs) {
+      final data = doc.data();
+      final kind = data['kind'] as String? ?? HabitKind.good.name;
+      if (kind != HabitKind.bad.name) continue;
+
+      final cost = _numField(data, 'cost_per_unit', 'costPerUnit') ?? 0;
+      if (cost <= 0) continue;
+
+      final baseline =
+          _numField(data, 'baseline_per_day', 'baselinePerDay') ?? 0;
+      final slips = slipsByHabit[doc.id] ?? 0;
+      final savedUnits = baseline - slips;
+      final saved = savedUnits > 0 ? savedUnits * cost : 0;
+      final source =
+          _moneySource(data['tracker_type'] as String? ?? data['trackerType']);
+
+      if (slips > baseline) relapsePaused = true;
+      totalPassive += saved;
+      passiveSources[source] = (passiveSources[source] ?? 0) + saved;
+      habitBreakdown.add({
+        'habitId': doc.id,
+        'habitName': data['name'] as String? ?? '',
+        'source': source,
+        'baselinePerDay': baseline,
+        'costPerUnit': cost,
+        'slips': slips,
+        'passiveSaved': saved,
+        'relapsePaused': slips > baseline,
+      });
+    }
+
+    final aggregate = <String, dynamic>{};
+    final ref = _moneySavedRef.doc(dateKey);
+
+    await _firestore.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      final existing = snap.data() ?? <String, dynamic>{};
+      final deposits = existing['deposits'] as List? ?? const [];
+      final depositsTotal = existing['totalDeposits'] as num? ??
+          deposits.fold<num>(
+            0,
+            (total, item) => total + (((item as Map?)?['amount'] as num?) ?? 0),
+          );
+      final sources = <String, num>{
+        ...passiveSources,
+        'manual': depositsTotal,
+      };
+      final totalSaved = totalPassive + depositsTotal;
+
+      aggregate.addAll({
+        'date': dateKey,
+        'totalPassive': totalPassive,
+        'totalDeposits': depositsTotal,
+        'totalSaved': totalSaved,
+        'sources': sources,
+        'habitBreakdown': habitBreakdown,
+        'relapsePaused': relapsePaused,
+        'schemaVersion': 1,
+      });
+
+      if (!_moneyAggregateNeedsWrite(existing, aggregate)) return;
+
+      tx.set(
+          ref,
+          {
+            ...aggregate,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true));
+    });
+
+    return aggregate;
+  }
+
   // ── Guards ────────────────────────────────────────────────────────────────
 
   Future<HabitModel> _requireHabit(String habitId) async {
@@ -684,6 +806,86 @@ class HabitService {
       total += (doc.data()['quantity'] as num?) ?? 1;
     }
     return total.round();
+  }
+
+  num? _numField(Map<String, dynamic> data, String snakeKey, String camelKey) {
+    return data[snakeKey] as num? ?? data[camelKey] as num?;
+  }
+
+  String _moneySource(String? trackerType) {
+    switch (trackerType) {
+      case 'smoking':
+      case 'cigarettes':
+        return 'cigarettes';
+      case 'junk_food':
+      case 'junk':
+      case 'nutrition':
+        return 'junk';
+      case 'alcohol':
+        return 'alcohol';
+      default:
+        return 'other';
+    }
+  }
+
+  bool _moneyAggregateNeedsWrite(
+    Map<String, dynamic> existing,
+    Map<String, dynamic> next,
+  ) {
+    if (existing['date'] != next['date']) return true;
+    if (!_numEquals(existing['totalPassive'], next['totalPassive'])) {
+      return true;
+    }
+    if (!_numEquals(existing['totalDeposits'], next['totalDeposits'])) {
+      return true;
+    }
+    if (!_numEquals(existing['totalSaved'], next['totalSaved'])) return true;
+    if (existing['relapsePaused'] != next['relapsePaused']) return true;
+    if (!_numMapEquals(existing['sources'], next['sources'])) return true;
+    if (!_mapListEquals(existing['habitBreakdown'], next['habitBreakdown'])) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _numEquals(Object? a, Object? b) {
+    if (a is! num || b is! num) return a == b;
+    return (a - b).abs() < 0.0001;
+  }
+
+  bool _numMapEquals(Object? a, Object? b) {
+    if (a is! Map || b is! Map) return false;
+    final keys = {
+      ...a.keys.map((k) => k.toString()),
+      ...b.keys.map((k) => k.toString())
+    };
+    for (final key in keys) {
+      if (!_numEquals(a[key], b[key])) return false;
+    }
+    return true;
+  }
+
+  bool _mapListEquals(Object? a, Object? b) {
+    if (a is! List || b is! List || a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left is! Map || right is! Map) return false;
+      final keys = {
+        ...left.keys.map((k) => k.toString()),
+        ...right.keys.map((k) => k.toString()),
+      };
+      for (final key in keys) {
+        final leftValue = left[key];
+        final rightValue = right[key];
+        if (leftValue is num || rightValue is num) {
+          if (!_numEquals(leftValue, rightValue)) return false;
+        } else if (leftValue != rightValue) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   Map<String, dynamic> _habitPayload(HabitModel habit) {
