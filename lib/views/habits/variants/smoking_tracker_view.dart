@@ -15,7 +15,14 @@ import 'package:optivus2/models/streak_model.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 // Trigger tags for smoking slips
 // ─────────────────────────────────────────────────────────────────────────────
-const _kTriggers = ['Stress', 'Boredom', 'Social', 'After meal', 'Craving', 'Other'];
+const _kTriggers = [
+  'Stress',
+  'Boredom',
+  'Social',
+  'After meal',
+  'Craving',
+  'Other'
+];
 
 const _kTriggerColors = <String, Color>{
   'Stress': Color(0xFFFF6B6B),
@@ -50,8 +57,15 @@ const _kMilestones = [
 
 // Currency symbol lookup (avoids intl dependency)
 const _kCurrencySymbols = <String, String>{
-  'USD': '\$', 'EUR': '€', 'GBP': '£', 'INR': '₹', 'JPY': '¥',
-  'CAD': 'C\$', 'AUD': 'A\$', 'CNY': '¥', 'KRW': '₩',
+  'USD': '\$',
+  'EUR': '€',
+  'GBP': '£',
+  'INR': '₹',
+  'JPY': '¥',
+  'CAD': 'C\$',
+  'AUD': 'A\$',
+  'CNY': '¥',
+  'KRW': '₩',
 };
 
 class SmokingTrackerView extends ConsumerStatefulWidget {
@@ -64,25 +78,34 @@ class SmokingTrackerView extends ConsumerStatefulWidget {
 
 class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
   HabitModel get habit => widget.habit;
+  bool _schedulingAlarm = false;
 
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
-      return const Center(child: Text('Not signed in', style: TextStyle(color: kInk)));
+      return const Center(
+          child: Text('Not signed in', style: TextStyle(color: kInk)));
     }
 
     final start = _dayStart(DateTime.now().subtract(const Duration(days: 6)));
     final logsStream = FirebaseFirestore.instance
-        .collection('users').doc(uid).collection('habit_logs')
+        .collection('users')
+        .doc(uid)
+        .collection('habit_logs')
         .where('habitId', isEqualTo: habit.id)
         .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .snapshots();
     final streakStream = FirebaseFirestore.instance
-        .collection('users').doc(uid).collection('streaks')
-        .doc(habit.id).snapshots();
+        .collection('users')
+        .doc(uid)
+        .collection('streaks')
+        .doc(habit.id)
+        .snapshots();
     final alarmsStream = FirebaseFirestore.instance
-        .collection('users').doc(uid).collection('scheduled_notifications')
+        .collection('users')
+        .doc(uid)
+        .collection('scheduled_notifications')
         .where('status', isEqualTo: NotifStatus.pending)
         .orderBy('scheduledFor')
         .snapshots();
@@ -96,37 +119,51 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: alarmsStream,
               builder: (context, alarmsSnap) {
-                if ((logsSnap.connectionState == ConnectionState.waiting && !logsSnap.hasData) ||
-                    (streakSnap.connectionState == ConnectionState.waiting && !streakSnap.hasData) ||
-                    (alarmsSnap.connectionState == ConnectionState.waiting && !alarmsSnap.hasData)) {
+                if ((logsSnap.connectionState == ConnectionState.waiting &&
+                        !logsSnap.hasData) ||
+                    (streakSnap.connectionState == ConnectionState.waiting &&
+                        !streakSnap.hasData) ||
+                    (alarmsSnap.connectionState == ConnectionState.waiting &&
+                        !alarmsSnap.hasData)) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 32),
-                    child: Center(child: CircularProgressIndicator(color: kAmber)),
+                    child:
+                        Center(child: CircularProgressIndicator(color: kAmber)),
                   );
                 }
-                final error = logsSnap.error ?? streakSnap.error ?? alarmsSnap.error;
+                final error =
+                    logsSnap.error ?? streakSnap.error ?? alarmsSnap.error;
                 if (error != null) {
                   return LiquidCard(
                     padding: const EdgeInsets.all(16),
-                    child: Text('Error: $error', style: const TextStyle(color: kCoral)),
+                    child: Text('Error: $error',
+                        style: const TextStyle(color: kCoral)),
                   );
                 }
 
-                final logs = logsSnap.data?.docs.map(HabitLog.fromFirestore).toList() ?? const [];
-                final streak = (streakSnap.data != null && streakSnap.data!.exists)
-                    ? Streak.fromFirestore(streakSnap.data!)
-                    : null;
+                final logs =
+                    logsSnap.data?.docs.map(HabitLog.fromFirestore).toList() ??
+                        const [];
+                final streak =
+                    (streakSnap.data != null && streakSnap.data!.exists)
+                        ? Streak.fromFirestore(streakSnap.data!)
+                        : null;
                 final alarms = alarmsSnap.data?.docs
                         .map(ScheduledNotification.fromFirestore)
-                        .where((n) => n.habitId == habit.id && n.category == NotifCategory.slipRecovery)
+                        .where((n) =>
+                            n.habitId == habit.id &&
+                            n.category == NotifCategory.slipRecovery)
                         .toList() ??
                     const [];
 
                 final today = DateTime.now();
                 final todayStr = _dateStr(today);
-                final todayLogs = logs.where((l) => _dateStr(l.occurredAt) == todayStr).toList()
+                final todayLogs = logs
+                    .where((l) => _dateStr(l.occurredAt) == todayStr)
+                    .toList()
                   ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
-                final todaySlips = todayLogs.fold<num>(0, (s, l) => s + (l.quantity ?? 1));
+                final todaySlips =
+                    todayLogs.fold<num>(0, (s, l) => s + (l.quantity ?? 1));
                 final baseline = habit.baselinePerDay ?? 0;
                 final daysClean = streak?.currentCount ?? 0;
                 final isRelapse = todaySlips > baseline;
@@ -146,7 +183,7 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
                     const SizedBox(height: 14),
                     _buildMilestones(daysClean),
                     const SizedBox(height: 14),
-                    _buildRecoveryAlarms(alarms),
+                    _buildRecoveryAlarms(alarms, logs),
                     const SizedBox(height: 14),
                     _buildCoachButton(),
                   ],
@@ -161,10 +198,12 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
 
   // ── Hero Card ──────────────────────────────────────────────────────────────
 
-  Widget _buildHero(num todaySlips, num baseline, int daysClean, bool isRelapse) {
+  Widget _buildHero(
+      num todaySlips, num baseline, int daysClean, bool isRelapse) {
     final costPerUnit = habit.costPerUnit ?? 0;
     final sym = _kCurrencySymbols[habit.currency] ?? habit.currency ?? '\$';
-    final savedPerDay = (baseline - todaySlips).clamp(0, baseline) * costPerUnit;
+    final savedPerDay =
+        (baseline - todaySlips).clamp(0, baseline) * costPerUnit;
     final totalSaved = daysClean * baseline * costPerUnit + savedPerDay;
 
     return LiquidCard(
@@ -174,7 +213,8 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
         children: [
           Row(children: [
             Container(
-              width: 48, height: 48,
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
                 color: kCoral.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(16),
@@ -183,23 +223,36 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
             ),
             const SizedBox(width: 14),
             const Expanded(
-              child: Text('Smoking', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kInk)),
+              child: Text('Smoking',
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w900, color: kInk)),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('$todaySlips', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: kCoral)),
-                Text('of $baseline baseline', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kSub.withValues(alpha: 0.7))),
+                Text('$todaySlips',
+                    style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: kCoral)),
+                Text('of $baseline baseline',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: kSub.withValues(alpha: 0.7))),
               ],
             ),
           ]),
           const SizedBox(height: 16),
           Row(children: [
-            _heroMetric(Icons.calendar_today_rounded, '$daysClean', 'days clean', kMint),
+            _heroMetric(Icons.calendar_today_rounded, '$daysClean',
+                'days clean', kMint),
             if (!isRelapse)
-              _heroMetric(Icons.savings_rounded, '$sym${totalSaved.toStringAsFixed(2)}', 'saved', kAmber),
+              _heroMetric(Icons.savings_rounded,
+                  '$sym${totalSaved.toStringAsFixed(2)}', 'saved', kAmber),
             if (isRelapse)
-              _heroMetric(Icons.warning_amber_rounded, 'Relapse', 'week', kCoral.withValues(alpha: 0.6)),
+              _heroMetric(Icons.warning_amber_rounded, 'Relapse', 'week',
+                  kCoral.withValues(alpha: 0.6)),
           ]),
         ],
       ),
@@ -214,8 +267,14 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: color)),
-            Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kSub.withValues(alpha: 0.6))),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w900, color: color)),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: kSub.withValues(alpha: 0.6))),
           ],
         ),
       ]),
@@ -238,12 +297,15 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.add_alert_rounded, size: 20, color: active ? kInk : kSub),
+            Icon(Icons.add_alert_rounded,
+                size: 20, color: active ? kInk : kSub),
             const SizedBox(width: 8),
-            Text('Log Slip', style: TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w800,
-              color: active ? kInk : kSub,
-            )),
+            Text('Log Slip',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: active ? kInk : kSub,
+                )),
           ],
         ),
       ),
@@ -282,11 +344,15 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
     if (uid == null) return;
     final cutoff = DateTime.now().subtract(const Duration(minutes: 30));
     final snap = await FirebaseFirestore.instance
-        .collection('users').doc(uid).collection('habit_logs')
+        .collection('users')
+        .doc(uid)
+        .collection('habit_logs')
         .where('habitId', isEqualTo: habit.id)
+        .where('logType', isEqualTo: 'slip')
         .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
         .get();
-    final count = snap.docs.fold<num>(0, (s, d) => s + ((d.data()['quantity'] as num?) ?? 1));
+    final count = snap.docs
+        .fold<num>(0, (s, d) => s + ((d.data()['quantity'] as num?) ?? 1));
     if (count >= 3) {
       await ref.read(eventServiceProvider).emit(
         eventName: EventNames.slipStreakDetected,
@@ -305,14 +371,19 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Today's Log", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
+          const Text("Today's Log",
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
           const SizedBox(height: 10),
           if (todayLogs.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Center(child: Text(
+              child: Center(
+                  child: Text(
                 'No slips today — keep going 💪',
-                style: TextStyle(fontWeight: FontWeight.w700, color: kSub.withValues(alpha: 0.7)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: kSub.withValues(alpha: 0.7)),
               )),
             )
           else
@@ -324,21 +395,38 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(children: [
-                  Text('$h:$m', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kSub.withValues(alpha: 0.6))),
+                  Text('$h:$m',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: kSub.withValues(alpha: 0.6))),
                   const SizedBox(width: 12),
                   if (tag != null && tag.isNotEmpty)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: tagColor.withValues(alpha: 0.14),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Text(tag, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: tagColor)),
+                      child: Text(tag,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: tagColor)),
                     )
                   else
-                    Text('No trigger', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: kSub.withValues(alpha: 0.5))),
+                    Text('No trigger',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: kSub.withValues(alpha: 0.5))),
                   const Spacer(),
-                  Text('×${log.quantity ?? 1}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kInk.withValues(alpha: 0.5))),
+                  Text('×${log.quantity ?? 1}',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: kInk.withValues(alpha: 0.5))),
                 ]),
               );
             }),
@@ -356,7 +444,9 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
     };
     for (final log in logs) {
       final key = _dateStr(log.occurredAt);
-      if (points.containsKey(key)) points[key] = (points[key] ?? 0) + (log.quantity ?? 1);
+      if (points.containsKey(key)) {
+        points[key] = (points[key] ?? 0) + (log.quantity ?? 1);
+      }
     }
     final maxVal = points.values.fold<num>(1, (m, v) => v > m ? v : m);
     final entries = points.entries.toList();
@@ -369,7 +459,9 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Weekly Slips', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
+          const Text('Weekly Slips',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
           const SizedBox(height: 14),
           SizedBox(
             height: 80,
@@ -377,23 +469,33 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 for (var i = 0; i < entries.length; i++)
-                  Expanded(child: Padding(
+                  Expanded(
+                      child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 3),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Expanded(child: Align(
+                        Expanded(
+                            child: Align(
                           alignment: Alignment.bottomCenter,
                           child: FractionallySizedBox(
-                            heightFactor: entries[i].value == 0 ? 0.06 : (entries[i].value / maxVal).clamp(0.06, 1.0).toDouble(),
+                            heightFactor: entries[i].value == 0
+                                ? 0.06
+                                : (entries[i].value / maxVal)
+                                    .clamp(0.06, 1.0)
+                                    .toDouble(),
                             child: Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(6),
                                 gradient: LinearGradient(
-                                  begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
                                   colors: entries[i].key == todayKey
                                       ? [kCoral, kCoral.withValues(alpha: 0.5)]
-                                      : [kCoral.withValues(alpha: 0.35), kCoral.withValues(alpha: 0.15)],
+                                      : [
+                                          kCoral.withValues(alpha: 0.35),
+                                          kCoral.withValues(alpha: 0.15)
+                                        ],
                                 ),
                               ),
                             ),
@@ -401,10 +503,16 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
                         )),
                         const SizedBox(height: 6),
                         Text(
-                          dayLabels[(DateTime.parse(entries[i].key).weekday - 1) % 7],
+                          dayLabels[
+                              (DateTime.parse(entries[i].key).weekday - 1) % 7],
                           style: TextStyle(
-                            fontSize: 10, fontWeight: entries[i].key == todayKey ? FontWeight.w900 : FontWeight.w700,
-                            color: entries[i].key == todayKey ? kInk : kSub.withValues(alpha: 0.6),
+                            fontSize: 10,
+                            fontWeight: entries[i].key == todayKey
+                                ? FontWeight.w900
+                                : FontWeight.w700,
+                            color: entries[i].key == todayKey
+                                ? kInk
+                                : kSub.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -438,9 +546,15 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Trigger Heatmap', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
+          const Text('Trigger Heatmap',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
           const SizedBox(height: 4),
-          Text('Last 7 days × hour of day', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kSub.withValues(alpha: 0.6))),
+          Text('Last 7 days × hour of day',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: kSub.withValues(alpha: 0.6))),
           const SizedBox(height: 12),
           SizedBox(
             height: 7 * 14.0,
@@ -451,10 +565,14 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
                 children: List.generate(7, (i) {
                   final d = now.subtract(Duration(days: 6 - i));
                   return SizedBox(
-                    height: 12, width: 20,
+                    height: 12,
+                    width: 20,
                     child: Text(
-                      ['M','T','W','T','F','S','S'][(d.weekday - 1) % 7],
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: kSub.withValues(alpha: 0.6)),
+                      ['M', 'T', 'W', 'T', 'F', 'S', 'S'][(d.weekday - 1) % 7],
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: kSub.withValues(alpha: 0.6)),
                     ),
                   );
                 }),
@@ -468,7 +586,8 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
                       child: Row(
                         children: List.generate(24, (col) {
                           final v = grid[row][col];
-                          final intensity = v == 0 ? 0.0 : (v / maxCell).clamp(0.2, 1.0);
+                          final intensity =
+                              v == 0 ? 0.0 : (v / maxCell).clamp(0.2, 1.0);
                           return Expanded(
                             child: Container(
                               margin: const EdgeInsets.all(0.5),
@@ -503,7 +622,9 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Health Milestones', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
+          const Text('Health Milestones',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
           const SizedBox(height: 12),
           ..._kMilestones.map((m) {
             final unlocked = cleanDuration >= m.threshold;
@@ -511,31 +632,44 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(children: [
                 Container(
-                  width: 36, height: 36,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: unlocked ? kMint.withValues(alpha: 0.14) : kSub.withValues(alpha: 0.08),
+                    color: unlocked
+                        ? kMint.withValues(alpha: 0.14)
+                        : kSub.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Center(child: Text(
+                  child: Center(
+                      child: Text(
                     unlocked ? m.emoji : '🔒',
                     style: TextStyle(fontSize: unlocked ? 18 : 14),
                   )),
                 ),
                 const SizedBox(width: 12),
-                Expanded(child: Column(
+                Expanded(
+                    child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(m.label, style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w800,
-                      color: unlocked ? kInk : kSub.withValues(alpha: 0.5),
-                    )),
-                    Text(m.description, style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w600,
-                      color: unlocked ? kSub.withValues(alpha: 0.7) : kSub.withValues(alpha: 0.4),
-                    )),
+                    Text(m.label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: unlocked ? kInk : kSub.withValues(alpha: 0.5),
+                        )),
+                    Text(m.description,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: unlocked
+                              ? kSub.withValues(alpha: 0.7)
+                              : kSub.withValues(alpha: 0.4),
+                        )),
                   ],
                 )),
-                if (unlocked) Icon(Icons.check_circle_rounded, size: 20, color: kMint.withValues(alpha: 0.7)),
+                if (unlocked)
+                  Icon(Icons.check_circle_rounded,
+                      size: 20, color: kMint.withValues(alpha: 0.7)),
               ]),
             );
           }),
@@ -546,7 +680,11 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
 
   // ── Recovery Alarms ──────────────────────────────────────────────────────
 
-  Widget _buildRecoveryAlarms(List<ScheduledNotification> alarms) {
+  Widget _buildRecoveryAlarms(
+    List<ScheduledNotification> alarms,
+    List<HabitLog> logs,
+  ) {
+    final highRiskAlarmAt = _nextHighRiskAlarmTime(logs);
     return LiquidCard(
       radius: 22,
       padding: const EdgeInsets.all(16),
@@ -555,33 +693,71 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
         children: [
           Row(
             children: [
-              Icon(Icons.alarm_rounded, color: kAmber.withValues(alpha: 0.7), size: 22),
+              Icon(Icons.alarm_rounded,
+                  color: kAmber.withValues(alpha: 0.7), size: 22),
               const SizedBox(width: 12),
-              const Text('Recovery Alarms', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
+              const Text('Recovery Alarms',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
             ],
           ),
           const SizedBox(height: 12),
           if (alarms.isEmpty)
-            Text(
-              'The AI will analyze your trigger heatmap and suggest pre-emptive nudges 5 min before high-risk time slots.',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kSub.withValues(alpha: 0.65), height: 1.4),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  highRiskAlarmAt == null
+                      ? 'Log a few slips with triggers so high-risk slots can be identified.'
+                      : 'Schedule a pre-emptive nudge 5 min before your highest-risk slot.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: kSub.withValues(alpha: 0.65),
+                    height: 1.4,
+                  ),
+                ),
+                if (highRiskAlarmAt != null) ...[
+                  const SizedBox(height: 12),
+                  LiquidButton.outline(
+                    label:
+                        _schedulingAlarm ? 'Scheduling...' : 'Schedule Nudge',
+                    color: kAmber,
+                    height: 44,
+                    leading: Icon(
+                      Icons.alarm_add_rounded,
+                      color: kAmber.withValues(alpha: 0.75),
+                      size: 18,
+                    ),
+                    onTap: _schedulingAlarm
+                        ? null
+                        : () => _scheduleRecoveryAlarm(highRiskAlarmAt),
+                  ),
+                ],
+              ],
             )
           else
             ...alarms.take(3).map((alarm) {
               final local = alarm.scheduledFor.toLocal();
-              final timeStr = '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+              final timeStr =
+                  '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
                     Container(
-                      width: 4, height: 4,
-                      decoration: const BoxDecoration(color: kAmber, shape: BoxShape.circle),
+                      width: 4,
+                      height: 4,
+                      decoration: const BoxDecoration(
+                          color: kAmber, shape: BoxShape.circle),
                     ),
                     const SizedBox(width: 10),
                     Text(
                       'Nudge scheduled for $timeStr',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kInk),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: kInk),
                     ),
                   ],
                 ),
@@ -592,6 +768,91 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
     );
   }
 
+  DateTime? _nextHighRiskAlarmTime(List<HabitLog> logs) {
+    if (logs.isEmpty) return null;
+
+    final byHour = List<int>.filled(24, 0);
+    for (final log in logs) {
+      byHour[log.occurredAt.hour] += (log.quantity ?? 1).round();
+    }
+
+    var highRiskHour = 0;
+    var highRiskCount = 0;
+    for (var hour = 0; hour < byHour.length; hour++) {
+      if (byHour[hour] > highRiskCount) {
+        highRiskHour = hour;
+        highRiskCount = byHour[hour];
+      }
+    }
+    if (highRiskCount == 0) return null;
+
+    final now = DateTime.now();
+    var alarmAt = DateTime(now.year, now.month, now.day, highRiskHour)
+        .subtract(const Duration(minutes: 5));
+    if (!alarmAt.isAfter(now)) {
+      final tomorrow = now.add(const Duration(days: 1));
+      alarmAt =
+          DateTime(tomorrow.year, tomorrow.month, tomorrow.day, highRiskHour)
+              .subtract(const Duration(minutes: 5));
+    }
+    return alarmAt;
+  }
+
+  Future<void> _scheduleRecoveryAlarm(DateTime alarmAt) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _schedulingAlarm) return;
+
+    setState(() => _schedulingAlarm = true);
+    try {
+      final scheduled = await ref
+          .read(notificationServiceProvider)
+          .scheduleSlipRecovery(
+            uid: uid,
+            habitId: habit.id,
+            habitName: habit.name,
+            scheduledFor: alarmAt,
+            intentSuffix: 'preemptive_${alarmAt.hour}',
+            title: 'High-risk smoking window',
+            body: 'A trigger window may be coming up. Take a short reset now.',
+          );
+
+      if (scheduled) {
+        await ref.read(eventServiceProvider).emit(
+          eventName: EventNames.notificationScheduled,
+          source: 'smoking_tracker',
+          payload: {
+            'category': NotifCategory.slipRecovery,
+            'habitId': habit.id,
+            'scheduledFor': alarmAt.toIso8601String(),
+          },
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              scheduled
+                  ? 'Recovery nudge scheduled.'
+                  : 'Could not schedule this nudge.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to schedule nudge: $e'),
+            backgroundColor: kCoral,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _schedulingAlarm = false);
+    }
+  }
+
   // ── Talk to Coach ─────────────────────────────────────────────────────────
 
   Widget _buildCoachButton() {
@@ -599,13 +860,17 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
       label: 'Talk to Coach',
       color: kPurple,
       height: 50,
-      leading: Icon(Icons.chat_rounded, color: kPurple.withValues(alpha: 0.7), size: 20),
+      leading: Icon(Icons.chat_rounded,
+          color: kPurple.withValues(alpha: 0.7), size: 20),
       onTap: () {
-        // Navigate to coach tab (index 3)
-        final scaffold = Scaffold.maybeOf(context);
-        if (scaffold != null) Navigator.of(context).popUntil((r) => r.isFirst);
-        // Use the home screen's tab notifier if available
-        DefaultTabController.of(context).animateTo(3);
+        final tabController = DefaultTabController.maybeOf(context);
+        if (tabController != null) {
+          tabController.animateTo(3);
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Open the Coach tab to continue.')),
+        );
       },
     );
   }
@@ -614,8 +879,7 @@ class _SmokingTrackerViewState extends ConsumerState<SmokingTrackerView> {
 
   static DateTime _dayStart(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  static String _dateStr(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
@@ -638,9 +902,15 @@ class _TriggerPickerSheet extends StatelessWidget {
         children: [
           const LiquidSheetHandle(),
           const SizedBox(height: 16),
-          const Text('What triggered this?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: kInk)),
+          const Text('What triggered this?',
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w900, color: kInk)),
           const SizedBox(height: 6),
-          Text('Optional — helps spot patterns', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kSub.withValues(alpha: 0.6))),
+          Text('Optional — helps spot patterns',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: kSub.withValues(alpha: 0.6))),
           const SizedBox(height: 20),
           Wrap(
             spacing: 10,
@@ -653,13 +923,18 @@ class _TriggerPickerSheet extends StatelessWidget {
                   Navigator.pop(context, trigger);
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: color.withValues(alpha: 0.25)),
                   ),
-                  child: Text(trigger, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
+                  child: Text(trigger,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: color)),
                 ),
               );
             }).toList(),
@@ -667,7 +942,11 @@ class _TriggerPickerSheet extends StatelessWidget {
           const SizedBox(height: 20),
           GestureDetector(
             onTap: () => Navigator.pop(context, ''),
-            child: Text('Skip', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kSub.withValues(alpha: 0.6))),
+            child: Text('Skip',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: kSub.withValues(alpha: 0.6))),
           ),
         ],
       ),

@@ -2,8 +2,9 @@
 //
 // Mindful Eating tracker variant — shown when a habit has trackerType 'junk_food'
 // or 'mindful_eating' AND profile/main.sensitiveContext.eatingDisorderFlag is true.
+// Also honors the legacy eatingDisorderHistory field name via provider aliasing.
 //
-// Requirements (UF §10.6 / Task 7.5):
+// Requirements (UF §10.6 / Task 7.6):
 //   - No counts, no goals, no streaks, no money-saved display.
 //   - mealMood slider 1–10 ("rushed/stressed → nourishing/calm") + optional note.
 //   - Firestore write: users/{uid}/habit_logs/{logId}  (quantity = mealMood, logType: 'good')
@@ -45,7 +46,8 @@ class MindfulEatingTrackerView extends ConsumerWidget {
     // We check the flag inside the view. If flag is false, we show the standard Junk Food dashboard.
     // This view is used in HabitDetailScreen for both 'junk_food' and 'mindful_eating' trackerTypes.
     if (!eatFlag &&
-        (habit.trackerType == 'junk_food' || habit.trackerType == 'nutrition')) {
+        (habit.trackerType == 'junk_food' ||
+            habit.trackerType == 'nutrition')) {
       return _JunkFoodDashboard(habit: habit);
     }
 
@@ -70,8 +72,10 @@ class MindfulEatingTrackerView extends ConsumerWidget {
         if (snap.hasError) {
           return _MeError(message: snap.error.toString());
         }
-        final logs =
-            snap.data?.docs.map(HabitLog.fromFirestore).toList() ?? const [];
+        final logs = (snap.data?.docs.map(HabitLog.fromFirestore).toList() ??
+                const <HabitLog>[])
+            .where((log) => log.logType == 'good' && log.unit == 'mood')
+            .toList();
         return Column(
           children: [
             _SensitivityToggle(active: true, habit: habit),
@@ -105,7 +109,9 @@ class _SensitivityToggle extends ConsumerWidget {
       child: Row(
         children: [
           Icon(
-            active ? Icons.health_and_safety_rounded : Icons.info_outline_rounded,
+            active
+                ? Icons.health_and_safety_rounded
+                : Icons.info_outline_rounded,
             color: active ? kMint : kAmber,
             size: 20,
           ),
@@ -159,7 +165,8 @@ class _SensitivityToggle extends ConsumerWidget {
         builder: (context) => AlertDialog(
           backgroundColor: Colors.white,
           surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           title: const Text(
             'Disable Mindful Eating?',
             style: TextStyle(fontWeight: FontWeight.w900, color: kInk),
@@ -220,8 +227,10 @@ class _JunkFoodDashboard extends ConsumerWidget {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
           return const Center(child: CircularProgressIndicator(color: kAmber));
         }
-        final logs =
-            snap.data?.docs.map(HabitLog.fromFirestore).toList() ?? const [];
+        final logs = (snap.data?.docs.map(HabitLog.fromFirestore).toList() ??
+                const <HabitLog>[])
+            .where((log) => log.logType == 'slip')
+            .toList();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -350,8 +359,7 @@ class _JunkFoodHero extends StatelessWidget {
     );
   }
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  static String _dateStr(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
@@ -416,7 +424,10 @@ class _JunkFoodWeeklyChart extends StatelessWidget {
                                       begin: Alignment.bottomCenter,
                                       end: Alignment.topCenter,
                                       colors: entries[i].key == todayKey
-                                          ? [kCoral, kCoral.withValues(alpha: 0.5)]
+                                          ? [
+                                              kCoral,
+                                              kCoral.withValues(alpha: 0.5)
+                                            ]
                                           : [
                                               kCoral.withValues(alpha: 0.35),
                                               kCoral.withValues(alpha: 0.15)
@@ -429,7 +440,9 @@ class _JunkFoodWeeklyChart extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            dayLabels[(DateTime.parse(entries[i].key).weekday - 1) % 7],
+                            dayLabels[
+                                (DateTime.parse(entries[i].key).weekday - 1) %
+                                    7],
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: entries[i].key == todayKey
@@ -452,8 +465,7 @@ class _JunkFoodWeeklyChart extends StatelessWidget {
     );
   }
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  static String _dateStr(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
@@ -473,8 +485,7 @@ class _TriggerHeatmap extends StatelessWidget {
       final row = 6 - diff;
       grid[row][log.occurredAt.hour] += (log.quantity ?? 1).toInt();
     }
-    final maxCell =
-        grid.expand((r) => r).fold<int>(1, (m, v) => v > m ? v : m);
+    final maxCell = grid.expand((r) => r).fold<int>(1, (m, v) => v > m ? v : m);
 
     return LiquidCard(
       radius: 22,
@@ -504,7 +515,15 @@ class _TriggerHeatmap extends StatelessWidget {
                       height: 12,
                       width: 20,
                       child: Text(
-                        ['M', 'T', 'W', 'T', 'F', 'S', 'S'][(d.weekday - 1) % 7],
+                        [
+                          'M',
+                          'T',
+                          'W',
+                          'T',
+                          'F',
+                          'S',
+                          'S'
+                        ][(d.weekday - 1) % 7],
                         style: TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
@@ -566,6 +585,7 @@ class JunkFoodLogSheet extends ConsumerStatefulWidget {
 class _JunkFoodLogSheetState extends ConsumerState<JunkFoodLogSheet> {
   String? _selectedEmoji;
   String? _selectedTrigger;
+  bool _hasLocalPhoto = false;
   final _noteController = TextEditingController();
   bool _isLogging = false;
 
@@ -605,8 +625,7 @@ class _JunkFoodLogSheetState extends ConsumerState<JunkFoodLogSheet> {
       final logId = generateId();
       final now = DateTime.now();
       final noteText = _noteController.text.trim();
-      final finalNote =
-          '${_selectedEmoji ?? ""} $noteText'.trim();
+      final finalNote = '${_selectedEmoji ?? ""} $noteText'.trim();
 
       final logData = <String, dynamic>{
         'logId': logId,
@@ -618,6 +637,13 @@ class _JunkFoodLogSheetState extends ConsumerState<JunkFoodLogSheet> {
         'quantity': 1,
         'unit': 'slip',
         if (_selectedTrigger != null) 'trigger': _selectedTrigger,
+        if (_selectedTrigger != null) 'triggerTag': _selectedTrigger,
+        if (_selectedTrigger != null) 'trigger_tag': _selectedTrigger,
+        if (widget.habit.costPerUnit != null)
+          'costPerUnit': widget.habit.costPerUnit,
+        if (widget.habit.costPerUnit != null) 'cost': widget.habit.costPerUnit,
+        if (_hasLocalPhoto) 'hasLocalPhoto': true,
+        if (_hasLocalPhoto) 'photoStoragePolicy': 'local_only',
         if (finalNote.isNotEmpty) 'note': finalNote,
         'source': 'manual',
         'schemaVersion': 1,
@@ -647,6 +673,10 @@ class _JunkFoodLogSheetState extends ConsumerState<JunkFoodLogSheet> {
           'amount': 1,
           'unit': 'slip',
           'trigger': _selectedTrigger,
+          if (_selectedTrigger != null) 'triggerTag': _selectedTrigger,
+          if (widget.habit.costPerUnit != null)
+            'cost': widget.habit.costPerUnit,
+          if (_hasLocalPhoto) 'hasLocalPhoto': true,
           'ts': now.toIso8601String(),
         },
       );
@@ -700,8 +730,8 @@ class _JunkFoodLogSheetState extends ConsumerState<JunkFoodLogSheet> {
               children: _emojiChips.map((chip) {
                 final selected = _selectedEmoji == chip['emoji'];
                 return GestureDetector(
-                  onTap: () => setState(() => _selectedEmoji =
-                      selected ? null : chip['emoji']),
+                  onTap: () => setState(
+                      () => _selectedEmoji = selected ? null : chip['emoji']),
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -737,8 +767,8 @@ class _JunkFoodLogSheetState extends ConsumerState<JunkFoodLogSheet> {
               children: _triggers.map((trigger) {
                 final selected = _selectedTrigger == trigger;
                 return GestureDetector(
-                  onTap: () => setState(() => _selectedTrigger =
-                      selected ? null : trigger),
+                  onTap: () => setState(
+                      () => _selectedTrigger = selected ? null : trigger),
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -768,26 +798,35 @@ class _JunkFoodLogSheetState extends ConsumerState<JunkFoodLogSheet> {
               children: [
                 Expanded(
                   child: LiquidButton.outline(
-                    label: 'Add Photo',
+                    label: _hasLocalPhoto ? 'Photo Local' : 'Add Photo',
                     leading: const Icon(Icons.camera_alt_rounded, size: 18),
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Photo logging coming in v1.1')),
-                      );
+                      setState(() => _hasLocalPhoto = !_hasLocalPhoto);
+                      if (_hasLocalPhoto) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Photo marked local-only. No image is uploaded or shared.',
+                            ),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ),
                 const SizedBox(width: 12),
                 if (widget.habit.costPerUnit != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
                       color: kSub.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.attach_money_rounded, size: 18, color: kInk),
+                        const Icon(Icons.attach_money_rounded,
+                            size: 18, color: kInk),
                         Text(
                           '${widget.habit.costPerUnit}',
                           style: const TextStyle(fontWeight: FontWeight.w800),
@@ -844,8 +883,7 @@ class _MindfulEatingBody extends StatelessWidget {
     // Build 7-day mood map (quantity field = mealMood 1–10).
     // For days with multiple logs, keep the last recorded mood.
     final points = <String, num>{
-      for (var i = 6; i >= 0; i--)
-        _dateStr(now.subtract(Duration(days: i))): 0,
+      for (var i = 6; i >= 0; i--) _dateStr(now.subtract(Duration(days: i))): 0,
     };
     for (final log in logs) {
       final key = _dateStr(log.occurredAt);
@@ -898,8 +936,7 @@ class _MindfulEatingBody extends StatelessWidget {
     );
   }
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  static String _dateStr(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
@@ -973,7 +1010,9 @@ class _MoodStatusCard extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                hasToday ? _labelForMood(todayMood.toDouble()) : 'No check-in yet',
+                hasToday
+                    ? _labelForMood(todayMood.toDouble())
+                    : 'No check-in yet',
                 style: TextStyle(
                   color: kSub.withValues(alpha: 0.7),
                   fontSize: 11,
@@ -1238,8 +1277,7 @@ class MindfulEatingLogSheet extends ConsumerStatefulWidget {
       _MindfulEatingLogSheetState();
 }
 
-class _MindfulEatingLogSheetState
-    extends ConsumerState<MindfulEatingLogSheet> {
+class _MindfulEatingLogSheetState extends ConsumerState<MindfulEatingLogSheet> {
   double _moodValue = 5.0;
   final _noteController = TextEditingController();
   bool _isLogging = false;
@@ -1268,8 +1306,7 @@ class _MindfulEatingLogSheetState
     return 'Nourishing / calm';
   }
 
-  static String _dateStr(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  static String _dateStr(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
@@ -1473,9 +1510,8 @@ class _MindfulEatingLogSheetState
                 max: 10,
                 divisions: 9,
                 label: _moodValue.round().toString(),
-                onChanged: _isLogging
-                    ? null
-                    : (v) => setState(() => _moodValue = v),
+                onChanged:
+                    _isLogging ? null : (v) => setState(() => _moodValue = v),
               ),
             ),
             Row(
@@ -1568,6 +1604,3 @@ class _MeError extends StatelessWidget {
     );
   }
 }
-
-
-

@@ -74,9 +74,9 @@ class ScreenTimeImporter {
   /// day is captured even if the 30-minute timer has not yet fired.
   void _listenDayClose() {
     _dayCloseSubscription?.cancel();
-    _dayCloseSubscription =
-        _eventService.on(EventNames.dayClosed).listen((_) {
-      debugPrint('[ScreenTimeImporter] dayClosed received — running day-close sync.');
+    _dayCloseSubscription = _eventService.on(EventNames.dayClosed).listen((_) {
+      debugPrint(
+          '[ScreenTimeImporter] dayClosed received — running day-close sync.');
       sync();
     });
   }
@@ -198,6 +198,7 @@ class ScreenTimeImporter {
     if (newSlips.isNotEmpty) {
       final habitId = await _getScreenTimeHabitId(uid);
       for (final slipApp in newSlips) {
+        final habitLogId = 'screen_time_${_safeDocId(slipApp)}_$logId';
         await _eventService.emit(
           eventName: EventNames.badHabitSlipLogged,
           eventId: 'slip_${slipApp}_${logId}_${snapshot.capturedAtMs}',
@@ -206,9 +207,11 @@ class ScreenTimeImporter {
             'habitName': snapshot.topApps
                 .firstWhere((a) => a.packageName == slipApp)
                 .appName,
-            'logId': logId,
-            'habitId': habitId,
+            'logId': habitLogId,
+            'screenTimeLogId': logId,
+            if (habitId != null) 'habitId': habitId,
             'crossingCount': crossingCount,
+            'triggerTag': 'cap_crossed',
           },
           source: 'screen_time_importer',
           priority: 'high',
@@ -219,17 +222,23 @@ class ScreenTimeImporter {
               .collection('users')
               .doc(uid)
               .collection('habit_logs')
-              .add({
+              .doc(habitLogId)
+              .set({
+            'logId': habitLogId,
             'habitId': habitId,
             'habitKind': 'bad',
             'logType': 'slip',
-            'occurredAt': FieldValue.serverTimestamp(),
+            'occurredAt': Timestamp.fromDate(now),
             'loggedAt': FieldValue.serverTimestamp(),
+            'quantity': 1,
+            'unit': 'cap_crossing',
             'trigger': 'cap_crossed: $slipApp',
+            'triggerTag': 'cap_crossed',
+            'trigger_tag': 'cap_crossed',
             'note': 'App $slipApp crossed its ${appCaps[slipApp]}m cap.',
             'source': 'auto_screen_time',
             'schemaVersion': 1,
-          });
+          }, SetOptions(merge: true));
         }
       }
     }
@@ -292,4 +301,7 @@ class ScreenTimeImporter {
     final d = date.day.toString().padLeft(2, '0');
     return 'daily_$y-$m-$d';
   }
+
+  static String _safeDocId(String value) =>
+      value.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
 }

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/habit_log_model.dart';
@@ -23,7 +24,8 @@ class HydrationTrackerView extends ConsumerStatefulWidget {
   const HydrationTrackerView({super.key, required this.habit});
 
   @override
-  ConsumerState<HydrationTrackerView> createState() => _HydrationTrackerViewState();
+  ConsumerState<HydrationTrackerView> createState() =>
+      _HydrationTrackerViewState();
 }
 
 class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
@@ -33,14 +35,17 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
   bool _isWeatherLoading = false;
   num? _targetOverride;
   bool _reminderScheduledToday = false;
+  bool _reminderCheckQueued = false;
 
   String get _targetKey => 'hydration_target_override_${widget.habit.id}';
+  String get _reminderKey => 'hydration_reminder_date_${widget.habit.id}';
   String get _weatherCacheKey => 'hydration_weather_cache';
 
   @override
   void initState() {
     super.initState();
     _loadPersistedTarget();
+    _loadReminderState();
     _migrateAndFetchWeather();
   }
 
@@ -69,6 +74,18 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
     }
   }
 
+  Future<void> _loadReminderState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final scheduledDate = prefs.getString(_reminderKey);
+      if (scheduledDate == _dateStr(DateTime.now()) && mounted) {
+        setState(() => _reminderScheduledToday = true);
+      }
+    } catch (e) {
+      debugPrint('Reminder state load error: $e');
+    }
+  }
+
   Future<void> _migrateAndFetchWeather() async {
     await _migrateLocalContainers();
     _fetchWeather();
@@ -90,7 +107,7 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
             .collection('users')
             .doc(uid)
             .collection('hydration_containers');
-        
+
         for (final item in local) {
           final docRef = collection.doc();
           batch.set(docRef, {
@@ -137,7 +154,7 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
     } catch (_) {}
 
     setState(() => _isWeatherLoading = true);
-    
+
     try {
       // 1. Get Lat/Lng from IP (No API key needed)
       final locRes = await http.get(Uri.parse('https://ipapi.co/json/'));
@@ -148,20 +165,23 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
 
         // 2. Get Current Weather from Open-Meteo
         final weatherRes = await http.get(Uri.parse(
-          'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true'
-        ));
+            'https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current_weather=true'));
 
         if (weatherRes.statusCode == 200) {
           final weatherData = jsonDecode(weatherRes.body);
-          final temp = weatherData['current_weather']['temperature'] as double;
+          final temp = (weatherData['current_weather']['temperature'] as num?)
+              ?.toDouble();
+          if (temp == null) return;
 
           // Cache result
           try {
             final prefs = await SharedPreferences.getInstance();
-            await prefs.setString(_weatherCacheKey, jsonEncode({
-              'temp': temp,
-              'cachedAt': DateTime.now().toIso8601String(),
-            }));
+            await prefs.setString(
+                _weatherCacheKey,
+                jsonEncode({
+                  'temp': temp,
+                  'cachedAt': DateTime.now().toIso8601String(),
+                }));
           } catch (_) {}
 
           if (mounted) {
@@ -200,9 +220,30 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
         body: '${remaining.round()} ml to go — grab a glass!',
         at: fireAt,
       );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_reminderKey, _dateStr(DateTime.now()));
+      await ref.read(eventServiceProvider).emit(
+        eventName: EventNames.notificationScheduled,
+        source: 'hydration_tracker',
+        payload: {
+          'category': 'hydration_reminder',
+          'habitId': widget.habit.id,
+          'scheduledFor': fireAt.toIso8601String(),
+        },
+      );
     } catch (e) {
       debugPrint('Hydration reminder error: $e');
     }
+  }
+
+  void _queueHydrationReminder(num remaining) {
+    if (_reminderScheduledToday || _reminderCheckQueued) return;
+    _reminderCheckQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reminderCheckQueued = false;
+      if (!mounted) return;
+      _scheduleHydrationReminder(remaining);
+    });
   }
 
   Future<void> _log(num amount, {String? source}) async {
@@ -230,7 +271,7 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
     if (uid == null) return const Center(child: Text('Not authenticated.'));
 
     final logsAsync = ref.watch(todayHabitLogsProvider);
-    
+
     // Watch profile for biometrics
     final profileStream = FirebaseFirestore.instance
         .collection('users')
@@ -254,11 +295,14 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
           loading: () => const _LoadingState(),
           error: (e, __) => _ErrorState(message: e.toString()),
           data: (allLogs) {
-            final habitLogs = allLogs.where((l) => l.habitId == widget.habit.id).toList();
-            final todayTotal = habitLogs.fold<num>(0, (total, l) => total + (l.quantity ?? 0));
-            
+            final habitLogs =
+                allLogs.where((l) => l.habitId == widget.habit.id).toList();
+            final todayTotal =
+                habitLogs.fold<num>(0, (total, l) => total + (l.quantity ?? 0));
+
             final biometrics = profileSnap.data?.data()?['biometrics'] as Map?;
-            final weight = (biometrics?['weightKg'] as num?)?.toDouble() ?? 70.0;
+            final weight =
+                (biometrics?['weightKg'] as num?)?.toDouble() ?? 70.0;
             final autoTarget = (weight * 35).round();
             num target = _targetOverride ?? autoTarget;
             if (_heatBoostEnabled) target += 500;
@@ -272,17 +316,20 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
             final isBehind = todayTotal < (target * expectedPct * 0.8);
             if (isBehind && now.hour >= 9 && now.hour < 20) {
               final remaining = target - todayTotal;
-              _scheduleHydrationReminder(remaining);
+              _queueHydrationReminder(remaining);
             }
 
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: containersStream,
               builder: (context, containersSnap) {
-                final containers = containersSnap.data?.docs.map((d) => <String, dynamic>{
-                  'id': d.id,
-                  'name': d.data()['name'],
-                  'amount': d.data()['amount'],
-                }).toList() ?? <Map<String, dynamic>>[];
+                final containers = containersSnap.data?.docs
+                        .map((d) => <String, dynamic>{
+                              'id': d.id,
+                              'name': d.data()['name'],
+                              'amount': d.data()['amount'],
+                            })
+                        .toList() ??
+                    <Map<String, dynamic>>[];
 
                 return SingleChildScrollView(
                   padding: const EdgeInsets.only(bottom: 40),
@@ -298,14 +345,12 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
                         onEditTarget: () => _showEditTargetDialog(autoTarget),
                       ),
                       const SizedBox(height: 24),
-                      
                       _SectionLabel(label: 'Quick Log'),
                       const SizedBox(height: 12),
                       _QuickLogButtons(
                         onLog: _log,
                         onCustom: _showCustomLogDialog,
                       ),
-                      
                       const SizedBox(height: 24),
                       _SectionLabel(
                         label: 'My Containers',
@@ -316,14 +361,13 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
                       _CustomContainersList(
                         containers: containers,
                         onLog: _log,
-                        onDelete: (id, name) => _confirmDeleteContainer(id, name),
+                        onDelete: (id, name) =>
+                            _confirmDeleteContainer(id, name),
                       ),
-
                       const SizedBox(height: 24),
                       _SectionLabel(label: 'Today\'s Hourly Intake'),
                       const SizedBox(height: 12),
                       _HourlyDistributionChart(logs: habitLogs),
-
                       const SizedBox(height: 24),
                       _SectionLabel(label: 'Smart Insights'),
                       const SizedBox(height: 12),
@@ -351,6 +395,11 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
     );
   }
 
+  static String _dateStr(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
   Future<void> _deleteContainer(String id) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -367,7 +416,8 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kBg,
-        title: const Text('Delete Container', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text('Delete Container',
+            style: TextStyle(fontWeight: FontWeight.w900)),
         content: Text('Remove "$name" from your containers?'),
         actions: [
           TextButton(
@@ -379,7 +429,8 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
               Navigator.pop(ctx);
               _deleteContainer(id);
             },
-            child: const Text('Delete', style: TextStyle(color: kCoral, fontWeight: FontWeight.w800)),
+            child: const Text('Delete',
+                style: TextStyle(color: kCoral, fontWeight: FontWeight.w800)),
           ),
         ],
       ),
@@ -392,7 +443,8 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kBg,
-        title: const Text('Custom Amount', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text('Custom Amount',
+            style: TextStyle(fontWeight: FontWeight.w900)),
         content: LiquidTextField(
           hint: 'Amount in ml',
           controller: ctrl,
@@ -428,13 +480,17 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: kBg,
-        title: const Text('Daily Target', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text('Daily Target',
+            style: TextStyle(fontWeight: FontWeight.w900)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'Auto-calculated: ${autoTarget.round()} ml',
-              style: TextStyle(color: kSub.withValues(alpha: 0.8), fontSize: 13, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: kSub.withValues(alpha: 0.8),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             LiquidTextField(
@@ -452,7 +508,8 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
                 setState(() => _targetOverride = null);
                 _persistTarget(null);
               },
-              child: const Text('Reset to auto', style: TextStyle(color: kAmber, fontWeight: FontWeight.w800)),
+              child: const Text('Reset to auto',
+                  style: TextStyle(color: kAmber, fontWeight: FontWeight.w800)),
             ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -484,11 +541,13 @@ class _HydrationTrackerViewState extends ConsumerState<HydrationTrackerView> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: kBg,
-        title: const Text('New Container', style: TextStyle(fontWeight: FontWeight.w900)),
+        title: const Text('New Container',
+            style: TextStyle(fontWeight: FontWeight.w900)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            LiquidTextField(hint: 'Label (e.g. Gym Bottle)', controller: nameCtrl),
+            LiquidTextField(
+                hint: 'Label (e.g. Gym Bottle)', controller: nameCtrl),
             const SizedBox(height: 12),
             LiquidTextField(
               hint: 'Amount in ml (e.g. 750)',
@@ -596,7 +655,9 @@ class _HydrationHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  progress >= 1.0 ? 'Goal achieved! 🎉' : '${((1 - progress) * target).round()} ml remaining',
+                  progress >= 1.0
+                      ? 'Goal achieved! 🎉'
+                      : '${((1 - progress) * target).round()} ml remaining',
                   style: TextStyle(
                     color: progress >= 1.0 ? kMint : kInk,
                     fontWeight: FontWeight.w800,
@@ -648,7 +709,9 @@ class _QuickLogButtons extends StatelessWidget {
                     children: [
                       Icon(Icons.edit_rounded, color: kAmber, size: 20),
                       SizedBox(height: 4),
-                      Text('Custom', style: TextStyle(fontWeight: FontWeight.w900, color: kAmber)),
+                      Text('Custom',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w900, color: kAmber)),
                     ],
                   ),
                 ),
@@ -666,7 +729,8 @@ class _LogBtn extends StatelessWidget {
   final num amount;
   final Function(num) onLog;
 
-  const _LogBtn({required this.label, required this.amount, required this.onLog});
+  const _LogBtn(
+      {required this.label, required this.amount, required this.onLog});
 
   @override
   Widget build(BuildContext context) {
@@ -684,7 +748,9 @@ class _LogBtn extends StatelessWidget {
             children: [
               const Icon(Icons.add_rounded, color: kBlue, size: 20),
               const SizedBox(height: 4),
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w900, color: kBlue)),
+              Text(label,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900, color: kBlue)),
             ],
           ),
         ),
@@ -717,7 +783,8 @@ class _CustomContainersList extends StatelessWidget {
         child: const Center(
           child: Text(
             'Save your favorite bottles or glasses here.',
-            style: TextStyle(color: kSub, fontSize: 13, fontWeight: FontWeight.w600),
+            style: TextStyle(
+                color: kSub, fontSize: 13, fontWeight: FontWeight.w600),
           ),
         ),
       );
@@ -752,7 +819,10 @@ class _ContainerChip extends StatelessWidget {
         color: kWhite,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
-          BoxShadow(color: kInk.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(
+              color: kInk.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4)),
         ],
       ),
       child: Row(
@@ -762,12 +832,16 @@ class _ContainerChip extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             name,
-            style: const TextStyle(fontWeight: FontWeight.w800, color: kInk, fontSize: 14),
+            style: const TextStyle(
+                fontWeight: FontWeight.w800, color: kInk, fontSize: 14),
           ),
           const SizedBox(width: 6),
           Text(
             '${amount.round()}ml',
-            style: TextStyle(fontWeight: FontWeight.w600, color: kSub.withValues(alpha: 0.7), fontSize: 12),
+            style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: kSub.withValues(alpha: 0.7),
+                fontSize: 12),
           ),
         ],
       ),
@@ -788,7 +862,7 @@ class _HourlyDistributionChart extends StatelessWidget {
     }
 
     final maxIntake = hourlyData.reduce(math.max);
-    
+
     return LiquidCard(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
       child: SizedBox(
@@ -813,7 +887,8 @@ class _HourlyDistributionChart extends StatelessWidget {
                           heightFactor: h,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: kBlue.withValues(alpha: isActiveHour ? 0.8 : 0.3),
+                              color: kBlue.withValues(
+                                  alpha: isActiveHour ? 0.8 : 0.3),
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -824,7 +899,10 @@ class _HourlyDistributionChart extends StatelessWidget {
                     if (i % 6 == 0)
                       Text(
                         '${i}h',
-                        style: TextStyle(fontSize: 8, color: kSub.withValues(alpha: 0.5), fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                            fontSize: 8,
+                            color: kSub.withValues(alpha: 0.5),
+                            fontWeight: FontWeight.w700),
                       )
                     else
                       const SizedBox(height: 10),
@@ -863,7 +941,7 @@ class _HydrationInsights extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final hoursPassed = (now.hour - 7).clamp(0, 16); 
+    final hoursPassed = (now.hour - 7).clamp(0, 16);
     final expectedIntakePct = (hoursPassed / 16);
     final isBehind = current < (target * expectedIntakePct * 0.8);
 
@@ -882,11 +960,15 @@ class _HydrationInsights extends StatelessWidget {
                     children: [
                       const Text(
                         'Front-load your intake',
-                        style: TextStyle(fontWeight: FontWeight.w900, color: kInk),
+                        style:
+                            TextStyle(fontWeight: FontWeight.w900, color: kInk),
                       ),
                       Text(
                         'You\'re a bit behind for this time of day. Try to catch up before evening.',
-                        style: TextStyle(fontSize: 13, color: kSub.withValues(alpha: 0.8), height: 1.3),
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: kSub.withValues(alpha: 0.8),
+                            height: 1.3),
                       ),
                     ],
                   ),
@@ -900,9 +982,13 @@ class _HydrationInsights extends StatelessWidget {
             children: [
               GestureDetector(
                 onTap: onRefreshWeather,
-                child: isWeatherLoading 
-                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: kAmber))
-                  : const Icon(Icons.wb_sunny_rounded, color: kAmber),
+                child: isWeatherLoading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: kAmber))
+                    : const Icon(Icons.wb_sunny_rounded, color: kAmber),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -913,28 +999,40 @@ class _HydrationInsights extends StatelessWidget {
                       children: [
                         const Text(
                           'Heat Wave Boost',
-                          style: TextStyle(fontWeight: FontWeight.w900, color: kInk),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w900, color: kInk),
                         ),
                         if (isAutoWeather) ...[
                           const SizedBox(width: 8),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(color: kMint.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                            child: const Text('AUTO', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: kMint)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                                color: kMint.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(6)),
+                            child: const Text('AUTO',
+                                style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                    color: kMint)),
                           ),
                         ],
                       ],
                     ),
                     Text(
-                      currentTemp != null 
-                        ? 'Detected ${currentTemp!.toStringAsFixed(1)}°C. Boosting +500ml.'
-                        : 'Increase target by 500ml for hot weather (>35°C).',
-                      style: TextStyle(fontSize: 13, color: kSub.withValues(alpha: 0.8), height: 1.3),
+                      currentTemp != null
+                          ? 'Detected ${currentTemp!.toStringAsFixed(1)}°C. Boosting +500ml.'
+                          : 'Increase target by 500ml for hot weather (>35°C).',
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: kSub.withValues(alpha: 0.8),
+                          height: 1.3),
                     ),
                   ],
                 ),
               ),
-              LiquidToggle(value: heatBoostEnabled, onChanged: onToggleHeatBoost),
+              LiquidToggle(
+                  value: heatBoostEnabled, onChanged: onToggleHeatBoost),
             ],
           ),
         ),
@@ -957,14 +1055,16 @@ class _SectionLabel extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: kInk),
+          style: const TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w900, color: kInk),
         ),
         if (actionLabel != null)
           GestureDetector(
             onTap: onAction,
             child: Text(
               actionLabel!,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kAmber),
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w800, color: kAmber),
             ),
           ),
       ],

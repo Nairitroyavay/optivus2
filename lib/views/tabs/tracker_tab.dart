@@ -13,6 +13,7 @@ import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/models/habit_log_model.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
+import 'package:optivus2/models/streak_model.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/views/habits/log_habit_sheet.dart';
 import 'package:optivus2/views/habits/variants/mindful_eating_tracker_view.dart';
@@ -21,6 +22,7 @@ import 'package:optivus2/views/habits/variants/mindful_eating_tracker_view.dart'
 // Range & Filter enums for the tracker header
 // ─────────────────────────────────────────────────────────────────────────────
 enum _TrackerRange { today, week, month }
+
 enum _TrackerFilter { all, good, bad, phone }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,16 +31,20 @@ enum _TrackerFilter { all, good, bad, phone }
 const _kGoodAccents = [kMint, kBlue, kPurple, kAmber, kCoral];
 const _kBadAccents = [kCoral, kRose, Color(0xFFFF5C93), kPurple];
 
-final _rangeHabitLogsProvider = StreamProvider.family<List<HabitLog>, _TrackerRange>((ref, range) {
+final _rangeHabitLogsProvider =
+    StreamProvider.family<List<HabitLog>, _TrackerRange>((ref, range) {
   if (range == _TrackerRange.today) {
-    return ref.watch(habitServiceProvider).watchHabitLogsForDate(DateTime.now());
+    return ref
+        .watch(habitServiceProvider)
+        .watchHabitLogsForDate(DateTime.now());
   }
   final days = range == _TrackerRange.week ? 7 : 30;
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value(const <HabitLog>[]);
 
   final now = DateTime.now();
-  final start = DateTime(now.year, now.month, now.day).subtract(Duration(days: days - 1));
+  final start =
+      DateTime(now.year, now.month, now.day).subtract(Duration(days: days - 1));
 
   return FirebaseFirestore.instance
       .collection('users')
@@ -68,11 +74,14 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
     final totals = _totalsByHabit(logs);
     final slipCounts = _slipCountsByHabit(logs);
     final latestLogs = _latestLogsByHabit(logs);
+    final streaksAsync = ref.watch(allStreaksProvider);
+    final streaksByHabit = _streaksByHabit(
+      streaksAsync.valueOrNull ?? const <Streak>[],
+    );
     final summaryAsync = ref.watch(todaySummaryProvider);
     final weekSummariesAsync = ref.watch(recentDailySummariesProvider(7));
     // Eating disorder flag: routes junk_food/nutrition onLog to mindful eating sheet.
     final eatFlag = ref.watch(eatingDisorderFlagProvider).valueOrNull ?? false;
-
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -128,6 +137,11 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
               totals: totals,
             );
             final habitsCompletedToday = _countCompleted(goodHabits, totals);
+            final syncedAt = _latestSyncAt(
+              logs: logs,
+              summary: summary,
+              streaks: streaksByHabit.values,
+            );
 
             return CustomScrollView(
               physics: const BouncingScrollPhysics(),
@@ -188,7 +202,9 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                           final accent =
                               _kGoodAccents[index % _kGoodAccents.length];
                           final total = totals[habit.id] ?? 0;
-                          final daysMultiplier = _range == _TrackerRange.week ? 7 : (_range == _TrackerRange.month ? 30 : 1);
+                          final daysMultiplier = _range == _TrackerRange.week
+                              ? 7
+                              : (_range == _TrackerRange.month ? 30 : 1);
                           final goal = (habit.dailyGoal ?? 1) * daysMultiplier;
                           final progress =
                               (total / goal).clamp(0.0, 1.0).toDouble();
@@ -204,11 +220,14 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                                 progress: progress,
                                 currentValue: total,
                                 goalValue: goal,
+                                streakCount:
+                                    streaksByHabit[habit.id]?.currentCount ?? 0,
                                 onLog: () => _openLogSheet(habit),
                                 onUndoLatest: latestLog == null
                                     ? null
                                     : () => _undoLatest(habit, latestLog),
-                                onStreakDetails: () => _showStreakDetails(habit),
+                                onStreakDetails: () =>
+                                    _showStreakDetails(habit),
                                 onDetails: () => _showDetails(habit),
                               ),
                             ),
@@ -250,6 +269,8 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                               habit: habit,
                               accent: accent,
                               slipCount: slips,
+                              streakCount:
+                                  streaksByHabit[habit.id]?.currentCount ?? 0,
                               isMindfulEating: isMindfulEatingHabit,
                               onLog: () => _openLogSheet(
                                 habit,
@@ -298,7 +319,7 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
 
                 // ── Sync footer ──
                 SliverToBoxAdapter(
-                  child: _SyncFooter(summary: summary),
+                  child: _SyncFooter(syncedAt: syncedAt),
                 ),
 
                 // Bottom padding
@@ -340,6 +361,30 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
     return latest;
   }
 
+  Map<String, Streak> _streaksByHabit(List<Streak> streaks) {
+    return {
+      for (final streak in streaks.where((s) => s.scope == StreakScope.habit))
+        streak.habitId: streak,
+    };
+  }
+
+  DateTime? _latestSyncAt({
+    required List<HabitLog> logs,
+    required DaySummary? summary,
+    required Iterable<Streak> streaks,
+  }) {
+    DateTime? latest = summary?.computedAt;
+    for (final log in logs) {
+      if (latest == null || log.loggedAt.isAfter(latest)) latest = log.loggedAt;
+    }
+    for (final streak in streaks) {
+      if (latest == null || streak.updatedAt.isAfter(latest)) {
+        latest = streak.updatedAt;
+      }
+    }
+    return latest;
+  }
+
   double _computeMissionPct({
     required DaySummary? summary,
     required List<DaySummary> weekSummaries,
@@ -360,16 +405,14 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
         return sum / goodHabits.length;
       case _TrackerRange.week:
         if (weekSummaries.isEmpty) return 0;
-        final avg = weekSummaries.fold<double>(
-                0, (s, d) => s + d.missionPct) /
+        final avg = weekSummaries.fold<double>(0, (s, d) => s + d.missionPct) /
             weekSummaries.length;
         return avg.clamp(0.0, 1.0);
       case _TrackerRange.month:
         // For month we use the week summaries provider with 30 days
         // but we only have 7 from the current watch. Fall back to same data.
         if (weekSummaries.isEmpty) return 0;
-        final avg = weekSummaries.fold<double>(
-                0, (s, d) => s + d.missionPct) /
+        final avg = weekSummaries.fold<double>(0, (s, d) => s + d.missionPct) /
             weekSummaries.length;
         return avg.clamp(0.0, 1.0);
     }
@@ -377,7 +420,9 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
 
   int _countCompleted(List<HabitModel> goodHabits, Map<String, num> totals) {
     int count = 0;
-    final daysMultiplier = _range == _TrackerRange.week ? 7 : (_range == _TrackerRange.month ? 30 : 1);
+    final daysMultiplier = _range == _TrackerRange.week
+        ? 7
+        : (_range == _TrackerRange.month ? 30 : 1);
     for (final h in goodHabits) {
       final goal = (h.dailyGoal ?? 1) * daysMultiplier;
       if ((totals[h.id] ?? 0) >= goal) count++;
@@ -453,7 +498,7 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
   Future<void> _dismissSuggestion(String suggestionId) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
+      if (uid == null || suggestionId.isEmpty) return;
 
       await FirebaseFirestore.instance
           .collection('users')
@@ -503,12 +548,27 @@ class _TrackerHeaderV2 extends StatelessWidget {
   });
 
   static const _dayNames = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-    'Friday', 'Saturday', 'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
   ];
   static const _monthNames = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
 
   @override
@@ -807,6 +867,7 @@ class _GoodHabitCard extends StatelessWidget {
   final double progress;
   final num currentValue;
   final num goalValue;
+  final int streakCount;
   final VoidCallback onLog;
   final VoidCallback? onUndoLatest;
   final VoidCallback onStreakDetails;
@@ -818,6 +879,7 @@ class _GoodHabitCard extends StatelessWidget {
     required this.progress,
     required this.currentValue,
     required this.goalValue,
+    required this.streakCount,
     required this.onLog,
     required this.onUndoLatest,
     required this.onStreakDetails,
@@ -843,6 +905,11 @@ class _GoodHabitCard extends StatelessWidget {
       default:
         return Icons.check_circle_outline_rounded;
     }
+  }
+
+  String _streakLabel() {
+    if (streakCount <= 0) return 'No streak yet';
+    return '$streakCount day streak';
   }
 
   @override
@@ -890,7 +957,7 @@ class _GoodHabitCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$currentValue / $goalValue ${habit.unit}',
+                      '$currentValue / $goalValue ${habit.unit} · ${_streakLabel()}',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
@@ -1011,6 +1078,7 @@ class _BadHabitCard extends StatelessWidget {
   final HabitModel habit;
   final Color accent;
   final num slipCount;
+  final int streakCount;
   final bool isMindfulEating;
   final VoidCallback onLog;
   final VoidCallback? onUndoLatest;
@@ -1021,6 +1089,7 @@ class _BadHabitCard extends StatelessWidget {
     required this.habit,
     required this.accent,
     required this.slipCount,
+    required this.streakCount,
     this.isMindfulEating = false,
     required this.onLog,
     required this.onUndoLatest,
@@ -1030,13 +1099,15 @@ class _BadHabitCard extends StatelessWidget {
 
   String _goalLabel(BadHabitGoalType? type) {
     if (isMindfulEating) return 'Mindful eating mode';
+    final streak =
+        streakCount <= 0 ? 'No streak yet' : '$streakCount day streak';
     switch (type) {
       case BadHabitGoalType.eliminate:
-        return 'Goal: Zero today';
+        return 'Goal: Zero today · $streak';
       case BadHabitGoalType.reduceToTarget:
-        return 'Goal: Under ${habit.target ?? "?"}/day';
+        return 'Goal: Under ${habit.target ?? "?"}/day · $streak';
       default:
-        return 'Tracking awareness';
+        return 'Tracking awareness · $streak';
     }
   }
 
@@ -2019,9 +2090,7 @@ class _WeeklyTrendStrip extends StatelessWidget {
                             fontSize: 11,
                             fontWeight:
                                 isToday ? FontWeight.w800 : FontWeight.w600,
-                            color: isToday
-                                ? kInk
-                                : kSub.withValues(alpha: 0.6),
+                            color: isToday ? kInk : kSub.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -2058,10 +2127,8 @@ class _AiInsightCard extends ConsumerWidget {
 
         final suggestion = suggestions.first;
         final id = suggestion['id'] as String? ?? '';
-        final title =
-            suggestion['title'] as String? ?? 'AI Insight';
-        final body =
-            suggestion['body'] as String? ?? '';
+        final title = suggestion['title'] as String? ?? 'AI Insight';
+        final body = suggestion['body'] as String? ?? '';
         final reason = suggestion['reason'] as String?;
 
         return Padding(
@@ -2205,14 +2272,14 @@ class _TrackerShimmer extends StatelessWidget {
 // ═════════════════════════════════════════════════════════════════════════════
 
 class _SyncFooter extends StatelessWidget {
-  final DaySummary? summary;
-  const _SyncFooter({this.summary});
+  final DateTime? syncedAt;
+  const _SyncFooter({this.syncedAt});
 
   @override
   Widget build(BuildContext context) {
     String label;
-    if (summary != null) {
-      final diff = DateTime.now().difference(summary!.computedAt);
+    if (syncedAt != null) {
+      final diff = DateTime.now().difference(syncedAt!);
       if (diff.inMinutes < 1) {
         label = 'Synced just now';
       } else if (diff.inMinutes < 60) {
@@ -2239,4 +2306,3 @@ class _SyncFooter extends StatelessWidget {
     );
   }
 }
-

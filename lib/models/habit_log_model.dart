@@ -65,7 +65,9 @@ class HabitLog {
       loggedAt: _asDateTime(data['loggedAt']) ?? DateTime.now(),
       quantity: data['quantity'] as num? ?? data['amount'] as num?,
       unit: data['unit'] as String?,
-      trigger: data['trigger'] as String?,
+      trigger: data['trigger'] as String? ??
+          data['triggerTag'] as String? ??
+          data['trigger_tag'] as String?,
       note: data['note'] as String?,
       relatedTaskId: data['relatedTaskId'] as String?,
       avoidedWith: data['avoidedWith'] as String?,
@@ -90,6 +92,8 @@ class HabitLog {
       if (quantity != null) 'quantity': quantity,
       if (unit != null) 'unit': unit,
       if (trigger != null) 'trigger': trigger,
+      if (trigger != null) 'triggerTag': trigger,
+      if (trigger != null) 'trigger_tag': trigger,
       if (note != null) 'note': note,
       if (relatedTaskId != null) 'relatedTaskId': relatedTaskId,
       if (avoidedWith != null) 'avoidedWith': avoidedWith,

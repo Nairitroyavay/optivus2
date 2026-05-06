@@ -210,19 +210,27 @@ class NotificationService {
     required String uid,
     required String habitId,
     required String habitName,
+    DateTime? scheduledFor,
+    String intentSuffix = '',
+    String? title,
+    String? body,
   }) async {
-    final fireAt = DateTime.now().add(const Duration(seconds: 1));
+    final fireAt =
+        scheduledFor ?? DateTime.now().add(const Duration(seconds: 1));
+    final entityKey = intentSuffix.isEmpty ? habitId : '$habitId:$intentSuffix';
 
     return _scheduleAndPersist(
       uid: uid,
-      notifId: _makeId(NotifCategory.slipRecovery, habitId, fireAt),
+      notifId: _makeId(NotifCategory.slipRecovery, entityKey, fireAt),
       category: NotifCategory.slipRecovery,
-      title: '💪 Slip noted — you\'ve got this',
-      body: 'You logged a $habitName slip. Every day is a fresh start.',
+      title: title ?? '💪 Slip noted — you\'ve got this',
+      body: body ?? 'You logged a $habitName slip. Every day is a fresh start.',
       scheduledFor: fireAt,
       details: _kHabitNotifDetails,
       habitId: habitId,
-      intentDescription: 'slip_recovery_$habitId',
+      intentDescription: intentSuffix.isEmpty
+          ? 'slip_recovery_$habitId'
+          : 'slip_recovery_${habitId}_$intentSuffix',
     );
   }
 

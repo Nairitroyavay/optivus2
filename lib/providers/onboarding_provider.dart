@@ -90,6 +90,7 @@ class OnboardingState {
   });
 
   /// Convenience read of profile/main.sensitiveContext.eatingDisorderFlag.
+  /// Also compatible with the older eatingDisorderHistory field name.
   bool get eatingDisorderFlag =>
       aboutYou.sensitiveContext.eatingDisorderFlag ?? false;
 
@@ -230,8 +231,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
   void forceDisableMindfulEating() {
     updateSensitiveContext(
-      state.aboutYou.sensitiveContext
-          .copyWith(clearEatingDisorderFlag: true),
+      state.aboutYou.sensitiveContext.copyWith(eatingDisorderFlag: false),
     );
     saveToFirestoreDebounced(state.currentStep);
   }
@@ -382,6 +382,7 @@ final onboardingProvider =
 );
 
 /// Streams `profile/main.sensitiveContext.eatingDisorderFlag`.
+/// Also accepts the older `eatingDisorderHistory` alias.
 /// When true, junk_food and nutrition habit taps route to MindfulEatingLogSheet.
 final eatingDisorderFlagProvider = StreamProvider<bool>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -396,6 +397,8 @@ final eatingDisorderFlagProvider = StreamProvider<bool>((ref) {
     final data = snap.data();
     if (data == null) return false;
     final ctx = data['sensitiveContext'] as Map?;
-    return (ctx?['eatingDisorderFlag'] as bool?) ?? false;
+    return (ctx?['eatingDisorderFlag'] as bool?) ??
+        (ctx?['eatingDisorderHistory'] as bool?) ??
+        false;
   });
 });

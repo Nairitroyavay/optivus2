@@ -44,7 +44,8 @@ class _ProcrastinationTrackerViewState
         .collection('users')
         .doc(uid)
         .collection('tasks')
-        .where('plannedStart', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('plannedStart',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .snapshots();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -67,18 +68,18 @@ class _ProcrastinationTrackerViewState
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: tasksStream,
           builder: (context, tasksSnap) {
-            final tasks = tasksSnap.data?.docs
-                    .map(TaskModel.fromFirestore)
-                    .toList() ??
-                const [];
+            final tasks =
+                tasksSnap.data?.docs.map(TaskModel.fromFirestore).toList() ??
+                    const [];
 
             final today = DateTime.now();
             final todayStr = _dateStr(today);
             final todayLogs = logs
                 .where((l) => _dateStr(l.occurredAt) == todayStr)
                 .toList()
-              ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
-            final todayMinutes = todayLogs.fold<num>(0, (s, l) => s + (l.quantity ?? 0));
+              ..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+            final todayMinutes =
+                todayLogs.fold<num>(0, (s, l) => s + (l.quantity ?? 0));
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -93,7 +94,7 @@ class _ProcrastinationTrackerViewState
                 const SizedBox(height: 14),
                 _buildTimeHeatmap(logs),
                 const SizedBox(height: 14),
-                _buildTaskTypeHeatmap(logs),
+                _buildTaskTypeHeatmap(logs, tasks),
                 const SizedBox(height: 14),
                 _buildIdentityDamage(logs, tasks),
               ],
@@ -262,9 +263,9 @@ class _ProcrastinationTrackerViewState
                   children: [
                     for (var i = 0; i < 7; i++)
                       Text(
-                        _dayLabels[(now.subtract(Duration(days: 6 - i)).weekday -
-                                1) %
-                            7],
+                        _dayLabels[
+                            (now.subtract(Duration(days: 6 - i)).weekday - 1) %
+                                7],
                         style: TextStyle(
                             fontSize: 8,
                             fontWeight: FontWeight.w800,
@@ -339,13 +340,13 @@ class _ProcrastinationTrackerViewState
     );
   }
 
-  Widget _buildTaskTypeHeatmap(List<HabitLog> logs) {
+  Widget _buildTaskTypeHeatmap(List<HabitLog> logs, List<TaskModel> tasks) {
+    final taskMap = {for (final task in tasks) task.id: task};
     final totals = <String, num>{};
     for (final log in logs) {
-      String label = log.trigger ?? 'Other';
-      if (label == 'late_start') label = 'Late Start (Auto)';
-      if (label == 'no_show') label = 'No Show (Auto)';
-      
+      final task = taskMap[log.relatedTaskId];
+      final label =
+          task == null ? _triggerLabel(log.trigger) : _taskTypeLabel(task.type);
       totals[label] = (totals[label] ?? 0) + (log.quantity ?? 0);
     }
 
@@ -361,7 +362,7 @@ class _ProcrastinationTrackerViewState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Top Triggers',
+          const Text('Task-Type Heatmap',
               style: TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
           const SizedBox(height: 14),
@@ -413,6 +414,37 @@ class _ProcrastinationTrackerViewState
     );
   }
 
+  String _taskTypeLabel(TaskType type) {
+    switch (type) {
+      case TaskType.skinCare:
+        return 'Skin care';
+      case TaskType.eating:
+        return 'Eating';
+      case TaskType.classBlock:
+        return 'Class';
+      case TaskType.fixed:
+        return 'Fixed block';
+      case TaskType.custom:
+        return 'Custom task';
+      case TaskType.habitBlock:
+        return 'Habit block';
+    }
+  }
+
+  String _triggerLabel(String? trigger) {
+    switch (trigger) {
+      case 'late_start':
+        return 'Late Start (Auto)';
+      case 'no_show':
+        return 'No Show (Auto)';
+      case null:
+      case '':
+        return 'Other';
+      default:
+        return trigger;
+    }
+  }
+
   Widget _buildIdentityDamage(List<HabitLog> logs, List<TaskModel> tasks) {
     final taskMap = {for (var t in tasks) t.id: t};
     final damage = <String, int>{};
@@ -439,7 +471,9 @@ class _ProcrastinationTrackerViewState
                 SizedBox(width: 8),
                 Text('Identity Damage',
                     style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w900, color: kInk)),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: kInk)),
               ],
             ),
             const SizedBox(height: 12),
@@ -491,7 +525,8 @@ class _ProcrastinationTrackerViewState
             runSpacing: 8,
             children: sortedDamage.map((entry) {
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: kCoral.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
@@ -700,7 +735,8 @@ class _ProcrastinationLogModalState
           const SizedBox(height: 24),
           const Text(
             'WHAT DID YOU AVOID?',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: kSub),
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w900, color: kSub),
           ),
           const SizedBox(height: 10),
           tasksAsync.when(
@@ -731,7 +767,8 @@ class _ProcrastinationLogModalState
           const SizedBox(height: 20),
           const Text(
             'WHAT DID YOU DO INSTEAD?',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: kSub),
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w900, color: kSub),
           ),
           const SizedBox(height: 10),
           TextField(
@@ -749,7 +786,8 @@ class _ProcrastinationLogModalState
           const SizedBox(height: 20),
           Text(
             'FOR HOW LONG? ($_minutes min)',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: kSub),
+            style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w900, color: kSub),
           ),
           Slider(
             value: _minutes.toDouble(),

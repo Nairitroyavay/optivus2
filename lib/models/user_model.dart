@@ -196,7 +196,8 @@ class SensitiveContext {
 
   factory SensitiveContext.fromMap(Map<String, dynamic> map) {
     return SensitiveContext(
-      eatingDisorderFlag: map['eatingDisorderFlag'] as bool?,
+      eatingDisorderFlag: map['eatingDisorderFlag'] as bool? ??
+          map['eatingDisorderHistory'] as bool?,
       crisisSelfHarmFlag: map['crisisSelfHarmFlag'] as bool?,
       medicalDisclaimerAcknowledged:
           map['medicalDisclaimerAcknowledged'] as bool? ?? false,
@@ -206,6 +207,7 @@ class SensitiveContext {
 
   Map<String, dynamic> toMap() => {
         'eatingDisorderFlag': eatingDisorderFlag,
+        'eatingDisorderHistory': eatingDisorderFlag,
         'crisisSelfHarmFlag': crisisSelfHarmFlag,
         'medicalDisclaimerAcknowledged': medicalDisclaimerAcknowledged,
         'coachBoundaryPreference': coachBoundaryPreference,

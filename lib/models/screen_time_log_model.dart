@@ -34,7 +34,7 @@ class AppUsage {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ScreenTimeLogModel — persisted at /users/{uid}/screen_time_logs/{logId}
+// ScreenTimeLogModel — persisted at /users/{uid}/screenTimeRaw/{logId}
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ScreenTimeLogModel {

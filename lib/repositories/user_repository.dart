@@ -167,6 +167,8 @@ class UserRepository {
     final sensitive = map['sensitiveContext'] is Map
         ? Map<String, dynamic>.from(map['sensitiveContext'] as Map)
         : <String, dynamic>{};
+    final eatingDisorderFlag = sensitive['eatingDisorderFlag'] as bool? ??
+        sensitive['eatingDisorderHistory'] as bool?;
 
     final heightCm = (body['heightCm'] as num?)?.toInt();
     final weightKg = (body['weightKg'] as num?)?.toDouble();
@@ -196,7 +198,8 @@ class UserRepository {
         'sleepQuality': lifestyle['sleepQuality'] as String?,
       },
       'sensitiveContext': {
-        'eatingDisorderFlag': sensitive['eatingDisorderFlag'] as bool?,
+        'eatingDisorderFlag': eatingDisorderFlag,
+        'eatingDisorderHistory': eatingDisorderFlag,
         'crisisSelfHarmFlag': sensitive['crisisSelfHarmFlag'] as bool?,
         'medicalDisclaimerAcknowledged':
             sensitive['medicalDisclaimerAcknowledged'] as bool? ?? false,
