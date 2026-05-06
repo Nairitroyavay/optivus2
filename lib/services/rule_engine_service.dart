@@ -414,6 +414,33 @@ class RuleEngineService {
     tags: ['end_of_day'],
   );
 
+  // ── Screen time — second cap crossing ───────────────────────────────────
+
+  static const Rule ruleScreenTimeSecondCrossing = Rule(
+    id: 'rule_screen_time_second_crossing',
+    description: 'User crossed a screen-time cap for the second time today.',
+    event: 'bad_habit_slip_logged',
+    conditions: [
+      RuleCondition(field: 'metadata.crossingCount', op: 'eq', value: 2),
+    ],
+    priority: 1,
+    cooldownSeconds: 3600,
+    cooldownTopic: 'screen_time_violation',
+    aiIntent: 'conversation_prompt',
+    promptTemplate:
+        'The user has crossed their screen-time cap for the second time today. '
+        'Initiate a supportive conversation to explore what is driving the screen time '
+        'and help them find a way to step away.',
+    exampleOutputs: [
+      "That's the second cap crossed today. What's pulling you in?",
+      "Screen time is climbing. Want to talk through what's keeping you on the phone?",
+    ],
+    fallbackMessage:
+        "That's the second cap crossed today. Want to talk about what's going on?",
+    followupPolicy: 'active',
+    tags: ['screen_time', 'violation', 'escalation'],
+  );
+
   // ══════════════════════════════════════════════════════════════════════════
   // Master rule list — order does NOT matter here; priority field governs
   // selection.  More specific rules (more conditions) beat less specific ones
@@ -436,6 +463,7 @@ class RuleEngineService {
     ruleEndOfDayStrong,
     ruleEndOfDayRough,
     ruleEndOfDaySummary,
+    ruleScreenTimeSecondCrossing,
   ];
 
   // ══════════════════════════════════════════════════════════════════════════

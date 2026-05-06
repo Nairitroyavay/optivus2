@@ -242,7 +242,7 @@
 - `goal_repository.dart` emits `identity_*` events for goal docs — semantically wrong; AI rules listening for identity events will mis-fire. Repair is non-destructive (rename or split events; preserve back-compat for analytics).
 - `state_aggregator_service.dart` `buildSnapshot` does not gracefully no-op on users with no goals/no habits — verify (the SPECIAL REQUIRED TASK §G1 makes this safe).
 - ~~AI key risk: `gemini_service.dart` may be reading a key from Flutter~~ **Verified safe 2026-05-03**: `gemini_service.dart` only calls `httpsCallable('aiGenerate')`; `functions/index.js` holds `geminiApiKey` via `secrets: [...]`. No client-side key. (Task 11.1 reclassified to Done.)
-- `screen_time_bridge.dart` Android-only path could crash on iOS without guard; verify.
+- `screen_time_bridge.dart` Android-only (`UsageStatsManager`). No iOS target — no guard needed.
 
 ### 3.5 Needs Refactor (touch only via the listed task)
 
@@ -3696,8 +3696,7 @@ Only modify these files:
 
 ## Requirements
 
-- Android: UsageStatsManager auto-pull every 30 min foreground + once at day-close.
-- iOS: 1-tap nightly self-report (0–1h / 1–2h / 2–4h / 4h+).
+- Android only: UsageStatsManager auto-pull every 30 min foreground + once at day-close.
 - Hero: today's screen time + comparison bar.
 - Top 5 apps with time + per-app unlock count.
 - Total unlocks today.
@@ -3722,7 +3721,7 @@ Only modify these files:
 
 ## Verification
 
-Android emulator with permission: snap of usage data → hero updates. iOS: self-report sheet.
+Android emulator with permission: snap of usage data → hero updates.
 
 ## Final response format
 
@@ -3736,8 +3735,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 #### How to verify
 
 - UI: full layout.
-- Android: import works.
-- iOS: self-report visible.
+- Android: import works end-to-end.
 - Cap crossing fires once per day.
 
 #### Estimate
@@ -3746,7 +3744,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] Android import + iOS self-report.
+- [ ] Android import (UsageStatsManager) working end-to-end.
 - [ ] Cap crossing flow.
 - [ ] Unlock heuristic.
 

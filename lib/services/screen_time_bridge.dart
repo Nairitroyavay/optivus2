@@ -40,6 +40,17 @@ class ScreenTimeBridge {
     }
   }
 
+  /// Requests a 1-hour notification "lock" for the given package.
+  /// No-op on non-Android platforms.
+  Future<void> lockApp(String packageName) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('lockApp', {'packageName': packageName});
+    } on PlatformException catch (e) {
+      debugPrint('[ScreenTimeBridge] lockApp error: $e');
+    }
+  }
+
   // ── Query ──────────────────────────────────────────────────────────────────
 
   /// Queries today's usage stats and returns a typed snapshot.
@@ -70,6 +81,7 @@ class ScreenTimeSnapshot {
   final int totalMinutes;
   final int unlockCount;
   final List<AppUsage> topApps;
+  final List<int> hourlyDistribution;
   final int schemaVersion;
 
   /// Epoch milliseconds — when the device produced the snapshot.
@@ -79,6 +91,7 @@ class ScreenTimeSnapshot {
     required this.totalMinutes,
     required this.unlockCount,
     required this.topApps,
+    this.hourlyDistribution = const [],
     required this.capturedAtMs,
     this.schemaVersion = 1,
   });
@@ -97,6 +110,9 @@ class ScreenTimeSnapshot {
       totalMinutes: (map['totalMinutes'] as num?)?.toInt() ?? 0,
       unlockCount: (map['unlockCount'] as num?)?.toInt() ?? 0,
       topApps: apps,
+      hourlyDistribution: (map['hourlyDistribution'] as List<dynamic>? ?? [])
+          .map((e) => (e as num).toInt())
+          .toList(),
       capturedAtMs: (map['capturedAt'] as num?)?.toInt() ??
           DateTime.now().millisecondsSinceEpoch,
       schemaVersion: (map['schemaVersion'] as num?)?.toInt() ?? 1,

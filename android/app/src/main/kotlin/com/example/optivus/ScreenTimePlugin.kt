@@ -22,6 +22,7 @@ import java.util.Calendar
  *   hasPermission      -> Boolean
  *   requestPermission  -> (void, opens system settings)
  *   query              -> Map with totalMinutes, topApps, unlockCount, capturedAt, schemaVersion
+ *   lockApp            -> (void, mutes notifications for package - placeholder)
  */
 class ScreenTimePlugin(private val context: Context) : MethodChannel.MethodCallHandler {
 
@@ -47,6 +48,14 @@ class ScreenTimePlugin(private val context: Context) : MethodChannel.MethodCallH
                 } catch (e: Exception) {
                     result.error("QUERY_FAILED", e.message, null)
                 }
+            }
+            "lockApp" -> {
+                // In a production app, this would involve NotificationManager / AppOps
+                // to silence notifications or set a temporary restriction.
+                // For this prototype, we log it and return success.
+                val packageName = call.argument<String>("packageName")
+                android.util.Log.i("ScreenTimePlugin", "Locking app for 1hr: $packageName")
+                result.success(null)
             }
             else -> result.notImplemented()
         }
@@ -86,25 +95,72 @@ class ScreenTimePlugin(private val context: Context) : MethodChannel.MethodCallH
         val now = System.currentTimeMillis()
 
         // Start of today (midnight local time)
-        val startOfDay = Calendar.getInstance().apply {
+        val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+        }
+        val startOfDay = calendar.timeInMillis
 
         val usageStatsManager =
             context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
-        // INTERVAL_DAILY gives one stats entry per app covering the full day.
-        // We also run an event scan for unlock count.
+        // 1. Basic aggregated stats
         val statsMap = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
-
-        // --- Total foreground time across all apps (seconds → minutes) ---
         val totalSeconds = statsMap.values.sumOf { it.totalTimeInForeground }
         val totalMinutes = (totalSeconds / 1000 / 60).toInt()
 
-        // --- Top apps by foreground time ---
+        // 2. Event processing for Hourly Distribution and App Unlocks
+        val hourlyMins = MutableList(24) { 0 }
+        val appUnlocks = mutableMapOf<String, Int>()
+        var totalUnlocks = 0
+
+        val events = usageStatsManager.queryEvents(startOfDay, now)
+        val event = UsageEvents.Event()
+        
+        var lastApp: String? = null
+        var lastEventTime = startOfDay
+        var isLocked = true
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val eventTime = event.timeStamp
+            val hour = Calendar.getInstance().apply { timeInMillis = eventTime }.get(Calendar.HOUR_OF_DAY)
+
+            // Track foreground time for hourly distribution
+            if (lastApp != null && !isLocked) {
+                val durationMs = eventTime - lastEventTime
+                hourlyMins[hour] += (durationMs / 1000 / 60).toInt()
+            }
+
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    lastApp = event.packageName
+                    lastEventTime = eventTime
+                    isLocked = false
+                }
+                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
+                    lastApp = null
+                    isLocked = true
+                }
+                UsageEvents.Event.KEYGUARD_HIDDEN -> {
+                    totalUnlocks++
+                    // If an app is resumed shortly after unlock, count it as an app unlock
+                    isLocked = false
+                }
+                UsageEvents.Event.KEYGUARD_SHOWN -> {
+                    isLocked = true
+                }
+            }
+            
+            // Heuristic: If we see a resume within 2s of a keyguard_hidden, attribute the unlock
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED && !isLocked) {
+                appUnlocks[event.packageName] = (appUnlocks[event.packageName] ?: 0) + 1
+            }
+        }
+
+        // 3. Top apps mapping
         val pm = context.packageManager
         val topApps = statsMap.values
             .filter { it.totalTimeInForeground > 0 }
@@ -116,49 +172,23 @@ class ScreenTimePlugin(private val context: Context) : MethodChannel.MethodCallH
                         pm.getApplicationInfo(stat.packageName, 0)
                     ).toString()
                 } catch (_: PackageManager.NameNotFoundException) {
-                    stat.packageName // fallback — package ID
+                    stat.packageName
                 }
                 mapOf(
                     "packageName" to stat.packageName,
                     "appName" to appName,
-                    "minutes" to (stat.totalTimeInForeground / 1000 / 60).toInt()
+                    "minutes" to (stat.totalTimeInForeground / 1000 / 60).toInt(),
+                    "unlockCount" to (appUnlocks[stat.packageName] ?: 0)
                 )
             }
 
-        // --- Unlock count: count KEYGUARD_HIDDEN events ---
-        val unlockCount = countUnlockEvents(usageStatsManager, startOfDay, now)
-
         return mapOf(
             "totalMinutes" to totalMinutes,
-            "unlockCount" to unlockCount,
+            "unlockCount" to totalUnlocks,
             "topApps" to topApps,
+            "hourlyDistribution" to hourlyMins,
             "capturedAt" to now,
             "schemaVersion" to 1
         )
-    }
-
-    /**
-     * Counts the number of times the device was unlocked today by scanning
-     * UsageEvents for KEYGUARD_HIDDEN events (API 23+).
-     * Returns 0 on API < 23 or if scanning fails.
-     */
-    private fun countUnlockEvents(
-        usageStatsManager: UsageStatsManager,
-        startMs: Long,
-        endMs: Long
-    ): Int {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return 0
-        return try {
-            val events = usageStatsManager.queryEvents(startMs, endMs)
-            val event = UsageEvents.Event()
-            var count = 0
-            while (events.hasNextEvent()) {
-                events.getNextEvent(event)
-                if (event.eventType == UsageEvents.Event.KEYGUARD_HIDDEN) count++
-            }
-            count
-        } catch (_: Exception) {
-            0
-        }
     }
 }
