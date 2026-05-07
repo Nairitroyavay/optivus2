@@ -2835,3 +2835,50 @@ Existing event system is present: `EventService.emit()` writes `/users/{uid}/eve
 - No production Dart or JS file was modified.
 - This audit doc gained a new Task 8.1 section; existing sections were not rewritten.
 - `flutter analyze` passed with no issues on 2026-05-07.
+
+---
+
+## Task 8.2 — Streak Detail UI Re-Verification (2026-05-07)
+
+Scope: audit-only re-verification. No production Dart or JS files were modified.
+
+### Files inspected
+
+- `lib/views/streaks/streak_detail_screen.dart`
+- `lib/views/streaks/streak_heatmap.dart`
+- `lib/views/tabs/home_tab.dart`
+- `lib/views/tabs/tracker_tab.dart`
+- Supporting route/provider reads: `lib/core/router/app_router.dart`, `lib/core/providers.dart`, `lib/services/streak_service.dart`, `lib/services/event_service.dart`, `lib/core/constants/event_names.dart`
+
+### Requirements
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Home streak card opens detail | PASS | Home reads all streaks via `allStreaksProvider` at `home_tab.dart:568-571`, selects the active/best featured streak at `home_tab.dart:573-588`, wires the "Longest Streak" card tap to `context.push('/streaks/${featuredStreak?.habitId ?? '_empty'}')` at `home_tab.dart:605-620`, and `_streakCard()` invokes the supplied tap handler at `home_tab.dart:676-691`. The route exists at `app_router.dart:119-123`, and the detail screen handles `_empty` with an empty state at `streak_detail_screen.dart:886-941`. |
+| Tracker habit detail links to streak detail | PASS | Tracker builds good habit cards with `onStreakDetails: () => _showStreakDetails(habit)` at `tracker_tab.dart:218-232` and bad habit cards with the same callback at `tracker_tab.dart:267-284`; `_showStreakDetails()` routes to `/streaks/${habit.id}` at `tracker_tab.dart:498-500`; good/bad card action buttons expose the "Streak details" icon at `tracker_tab.dart:1056-1061` and `tracker_tab.dart:1240-1243`; the route target is `StreakDetailScreen` at `app_router.dart:119-123`. |
+| Heatmap data matches logs | PASS | Habit streak detail fetches logs for the streak habit id using `habitLogsForRangeProvider((habitId: streak.habitId, days: 90))` at `streak_detail_screen.dart:76-78` and passes those logs to `StreakHeatmap` at `streak_detail_screen.dart:101-114`. The provider queries `/habit_logs` filtered by `habitId` and trailing `occurredAt` at `providers.dart:220-237`. `StreakHeatmap` groups logs by calendar day at `streak_heatmap.dart:149-158`, filters good habits to `logType == 'good'` and bad habits to `logType == 'slip'` at `streak_heatmap.dart:151-153`, sums `quantity ?? 1` at `streak_heatmap.dart:154-155`, and computes intensity from the habit goal/bad-habit goal type at `streak_heatmap.dart:160-180`. Routine streak heatmap uses `DaySummary.perRoutinePct` from daily summaries at `streak_detail_screen.dart:155-190` and `streak_heatmap.dart:205-227`. |
+
+### Firestore paths
+
+| Path | Status | Evidence |
+|---|---|---|
+| `/users/{uid}/streaks/{streakId}` | PASS | Home and Tracker consume `allStreaksProvider` (`home_tab.dart:568-571`, `tracker_tab.dart:78-81`), detail consumes `streakByIdProvider(streakId)` (`streak_detail_screen.dart:29-52`), providers delegate to `StreakService.watchAllStreaks()` / `watchStreak()` at `providers.dart:205-216`, and the service reads the streak collection/doc at `streak_service.dart:673-684`. |
+| `/users/{uid}/habit_logs/{logId}` | PASS | Tracker range provider reads `habit_logs` directly at `tracker_tab.dart:35-57`; detail heatmap provider reads the habit-specific trailing range from `habit_logs` at `providers.dart:220-237`; `StreakHeatmap` consumes those logs at `streak_heatmap.dart:149-180`. |
+| `/users/{uid}/dailySummaries/{date}` | PASS | Tracker weekly trend reads `recentDailySummariesProvider(7)` at `tracker_tab.dart:82-83` and renders summaries at `tracker_tab.dart:2208-2238`; routine streak detail reads `recentDailySummariesProvider(60)` at `streak_detail_screen.dart:155-190`; providers query `/dailySummaries` at `providers.dart:241-255` and today's summary doc at `providers.dart:264-280`. |
+
+### Events
+
+Read-only re-verification emits nothing. The event system exists (`EventService.emit()` at `event_service.dart:43-123`, canonical streak constants at `event_names.dart:52-57`), but the inspected streak detail and heatmap paths do not emit streak events. The only event emission found in the inspected UI files is unrelated suggestion dismissal in `tracker_tab.dart:502-526`.
+
+### Gaps and follow-ups
+
+| Gap | Severity | Owner |
+|---|---|---|
+| No Task 8.2 requirement gap found. | NONE | N/A |
+
+### Verification
+
+- Every Task 8.2 requirement above is cited to file:line.
+- No production Dart or JS file was modified.
+- This audit doc gained a new Task 8.2 section; existing sections were not rewritten.
+- `flutter analyze` passed with no issues on 2026-05-07.
