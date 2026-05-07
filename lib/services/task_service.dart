@@ -100,6 +100,9 @@ class TaskService {
     if (rc != null) payload['reasonCategory'] = rc.toJson();
     final rt = reasonTag ?? task.reasonTag;
     if (rt != null) payload['reasonTag'] = rt;
+    if (task.fitnessActivityId != null) {
+      payload['fitnessActivityId'] = task.fitnessActivityId;
+    }
     return payload;
   }
 
@@ -133,8 +136,7 @@ class TaskService {
     final ref = _outcomesRef.doc(task.id);
     final startedAt = task.actualStart;
     final startDriftMin = startedAt?.difference(task.plannedStart).inMinutes;
-    final completedSubtasks =
-        task.subtasks.where((s) => s.checked).length;
+    final completedSubtasks = task.subtasks.where((s) => s.checked).length;
 
     batch.set(ref, {
       'taskId': task.id,
@@ -216,8 +218,9 @@ class TaskService {
         .where('state', isEqualTo: TaskState.started.toJson())
         .limit(1)
         .snapshots()
-        .map((snap) =>
-            snap.docs.isEmpty ? null : TaskModel.fromFirestore(snap.docs.first));
+        .map((snap) => snap.docs.isEmpty
+            ? null
+            : TaskModel.fromFirestore(snap.docs.first));
   }
 
   // ── Operations ──────────────────────────────────────────────────────────────
@@ -300,7 +303,8 @@ class TaskService {
       await batch.commit();
     }
 
-    debugPrint('[TaskService] syncRoutineTasks total ${tasks.length} tasks synced');
+    debugPrint(
+        '[TaskService] syncRoutineTasks total ${tasks.length} tasks synced');
   }
 
   /// Transitions scheduled → started.
@@ -335,6 +339,55 @@ class TaskService {
       payload: _buildPayload(task.copyWith(actualStart: now)),
       batch: batch,
     );
+
+    await batch.commit();
+  }
+
+  /// Starts a routine task as the backing task for a Fitness activity and
+  /// stores the linked activity ID on the task document.
+  Future<void> startLinkedFitnessActivity({
+    required String taskId,
+    required String fitnessActivityId,
+  }) async {
+    final existingActiveId = await _activeTaskId();
+    if (existingActiveId != null && existingActiveId != taskId) {
+      throw MultipleActiveTasksError(existingActiveId);
+    }
+
+    final task = await _getTask(taskId);
+    if (task.state.isTerminal) {
+      throw InvalidStateTransitionError(
+        taskId: taskId,
+        currentState: task.state.toJson(),
+        attemptedAction: 'start_linked_fitness_activity',
+      );
+    }
+
+    final docRef = _tasksRef.doc(taskId);
+    final now = DateTime.now();
+    final linkedTask = task.copyWith(
+      actualStart: task.actualStart ?? now,
+      fitnessActivityId: fitnessActivityId,
+    );
+
+    final batch = _firestore.batch();
+    batch.update(docRef, {
+      'fitnessActivityId': fitnessActivityId,
+      if (task.state == TaskState.scheduled) ...{
+        'state': TaskState.started.toJson(),
+        'actualStart': Timestamp.fromDate(now),
+      },
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    if (task.state == TaskState.scheduled) {
+      await _eventService.emit(
+        eventName: EventNames.taskStarted,
+        source: 'fitness_activity',
+        payload: _buildPayload(linkedTask),
+        batch: batch,
+      );
+    }
 
     await batch.commit();
   }
@@ -399,7 +452,8 @@ class TaskService {
       eventName: EventNames.taskResumed,
       source: 'app',
       payload: _buildPayload(
-        task.copyWith(totalPauseDurationMin: newTotalPause, clearPausedAt: true),
+        task.copyWith(
+            totalPauseDurationMin: newTotalPause, clearPausedAt: true),
       ),
       batch: batch,
     );

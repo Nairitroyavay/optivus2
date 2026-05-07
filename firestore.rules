@@ -94,6 +94,33 @@ service cloud.firestore {
         allow create: if isOwner(userId) && hasValidOptionalUid(userId);
         allow update, delete: if false;
       }
+
+      // ── Fitness Activities & subcollections ─────────────────────────────
+      // Explicit rules for documentation and future backend-only restriction.
+      match /fitnessActivities/{activityId} {
+        allow read, write: if isOwner(userId);
+
+        match /routePoints/{pointId} {
+          allow read, write: if isOwner(userId);
+        }
+        match /splits/{splitId} {
+          allow read, write: if isOwner(userId);
+        }
+        match /heartRateSamples/{sampleId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+
+      // ── Fitness Stats (may become backend-only writes in future) ────────
+      match /fitnessStats/{statId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId);
+      }
+
+      // ── Fitness Goals ───────────────────────────────────────────────────
+      match /fitnessGoals/{goalId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
     // App config — read-only for authenticated clients

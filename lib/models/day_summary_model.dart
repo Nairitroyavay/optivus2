@@ -36,6 +36,12 @@ class DaySummary {
   final DateTime computedAt;
   final int schemaVersion;
 
+  // Fitness metrics (optional, added in Phase 3)
+  final int fitnessActivitiesCompleted;
+  final double fitnessDistanceMeters;
+  final int fitnessCalories;
+  final int fitnessDurationMs;
+
   const DaySummary({
     required this.date,
     this.missionScore = 0,
@@ -64,6 +70,10 @@ class DaySummary {
     this.userState = 'on_track',
     required this.computedAt,
     this.schemaVersion = 1,
+    this.fitnessActivitiesCompleted = 0,
+    this.fitnessDistanceMeters = 0,
+    this.fitnessCalories = 0,
+    this.fitnessDurationMs = 0,
   }) : missionPct = missionPct ?? missionScore / 100;
 
   factory DaySummary.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -101,6 +111,10 @@ class DaySummary {
           ? (data['computedAt'] as Timestamp).toDate()
           : DateTime.now(),
       schemaVersion: data['schemaVersion'] as int? ?? 1,
+      fitnessActivitiesCompleted: _asInt(data['fitnessActivitiesCompleted']),
+      fitnessDistanceMeters: _asDouble(data['fitnessDistanceMeters']),
+      fitnessCalories: _asInt(data['fitnessCalories']),
+      fitnessDurationMs: _asInt(data['fitnessDurationMs']),
     );
   }
 
@@ -133,6 +147,10 @@ class DaySummary {
       'userState': userState,
       'computedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
+      'fitnessActivitiesCompleted': fitnessActivitiesCompleted,
+      'fitnessDistanceMeters': fitnessDistanceMeters,
+      'fitnessCalories': fitnessCalories,
+      'fitnessDurationMs': fitnessDurationMs,
     };
   }
 }

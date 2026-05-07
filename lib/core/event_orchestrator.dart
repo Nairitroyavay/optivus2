@@ -398,6 +398,42 @@ class EventOrchestrator {
         // TODO: Reset relevant streak pause states.
         break;
 
+      // ── Fitness ─────────────────────────────────────────────────────
+      case EventNames.fitnessActivityCompleted:
+        debugPrint('[EventOrchestrator] fitnessActivityCompleted — '
+            'activityId=${event.payload['activityId']}');
+        // Stats update and AI feedback are handled asynchronously.
+        // The actual stats/goal update is done by FitnessStatsService
+        // and the Cloud Function safety-net.
+        break;
+
+      case EventNames.fitnessGoalCompleted:
+        debugPrint('[EventOrchestrator] fitnessGoalCompleted — '
+            'goalId=${event.payload['goalId']}');
+        break;
+
+      case EventNames.weeklyDistanceGoalCompleted:
+        debugPrint('[EventOrchestrator] weeklyDistanceGoalCompleted — '
+            'goalId=${event.payload['goalId']}');
+        break;
+
+      case EventNames.fitnessStreakUpdated:
+        debugPrint('[EventOrchestrator] fitnessStreakUpdated — '
+            'streakId=${event.payload['streakId']}, '
+            'action=${event.payload['action']}');
+        break;
+
+      case EventNames.fitnessAiFeedbackGenerated:
+        debugPrint('[EventOrchestrator] fitnessAiFeedbackGenerated — '
+            'activityId=${event.payload['activityId']}');
+        break;
+
+      case EventNames.routineFitnessCompleted:
+        debugPrint('[EventOrchestrator] routineFitnessCompleted — '
+            'activityId=${event.payload['activityId']}, '
+            'routineTaskId=${event.payload['routineTaskId']}');
+        break;
+
       // ── Default (no-op for events that don't need orchestration) ─────
       default:
         break;
@@ -425,6 +461,8 @@ class EventOrchestrator {
       case EventNames.streakBroken:
       case EventNames.streakMilestoneReached:
       case EventNames.dayClosed:
+      case EventNames.fitnessActivityCompleted:
+      case EventNames.fitnessGoalCompleted:
         return true;
       default:
         return false;

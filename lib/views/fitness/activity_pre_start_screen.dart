@@ -15,8 +15,13 @@ import 'package:optivus2/models/fitness_activity_model.dart';
 
 class ActivityPreStartScreen extends ConsumerStatefulWidget {
   final String activityType;
+  final String? routineTaskId;
 
-  const ActivityPreStartScreen({super.key, required this.activityType});
+  const ActivityPreStartScreen({
+    super.key,
+    required this.activityType,
+    this.routineTaskId,
+  });
 
   @override
   ConsumerState<ActivityPreStartScreen> createState() =>
@@ -34,6 +39,9 @@ class _ActivityPreStartScreenState
   // Swimming
   int _poolLength = 25;
   bool _isPoolSwimming = true;
+  bool _openWaterGpsEnabled = false;
+
+  String _workoutCategory = 'General workout';
 
   bool _isStarting = false;
 
@@ -44,6 +52,9 @@ class _ActivityPreStartScreenState
     if (_type == FitnessActivityType.swimming) {
       _isPoolSwimming = true;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_usesGps) _refreshPermissionState();
+    });
   }
 
   @override
@@ -58,7 +69,7 @@ class _ActivityPreStartScreenState
   @override
   Widget build(BuildContext context) {
     final permState = ref.watch(fitnessPermissionProvider);
-    final isGps = _type.isGpsActivity;
+    final isGps = _usesGps;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -109,6 +120,7 @@ class _ActivityPreStartScreenState
                         _GpsStatusCard(
                           isReady: permState.isGpsReady,
                           signalStrength: permState.gpsSignalStrength,
+                          onRequestPermission: _requestLocationPermission,
                         ),
                         const SizedBox(height: 16),
                       ],
@@ -118,10 +130,26 @@ class _ActivityPreStartScreenState
                         _SwimmingConfigCard(
                           isPoolSwimming: _isPoolSwimming,
                           poolLength: _poolLength,
-                          onPoolToggle: (v) =>
-                              setState(() => _isPoolSwimming = v),
+                          openWaterGpsEnabled: _openWaterGpsEnabled,
+                          onPoolToggle: (v) {
+                            setState(() => _isPoolSwimming = v);
+                            if (!v) _refreshPermissionState();
+                          },
+                          onOpenWaterGpsChanged: (v) {
+                            setState(() => _openWaterGpsEnabled = v);
+                            if (v) _refreshPermissionState();
+                          },
                           onPoolLengthChanged: (v) =>
                               setState(() => _poolLength = v),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      if (_type == FitnessActivityType.gymWorkout) ...[
+                        _GymCategoryCard(
+                          value: _workoutCategory,
+                          onChanged: (v) =>
+                              setState(() => _workoutCategory = v),
                         ),
                         const SizedBox(height: 16),
                       ],
@@ -221,33 +249,35 @@ class _ActivityPreStartScreenState
         status: FitnessActivityStatus.pending,
         title: _type.displayName,
         notes: _notesController.text.trim(),
-        isGpsActivity: _type.isGpsActivity,
+        isGpsActivity: _usesGps,
         isPoolSwimming:
             _type == FitnessActivityType.swimming && _isPoolSwimming,
         poolLengthMeters:
             _type == FitnessActivityType.swimming ? _poolLength : null,
+        workoutCategory:
+            _type == FitnessActivityType.gymWorkout ? _workoutCategory : '',
+        routineTaskId: widget.routineTaskId,
         goalDistanceMeters: distText.isNotEmpty
             ? (double.tryParse(distText) ?? 0) * 1000 // km → meters
             : null,
-        goalDurationMinutes:
-            durText.isNotEmpty ? int.tryParse(durText) : null,
+        goalDurationMinutes: durText.isNotEmpty ? int.tryParse(durText) : null,
         goalCalories: calText.isNotEmpty ? int.tryParse(calText) : null,
         createdAt: now,
         updatedAt: now,
       );
 
       await ref
-          .read(fitnessActivityRepositoryProvider)
-          .createActivity(activity);
+          .read(activeActivityControllerProvider.notifier)
+          .startActivity(activity);
+
+      final activeState = ref.read(activeActivityControllerProvider);
+      if (activeState.activity == null || activeState.errorMessage != null) {
+        throw activeState.errorMessage ??
+            'Activity could not start. Check permission and GPS state.';
+      }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Activity created! Live tracking coming in Phase 2.'),
-            backgroundColor: kMint,
-          ),
-        );
-        context.pop();
+        context.go('/fitness/live');
       }
     } catch (e) {
       if (mounted) {
@@ -260,6 +290,27 @@ class _ActivityPreStartScreenState
       }
     } finally {
       if (mounted) setState(() => _isStarting = false);
+    }
+  }
+
+  bool get _usesGps =>
+      _type.isGpsActivity ||
+      (_type == FitnessActivityType.swimming &&
+          !_isPoolSwimming &&
+          _openWaterGpsEnabled);
+
+  Future<void> _requestLocationPermission() async {
+    final next = await ref
+        .read(locationTrackingServiceProvider)
+        .requestForegroundPermission();
+    ref.read(fitnessPermissionProvider.notifier).state = next;
+  }
+
+  Future<void> _refreshPermissionState() async {
+    final next =
+        await ref.read(locationTrackingServiceProvider).checkPermissionState();
+    if (mounted) {
+      ref.read(fitnessPermissionProvider.notifier).state = next;
     }
   }
 }
@@ -310,8 +361,7 @@ class _ActivityInfoCard extends StatelessWidget {
                   children: [
                     if (type.isGpsActivity) ...[
                       Icon(Icons.gps_fixed_rounded,
-                          size: 12,
-                          color: kBlue.withValues(alpha: 0.7)),
+                          size: 12, color: kBlue.withValues(alpha: 0.7)),
                       const SizedBox(width: 4),
                       Text(
                         'GPS tracked',
@@ -323,8 +373,7 @@ class _ActivityInfoCard extends StatelessWidget {
                       ),
                     ] else ...[
                       Icon(Icons.timer_rounded,
-                          size: 12,
-                          color: kPurple.withValues(alpha: 0.7)),
+                          size: 12, color: kPurple.withValues(alpha: 0.7)),
                       const SizedBox(width: 4),
                       Text(
                         'Time-based',
@@ -372,10 +421,12 @@ class _ActivityInfoCard extends StatelessWidget {
 class _GpsStatusCard extends StatelessWidget {
   final bool isReady;
   final dynamic signalStrength;
+  final VoidCallback onRequestPermission;
 
   const _GpsStatusCard({
     required this.isReady,
     required this.signalStrength,
+    required this.onRequestPermission,
   });
 
   @override
@@ -403,18 +454,19 @@ class _GpsStatusCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'GPS Tracking',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: kInk,
+                    color: isReady ? kMint : kInk,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Live GPS tracking will be enabled in a future update. '
-                  'Activity will be created as time-based for now.',
+                  isReady
+                      ? 'GPS is ready. Tracking starts only after you tap Start.'
+                      : 'Location permission is needed to draw your route.',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
@@ -422,6 +474,14 @@ class _GpsStatusCard extends StatelessWidget {
                     height: 1.4,
                   ),
                 ),
+                if (!isReady) ...[
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: onRequestPermission,
+                    icon: const Icon(Icons.location_searching_rounded),
+                    label: const Text('Enable location'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -438,13 +498,17 @@ class _GpsStatusCard extends StatelessWidget {
 class _SwimmingConfigCard extends StatelessWidget {
   final bool isPoolSwimming;
   final int poolLength;
+  final bool openWaterGpsEnabled;
   final ValueChanged<bool> onPoolToggle;
+  final ValueChanged<bool> onOpenWaterGpsChanged;
   final ValueChanged<int> onPoolLengthChanged;
 
   const _SwimmingConfigCard({
     required this.isPoolSwimming,
     required this.poolLength,
+    required this.openWaterGpsEnabled,
     required this.onPoolToggle,
+    required this.onOpenWaterGpsChanged,
     required this.onPoolLengthChanged,
   });
 
@@ -527,7 +591,90 @@ class _SwimmingConfigCard extends StatelessWidget {
                 ],
               ],
             ),
+          ] else ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Record route when GPS is available',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: kSub.withValues(alpha: 0.78),
+                    ),
+                  ),
+                ),
+                LiquidToggle(
+                  value: openWaterGpsEnabled,
+                  onChanged: onOpenWaterGpsChanged,
+                  activeColor: kBlue,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Manual distance is available after finish if route data is missing.',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: kSub.withValues(alpha: 0.66),
+                height: 1.35,
+              ),
+            ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GymCategoryCard extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const _GymCategoryCard({
+    required this.value,
+    required this.onChanged,
+  });
+
+  static const _categories = [
+    'General workout',
+    'Strength',
+    'Cardio',
+    'Mobility',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return LiquidCard(
+      frosted: true,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Workout Category',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: kInk,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final category in _categories)
+                ChoiceChip(
+                  label: Text(category),
+                  selected: value == category,
+                  selectedColor: kPurple.withValues(alpha: 0.2),
+                  onSelected: (_) => onChanged(category),
+                ),
+            ],
+          ),
         ],
       ),
     );

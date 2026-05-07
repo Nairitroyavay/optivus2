@@ -20,33 +20,33 @@ import 'package:flutter/services.dart';
 // 1.  COLOUR PALETTE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const kInk     = Color(0xFF0F111A);   // primary text
-const kSub     = Color(0xFF6B7280);   // secondary text
-const kCream   = Color(0xFFF6E6B4);   // warm background top
-const kBg      = Color(0xFFFCF8EE);   // warm background bottom
-const kWhite   = Colors.white;
-const kAmber   = Color(0xFFFFB830);   // primary CTA
-const kPurple  = Color(0xFF9B8FFF);   // AI / premium accent
-const kMint    = Color(0xFF60D4A0);   // skin care / success
-const kBlue    = Color(0xFF60B8FF);   // class / info
-const kCoral   = Color(0xFFFF6B6B);   // home accent
-const kRose    = Color(0xFFFF9560);   // eating / warning
+const kInk = Color(0xFF0F111A); // primary text
+const kSub = Color(0xFF6B7280); // secondary text
+const kCream = Color(0xFFF6E6B4); // warm background top
+const kBg = Color(0xFFFCF8EE); // warm background bottom
+const kWhite = Colors.white;
+const kAmber = Color(0xFFFFB830); // primary CTA
+const kPurple = Color(0xFF9B8FFF); // AI / premium accent
+const kMint = Color(0xFF60D4A0); // skin care / success
+const kBlue = Color(0xFF60B8FF); // class / info
+const kCoral = Color(0xFFFF6B6B); // home accent
+const kRose = Color(0xFFFF9560); // eating / warning
 
 // Per-tab identity colours (index matches tab order)
 const kTabAccents = <Color>[
-  kCoral,           // 0 Home
-  kMint,            // 1 Routine
-  Color(0xFF78FDFF),// 2 Tracker
-  kPurple,          // 3 Coach
-  Color(0xFFFF8CC2),// 4 Goals
-  kAmber,           // 5 Profile
+  kCoral, // 0 Home
+  kMint, // 1 Routine
+  Color(0xFF78FDFF), // 2 Tracker
+  kPurple, // 3 Coach
+  Color(0xFFFF8CC2), // 4 Goals
+  kAmber, // 5 Profile
 ];
 
 // Glass surface colours
-const _kGlassFill   = Color(0x33FFFFFF); // 20 % white (was 70%)
+const _kGlassFill = Color(0x33FFFFFF); // 20 % white (was 70%)
 const _kGlassBorder = Color(0x66FFFFFF); // 40 % white (was 80%)
-const _kGlassShad   = Color(0x0A000000); // 4 % black
-const _kInnerHi     = Color(0x33FFFFFF); // top specular highlight
+const _kGlassShad = Color(0x0A000000); // 4 % black
+const _kInnerHi = Color(0x33FFFFFF); // top specular highlight
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 2.  GLASS SCAFFOLD BACKGROUND
@@ -86,16 +86,16 @@ class LiquidCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   final double radius;
-  final bool frosted;       // true = blur backdrop (use sparingly)
-  final Color? tint;        // custom glass tint
-  final double elevation;   // shadow intensity multiplier
+  final bool frosted; // true = blur backdrop (use sparingly)
+  final Color? tint; // custom glass tint
+  final double elevation; // shadow intensity multiplier
 
   const LiquidCard({
     super.key,
     required this.child,
-    this.padding   = const EdgeInsets.all(20),
-    this.radius    = 24,
-    this.frosted   = true, // defaulting to true for iOS-style frosted glass
+    this.padding = const EdgeInsets.all(20),
+    this.radius = 24,
+    this.frosted = true, // defaulting to true for iOS-style frosted glass
     this.tint,
     this.elevation = 1,
   });
@@ -104,8 +104,8 @@ class LiquidCard extends StatelessWidget {
   const LiquidCard.solid({
     super.key,
     required this.child,
-    this.padding   = const EdgeInsets.all(16),
-    this.radius    = 20,
+    this.padding = const EdgeInsets.all(16),
+    this.radius = 20,
     this.tint,
     this.elevation = 1,
   }) : frosted = true;
@@ -124,7 +124,7 @@ class LiquidCard extends StatelessWidget {
           Colors.white.withValues(alpha: 0.95), // Strong top-left specular
           Colors.white.withValues(alpha: 0.25),
           Colors.white.withValues(alpha: 0.0),
-          Colors.black.withValues(alpha: 0.1),  // Bottom-right shadow edge
+          Colors.black.withValues(alpha: 0.1), // Bottom-right shadow edge
         ],
         stops: const [0.0, 0.15, 0.8, 1.0],
       ),
@@ -146,7 +146,8 @@ class LiquidCard extends StatelessWidget {
       color: fill,
       borderRadius: BorderRadius.circular(r - 2.0),
       // subtle inner border
-      border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 0.5),
+      border:
+          Border.all(color: Colors.white.withValues(alpha: 0.3), width: 0.5),
     );
 
     Widget content = Container(
@@ -184,13 +185,13 @@ class LiquidButton extends StatefulWidget {
   final Color color;
   final double height;
   final Widget? leading;
-  final bool outline;      // ghost variant
+  final bool outline; // ghost variant
 
   const LiquidButton({
     super.key,
     required this.label,
     this.onTap,
-    this.color  = kAmber,
+    this.color = kAmber,
     this.height = 56,
     this.leading,
     this.outline = false,
@@ -200,7 +201,7 @@ class LiquidButton extends StatefulWidget {
     super.key,
     required this.label,
     this.onTap,
-    this.color  = kInk,
+    this.color = kInk,
     this.height = 56,
     this.leading,
   }) : outline = true;
@@ -212,27 +213,38 @@ class LiquidButton extends StatefulWidget {
 class _LiquidButtonState extends State<LiquidButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
-  late final Animation<double>   _scale;
+  late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl  = AnimationController(vsync: this,
-        duration: const Duration(milliseconds: 100));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 100));
     _scale = Tween<double>(begin: 1.0, end: 0.96)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isGhost = widget.outline;
     return GestureDetector(
-      onTapDown:   (_) { _ctrl.forward();  HapticFeedback.lightImpact(); },
-      onTapUp:     (_) { _ctrl.reverse();  widget.onTap?.call(); },
-      onTapCancel: ()  { _ctrl.reverse(); },
+      onTapDown: (_) {
+        _ctrl.forward();
+        HapticFeedback.lightImpact();
+      },
+      onTapUp: (_) {
+        _ctrl.reverse();
+        widget.onTap?.call();
+      },
+      onTapCancel: () {
+        _ctrl.reverse();
+      },
       child: ScaleTransition(
         scale: _scale,
         child: Container(
@@ -241,7 +253,8 @@ class _LiquidButtonState extends State<LiquidButton>
             color: isGhost ? Colors.transparent : widget.color,
             borderRadius: BorderRadius.circular(widget.height / 2),
             border: isGhost
-                ? Border.all(color: widget.color.withValues(alpha: 0.6), width: 1.5)
+                ? Border.all(
+                    color: widget.color.withValues(alpha: 0.6), width: 1.5)
                 : null,
             boxShadow: isGhost
                 ? null
@@ -269,7 +282,9 @@ class _LiquidButtonState extends State<LiquidButton>
               // Specular highlight stripe at top
               if (!isGhost)
                 Positioned(
-                  top: 4, left: 20, right: 20,
+                  top: 4,
+                  left: 20,
+                  right: 20,
                   height: 6,
                   child: Container(
                     decoration: BoxDecoration(
@@ -318,16 +333,18 @@ class LiquidTextField extends StatefulWidget {
   final TextInputType keyboardType;
   final TextEditingController? controller;
   final void Function(String)? onChanged;
+  final List<TextInputFormatter>? inputFormatters;
 
   const LiquidTextField({
     super.key,
     required this.hint,
     this.prefixIcon,
     this.suffixWidget,
-    this.obscure      = false,
+    this.obscure = false,
     this.keyboardType = TextInputType.text,
     this.controller,
     this.onChanged,
+    this.inputFormatters,
   });
 
   @override
@@ -345,7 +362,10 @@ class _LiquidTextFieldState extends State<LiquidTextField> {
   }
 
   @override
-  void dispose() { _focus.dispose(); super.dispose(); }
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -362,20 +382,19 @@ class _LiquidTextFieldState extends State<LiquidTextField> {
         ),
         boxShadow: [
           BoxShadow(
-            color: _focused
-                ? kAmber.withValues(alpha: 0.15)
-                : _kGlassShad,
+            color: _focused ? kAmber.withValues(alpha: 0.15) : _kGlassShad,
             blurRadius: _focused ? 16 : 8,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: TextField(
-        focusNode:    _focus,
-        controller:   widget.controller,
-        obscureText:  widget.obscure,
+        focusNode: _focus,
+        controller: widget.controller,
+        obscureText: widget.obscure,
         keyboardType: widget.keyboardType,
-        onChanged:    widget.onChanged,
+        onChanged: widget.onChanged,
+        inputFormatters: widget.inputFormatters,
         style: const TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w500,
@@ -390,12 +409,12 @@ class _LiquidTextFieldState extends State<LiquidTextField> {
           ),
           prefixIcon: widget.prefixIcon != null
               ? Icon(widget.prefixIcon,
-                    size: 20, color: kSub.withValues(alpha: 0.7))
+                  size: 20, color: kSub.withValues(alpha: 0.7))
               : null,
           suffix: widget.suffixWidget,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16, vertical: 15),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         ),
       ),
     );
@@ -425,18 +444,18 @@ class LiquidToggle extends StatefulWidget {
 class _LiquidToggleState extends State<LiquidToggle>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
-  late final Animation<double>   _pos;   // 0 = off, 1 = on
-  late final Animation<double>   _squish;
+  late final Animation<double> _pos; // 0 = off, 1 = on
+  late final Animation<double> _squish;
 
   @override
   void initState() {
     super.initState();
-    _ctrl  = AnimationController(
+    _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 280),
       value: widget.value ? 1.0 : 0.0,
     );
-    _pos   = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic);
+    _pos = CurvedAnimation(parent: _ctrl, curve: Curves.easeInOutCubic);
     _squish = TweenSequence<double>([
       TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.18), weight: 30),
       TweenSequenceItem(tween: Tween(begin: 1.18, end: 1.0), weight: 70),
@@ -452,13 +471,16 @@ class _LiquidToggleState extends State<LiquidToggle>
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     const trackW = 52.0;
     const trackH = 30.0;
-    const orbD   = 24.0;
+    const orbD = 24.0;
     const travel = trackW - orbD - 6; // horizontal travel
 
     return GestureDetector(
@@ -477,7 +499,8 @@ class _LiquidToggleState extends State<LiquidToggle>
           )!;
 
           return Container(
-            width: trackW, height: trackH,
+            width: trackW,
+            height: trackH,
             decoration: BoxDecoration(
               color: trackColor,
               borderRadius: BorderRadius.circular(trackH / 2),
@@ -498,7 +521,8 @@ class _LiquidToggleState extends State<LiquidToggle>
                   child: Transform.scale(
                     scaleX: _squish.value,
                     child: Container(
-                      width: orbD, height: orbD,
+                      width: orbD,
+                      height: orbD,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: kWhite,
@@ -512,14 +536,16 @@ class _LiquidToggleState extends State<LiquidToggle>
                       ),
                       child: Center(
                         child: Container(
-                          width: 10, height: 10,
+                          width: 10,
+                          height: 10,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: Color.lerp(
                               const Color(0xFFDDDDDD),
                               widget.activeColor,
                               t,
-                            )!.withValues(alpha: 0.5),
+                            )!
+                                .withValues(alpha: 0.5),
                           ),
                         ),
                       ),
@@ -584,12 +610,18 @@ class _LiquidChipState extends State<LiquidChip>
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () { HapticFeedback.selectionClick(); widget.onTap(); },
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
       child: AnimatedBuilder(
         animation: _ctrl,
         builder: (_, __) {
@@ -628,8 +660,7 @@ class _LiquidChipState extends State<LiquidChip>
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (widget.emoji != null) ...[
-                  Text(widget.emoji!,
-                      style: const TextStyle(fontSize: 13)),
+                  Text(widget.emoji!, style: const TextStyle(fontSize: 13)),
                   const SizedBox(width: 5),
                 ],
                 Text(
@@ -643,7 +674,8 @@ class _LiquidChipState extends State<LiquidChip>
                 if (widget.dot) ...[
                   const SizedBox(width: 5),
                   Container(
-                    width: 6, height: 6,
+                    width: 6,
+                    height: 6,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: Color.lerp(
@@ -706,7 +738,10 @@ class _LiquidCheckboxState extends State<LiquidCheckbox>
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -720,7 +755,8 @@ class _LiquidCheckboxState extends State<LiquidCheckbox>
         builder: (_, __) {
           final t = _ctrl.value;
           return Container(
-            width: 22, height: 22,
+            width: 22,
+            height: 22,
             decoration: BoxDecoration(
               color: Color.lerp(
                 kWhite.withValues(alpha: 0.7),
@@ -746,8 +782,7 @@ class _LiquidCheckboxState extends State<LiquidCheckbox>
             child: t > 0.5
                 ? Center(
                     child: Icon(Icons.check_rounded,
-                        size: 13,
-                        color: kWhite.withValues(alpha: t)),
+                        size: 13, color: kWhite.withValues(alpha: t)),
                   )
                 : null,
           );
@@ -772,7 +807,7 @@ class LiquidIconBtn extends StatelessWidget {
     super.key,
     required this.icon,
     this.onTap,
-    this.size  = 40,
+    this.size = 40,
     this.color,
     this.isCircle = false,
   });
@@ -782,7 +817,8 @@ class LiquidIconBtn extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: size, height: size,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: _kGlassFill,
           shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
@@ -819,7 +855,8 @@ class LiquidIconBtn extends StatelessWidget {
             Align(
               alignment: Alignment.bottomRight,
               child: Container(
-                margin: EdgeInsets.only(right: size * 0.05, bottom: size * 0.05),
+                margin:
+                    EdgeInsets.only(right: size * 0.05, bottom: size * 0.05),
                 width: size * 0.6,
                 height: size * 0.35,
                 decoration: BoxDecoration(
@@ -860,7 +897,7 @@ class LiquidFab extends StatefulWidget {
     super.key,
     required this.icon,
     required this.onTap,
-    this.color  = kAmber,
+    this.color = kAmber,
     this.label,
     this.active = false,
   });
@@ -872,19 +909,22 @@ class LiquidFab extends StatefulWidget {
 class _LiquidFabState extends State<LiquidFab>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
-  late final Animation<double>   _scale;
+  late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl  = AnimationController(vsync: this,
-        duration: const Duration(milliseconds: 90));
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 90));
     _scale = Tween<double>(begin: 1.0, end: 0.92)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -901,29 +941,37 @@ class _LiquidFabState extends State<LiquidFab>
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: _kGlassBorder, width: 1.5),
               boxShadow: const [
-                BoxShadow(color: _kGlassShad, blurRadius: 8,
-                    offset: Offset(0, 2)),
+                BoxShadow(
+                    color: _kGlassShad, blurRadius: 8, offset: Offset(0, 2)),
               ],
             ),
             child: Text(widget.label!,
                 style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                   color: widget.color,
                 )),
           ),
         ],
         GestureDetector(
-          onTapDown:   (_) { _ctrl.forward(); HapticFeedback.lightImpact(); },
-          onTapUp:     (_) { _ctrl.reverse(); widget.onTap(); },
-          onTapCancel: ()  { _ctrl.reverse(); },
+          onTapDown: (_) {
+            _ctrl.forward();
+            HapticFeedback.lightImpact();
+          },
+          onTapUp: (_) {
+            _ctrl.reverse();
+            widget.onTap();
+          },
+          onTapCancel: () {
+            _ctrl.reverse();
+          },
           child: ScaleTransition(
             scale: _scale,
             child: Container(
-              width: 56, height: 56,
+              width: 56,
+              height: 56,
               decoration: BoxDecoration(
-                color: widget.active
-                    ? widget.color
-                    : _kGlassFill,
+                color: widget.active ? widget.color : _kGlassFill,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: widget.active
@@ -933,16 +981,15 @@ class _LiquidFabState extends State<LiquidFab>
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: widget.color.withValues(alpha: 
-                        widget.active ? 0.40 : 0.18),
+                    color: widget.color
+                        .withValues(alpha: widget.active ? 0.40 : 0.18),
                     blurRadius: widget.active ? 18 : 10,
                     offset: const Offset(0, 5),
                   ),
                 ],
               ),
               child: Icon(widget.icon,
-                  color: widget.active ? kWhite : widget.color,
-                  size: 24),
+                  color: widget.active ? kWhite : widget.color, size: 24),
             ),
           ),
         ),
@@ -963,7 +1010,7 @@ const _kTabIcons = [
   Icons.flag_rounded,
   Icons.person_rounded,
 ];
-const _kTabLabels = ['Home','Routine','Tracker','Coach','Goals','Profile'];
+const _kTabLabels = ['Home', 'Routine', 'Tracker', 'Coach', 'Goals', 'Profile'];
 
 class LiquidTabBar extends StatelessWidget {
   final int currentIndex;
@@ -983,8 +1030,8 @@ class LiquidTabBar extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: EdgeInsets.only(
-              top: 10, left: 8, right: 8, bottom: bottom + 6),
+          padding:
+              EdgeInsets.only(top: 10, left: 8, right: 8, bottom: bottom + 6),
           decoration: const BoxDecoration(
             color: _kGlassFill,
             border: Border(
@@ -993,13 +1040,18 @@ class LiquidTabBar extends StatelessWidget {
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(6, (i) => _TabItem(
-              icon:     _kTabIcons[i],
-              label:    _kTabLabels[i],
-              active:   i == currentIndex,
-              accent:   kTabAccents[i],
-              onTap:    () { HapticFeedback.selectionClick(); onTap(i); },
-            )),
+            children: List.generate(
+                6,
+                (i) => _TabItem(
+                      icon: _kTabIcons[i],
+                      label: _kTabLabels[i],
+                      active: i == currentIndex,
+                      accent: kTabAccents[i],
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        onTap(i);
+                      },
+                    )),
           ),
         ),
       ),
@@ -1015,8 +1067,10 @@ class _TabItem extends StatelessWidget {
   final VoidCallback onTap;
 
   const _TabItem({
-    required this.icon, required this.label,
-    required this.active, required this.accent,
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.accent,
     required this.onTap,
   });
 
@@ -1087,15 +1141,18 @@ class LiquidSectionHeader extends StatelessWidget {
         children: [
           Text(title,
               style: const TextStyle(
-                fontSize: 17, fontWeight: FontWeight.w900,
-                color: kInk, letterSpacing: -0.3,
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: kInk,
+                letterSpacing: -0.3,
               )),
           if (actionLabel != null)
             GestureDetector(
               onTap: onAction,
               child: Text(actionLabel!,
                   style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                     color: kAmber,
                   )),
             ),
@@ -1116,7 +1173,8 @@ class LiquidSheetHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        width: 36, height: 4,
+        width: 36,
+        height: 4,
         margin: const EdgeInsets.only(top: 12, bottom: 4),
         decoration: BoxDecoration(
           color: kInk.withValues(alpha: 0.12),
@@ -1132,33 +1190,34 @@ class LiquidSheetHandle extends StatelessWidget {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class LiquidProgressRing extends StatelessWidget {
-  final double progress;   // 0.0 – 1.0
+  final double progress; // 0.0 – 1.0
   final double size;
   final double stroke;
-  final Color  trackColor;
-  final Color  fillColor;
+  final Color trackColor;
+  final Color fillColor;
   final Widget? center;
 
   const LiquidProgressRing({
     super.key,
     required this.progress,
-    this.size       = 160,
-    this.stroke     = 14,
+    this.size = 160,
+    this.stroke = 14,
     this.trackColor = const Color(0xFFEEEEEE),
-    this.fillColor  = kInk,
+    this.fillColor = kInk,
     this.center,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: size, height: size,
+      width: size,
+      height: size,
       child: CustomPaint(
         painter: _RingPainter(
-          progress:   progress,
-          stroke:     stroke,
+          progress: progress,
+          stroke: stroke,
           trackColor: trackColor,
-          fillColor:  fillColor,
+          fillColor: fillColor,
         ),
         child: center != null ? Center(child: center!) : null,
       ),
@@ -1169,8 +1228,8 @@ class LiquidProgressRing extends StatelessWidget {
 class _RingPainter extends CustomPainter {
   final double progress;
   final double stroke;
-  final Color  trackColor;
-  final Color  fillColor;
+  final Color trackColor;
+  final Color fillColor;
 
   const _RingPainter({
     required this.progress,
@@ -1181,26 +1240,32 @@ class _RingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final c    = Offset(size.width / 2, size.height / 2);
-    final r    = size.width / 2 - stroke / 2;
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2 - stroke / 2;
     final rect = Rect.fromCircle(center: c, radius: r);
 
     // Track
-    canvas.drawCircle(c, r, Paint()
-      ..color       = trackColor
-      ..style       = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap   = StrokeCap.round);
+    canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..color = trackColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round);
 
     // Fill
     if (progress > 0) {
-      canvas.drawArc(rect, -math.pi / 2,
-          2 * math.pi * progress.clamp(0, 1), false,
+      canvas.drawArc(
+          rect,
+          -math.pi / 2,
+          2 * math.pi * progress.clamp(0, 1),
+          false,
           Paint()
-            ..color       = fillColor
-            ..style       = PaintingStyle.stroke
+            ..color = fillColor
+            ..style = PaintingStyle.stroke
             ..strokeWidth = stroke
-            ..strokeCap   = StrokeCap.round);
+            ..strokeCap = StrokeCap.round);
     }
   }
 
@@ -1214,23 +1279,23 @@ class _RingPainter extends CustomPainter {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 Route<T> slideRoute<T>(Widget page) => PageRouteBuilder<T>(
-  pageBuilder:      (_, __, ___) => page,
-  transitionDuration: const Duration(milliseconds: 360),
-  transitionsBuilder: (_, anim, __, child) => SlideTransition(
-    position: Tween<Offset>(
-      begin: const Offset(1, 0),
-      end:   Offset.zero,
-    ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
-    child: child,
-  ),
-);
+      pageBuilder: (_, __, ___) => page,
+      transitionDuration: const Duration(milliseconds: 360),
+      transitionsBuilder: (_, anim, __, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
+    );
 
 Route<T> fadeRoute<T>(Widget page) => PageRouteBuilder<T>(
-  pageBuilder:      (_, __, ___) => page,
-  transitionDuration: const Duration(milliseconds: 300),
-  transitionsBuilder: (_, anim, __, child) =>
-      FadeTransition(opacity: anim, child: child),
-);
+      pageBuilder: (_, __, ___) => page,
+      transitionDuration: const Duration(milliseconds: 300),
+      transitionsBuilder: (_, anim, __, child) =>
+          FadeTransition(opacity: anim, child: child),
+    );
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 16.  BOTTOM SHEET HELPER  (standard glass sheet)
@@ -1242,10 +1307,10 @@ Future<T?> showLiquidSheet<T>({
   bool isScrollControlled = true,
 }) {
   return showModalBottomSheet<T>(
-    context:             context,
-    isScrollControlled:  isScrollControlled,
-    backgroundColor:     Colors.transparent,
-    barrierColor:        Colors.black.withValues(alpha: 0.25),
+    context: context,
+    isScrollControlled: isScrollControlled,
+    backgroundColor: Colors.transparent,
+    barrierColor: Colors.black.withValues(alpha: 0.25),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
@@ -1258,8 +1323,8 @@ Future<T?> showLiquidSheet<T>({
             color: _kGlassFill,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             border: Border(
-              top:   BorderSide(color: _kGlassBorder, width: 1.5),
-              left:  BorderSide(color: _kGlassBorder, width: 1),
+              top: BorderSide(color: _kGlassBorder, width: 1.5),
+              left: BorderSide(color: _kGlassBorder, width: 1),
               right: BorderSide(color: _kGlassBorder, width: 1),
             ),
           ),

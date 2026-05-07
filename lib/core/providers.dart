@@ -28,7 +28,19 @@ import 'package:optivus2/models/fitness_activity_model.dart';
 import 'package:optivus2/models/fitness_stats_model.dart';
 import 'package:optivus2/models/fitness_goal_model.dart';
 import 'package:optivus2/models/fitness_permission_state_model.dart';
+import 'package:optivus2/models/activity_split_model.dart';
+import 'package:optivus2/models/heart_rate_sample_model.dart';
+import 'package:optivus2/models/route_point_model.dart';
 import 'package:optivus2/repositories/fitness_activity_repository.dart';
+import 'package:optivus2/controllers/active_activity_controller.dart';
+import 'package:optivus2/controllers/fitness_map_controller.dart';
+import 'package:optivus2/services/fitness_metrics_calculator.dart';
+import 'package:optivus2/services/fitness_route_service.dart';
+import 'package:optivus2/services/fitness_stats_service.dart';
+import 'package:optivus2/services/fitness_event_service.dart';
+import 'package:optivus2/services/fitness_ai_coach_service.dart';
+import 'package:optivus2/services/fitness_health_connector_service.dart';
+import 'package:optivus2/services/location_tracking_service.dart';
 
 export 'providers/bootstrap_provider.dart';
 
@@ -81,7 +93,8 @@ final streakServiceProvider = Provider<StreakService>(
   ),
 );
 
-final meditationAudioServiceProvider = Provider.autoDispose<MeditationAudioService>((ref) {
+final meditationAudioServiceProvider =
+    Provider.autoDispose<MeditationAudioService>((ref) {
   final service = MeditationAudioService();
   ref.onDispose(service.dispose);
   return service;
@@ -219,8 +232,7 @@ final habitLogsForRangeProvider =
         .doc(uid)
         .collection('habit_logs')
         .where('habitId', isEqualTo: args.habitId)
-        .where('occurredAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('occurredAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .snapshots()
         .map((snap) => snap.docs.map(HabitLog.fromFirestore).toList());
   },
@@ -314,8 +326,9 @@ final trackerSuggestionsProvider =
       .where('targetSurface', isEqualTo: 'tracker')
       .limit(1)
       .snapshots()
-      .map((snap) =>
-          snap.docs.map((d) => <String, dynamic>{'id': d.id, ...d.data()}).toList());
+      .map((snap) => snap.docs
+          .map((d) => <String, dynamic>{'id': d.id, ...d.data()})
+          .toList());
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -340,9 +353,30 @@ final activityHistoryProvider =
 /// Real-time stream of a single fitness activity by ID.
 final activityDetailProvider =
     StreamProvider.family<FitnessActivityModel?, String>((ref, activityId) {
+  return ref.watch(fitnessActivityRepositoryProvider).watchActivity(activityId);
+});
+
+/// Saved route points for an activity. Used by detail and route review screens.
+final activityRoutePointsProvider =
+    StreamProvider.family<List<RoutePointModel>, String>((ref, activityId) {
   return ref
       .watch(fitnessActivityRepositoryProvider)
-      .watchActivity(activityId);
+      .watchRoutePoints(activityId);
+});
+
+/// Persisted distance/lap splits for a completed activity.
+final activitySplitsProvider =
+    StreamProvider.family<List<ActivitySplitModel>, String>((ref, activityId) {
+  return ref.watch(fitnessActivityRepositoryProvider).watchSplits(activityId);
+});
+
+/// Optional heart-rate samples for a completed activity.
+final activityHeartRateSamplesProvider =
+    StreamProvider.family<List<HeartRateSampleModel>, String>(
+        (ref, activityId) {
+  return ref
+      .watch(fitnessActivityRepositoryProvider)
+      .watchHeartRateSamples(activityId);
 });
 
 /// Real-time stream of aggregated fitness stats for a given period key.
@@ -374,15 +408,98 @@ final fitnessGoalsProvider = StreamProvider<List<FitnessGoalModel>>((ref) {
       .where('status', isEqualTo: 'active')
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) =>
-              FitnessGoalModel.fromMap(d.data(), fallbackId: d.id))
+          .map((d) => FitnessGoalModel.fromMap(d.data(), fallbackId: d.id))
           .toList());
 });
 
 /// In-memory permission state for fitness pre-start flow.
 /// Phase 1: stub values. Phase 2: wired to platform permission APIs.
-final fitnessPermissionProvider =
-    StateProvider<FitnessPermissionStateModel>(
+final fitnessPermissionProvider = StateProvider<FitnessPermissionStateModel>(
   (_) => FitnessPermissionStateModel.stub(),
 );
 
+final fitnessMetricsCalculatorProvider = Provider<FitnessMetricsCalculator>(
+  (_) => const FitnessMetricsCalculator(),
+);
+
+final fitnessRouteServiceProvider = Provider<FitnessRouteService>(
+  (ref) => FitnessRouteService(
+    calculator: ref.read(fitnessMetricsCalculatorProvider),
+  ),
+);
+
+final locationTrackingServiceProvider = Provider<LocationTrackingService>(
+  (ref) {
+    final service = LocationTrackingService();
+    ref.onDispose(service.stopTracking);
+    return service;
+  },
+);
+
+final activeActivityControllerProvider =
+    StateNotifierProvider<ActiveActivityController, ActiveActivityState>((ref) {
+  return ActiveActivityController(
+    repository: ref.read(fitnessActivityRepositoryProvider),
+    locationService: ref.read(locationTrackingServiceProvider),
+    routeService: ref.read(fitnessRouteServiceProvider),
+    metricsCalculator: ref.read(fitnessMetricsCalculatorProvider),
+    statsService: ref.read(fitnessStatsServiceProvider),
+    fitnessEventService: ref.read(fitnessEventServiceProvider),
+    aiCoachService: ref.read(fitnessAiCoachServiceProvider),
+    taskService: ref.read(taskServiceProvider),
+  );
+});
+
+final liveActivityMetricsProvider = Provider<LiveActivityMetricsModel>((ref) {
+  return ref.watch(activeActivityControllerProvider).metrics;
+});
+
+final fitnessMapControllerProvider =
+    StateNotifierProvider<FitnessMapController, FitnessMapState>((ref) {
+  return FitnessMapController();
+});
+
+/// Fitness stats aggregation service.
+final fitnessStatsServiceProvider = Provider<FitnessStatsService>((ref) {
+  return FitnessStatsService(
+    firestoreService: ref.read(firestoreServiceProvider),
+  );
+});
+
+/// Fitness-specific event emission coordinator.
+final fitnessEventServiceProvider = Provider<FitnessEventService>((ref) {
+  return FitnessEventService(
+    eventService: ref.read(eventServiceProvider),
+  );
+});
+
+/// Post-activity AI feedback service.
+final fitnessAiCoachServiceProvider = Provider<FitnessAICoachService>((ref) {
+  return FitnessAICoachService(
+    firestoreService: ref.read(firestoreServiceProvider),
+  );
+});
+
+/// Health Connect / HealthKit bridge (stub in Phase 1).
+final fitnessHealthConnectorServiceProvider =
+    Provider<FitnessHealthConnectorService>((_) {
+  return FitnessHealthConnectorService();
+});
+
+/// Today's daily fitness stats stream.
+final todayFitnessStatsProvider = StreamProvider<FitnessStatsModel?>((ref) {
+  final svc = ref.watch(fitnessStatsServiceProvider);
+  return svc.watchDailyStats(DateTime.now());
+});
+
+/// This week's fitness stats stream.
+final weeklyFitnessStatsProvider = StreamProvider<FitnessStatsModel?>((ref) {
+  final svc = ref.watch(fitnessStatsServiceProvider);
+  return svc.watchWeeklyStats(DateTime.now());
+});
+
+/// This month's fitness stats stream.
+final monthlyFitnessStatsProvider = StreamProvider<FitnessStatsModel?>((ref) {
+  final svc = ref.watch(fitnessStatsServiceProvider);
+  return svc.watchMonthlyStats(DateTime.now());
+});

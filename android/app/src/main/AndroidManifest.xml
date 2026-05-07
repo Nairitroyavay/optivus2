@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <!-- Required for UsageStatsManager — user must grant via Settings > Apps > Special app access -->
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -14,6 +18,9 @@
         android:label="optivus2"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${GOOGLE_MAPS_API_KEY}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

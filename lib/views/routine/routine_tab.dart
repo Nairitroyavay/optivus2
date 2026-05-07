@@ -4,11 +4,13 @@ import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/core/utils/uuid_generator.dart';
+import 'package:optivus2/models/fitness_activity_model.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'add_task_sheet.dart';
@@ -223,9 +225,8 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         final rawSteps = t['steps'];
         final steps = rawSteps is List
             ? rawSteps
-                .map((e) => e is Map
-                    ? (e['name']?.toString() ?? '')
-                    : e.toString())
+                .map((e) =>
+                    e is Map ? (e['name']?.toString() ?? '') : e.toString())
                 .where((e) => e.isNotEmpty)
                 .toList()
             : <String>[];
@@ -547,6 +548,63 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     _selectDate(request.date);
   }
 
+  Future<void> _handleStartTask(String taskId, TaskModel? task) async {
+    final fitnessType = task == null ? null : _fitnessTypeForTask(task);
+    if (task != null && fitnessType != null) {
+      final encodedTaskId = Uri.encodeQueryComponent(task.id);
+      context.push(
+        '/fitness/pre-start?type=${fitnessType.toJson()}&routineTaskId=$encodedTaskId',
+      );
+      return;
+    }
+
+    await ref.read(taskServiceProvider).startTask(taskId);
+  }
+
+  FitnessActivityType? _fitnessTypeForTask(TaskModel task) {
+    final text = [
+      task.title,
+      task.emoji ?? '',
+      ...task.identityTags,
+      task.parentRoutine ?? '',
+    ].join(' ').toLowerCase();
+
+    bool containsAny(Iterable<String> terms) =>
+        terms.any((term) => text.contains(term));
+
+    if (containsAny(const ['running', 'run', 'jog'])) {
+      return FitnessActivityType.running;
+    }
+    if (containsAny(const ['walking', 'walk'])) {
+      return FitnessActivityType.walking;
+    }
+    if (containsAny(const ['cycling', 'cycle', 'bike', 'biking'])) {
+      return FitnessActivityType.cycling;
+    }
+    if (containsAny(const ['hiking', 'hike', 'trek'])) {
+      return FitnessActivityType.hiking;
+    }
+    if (containsAny(const ['swimming', 'swim', 'pool'])) {
+      return FitnessActivityType.swimming;
+    }
+    if (containsAny(const [
+      'gym',
+      'workout',
+      'lift',
+      'weights',
+      'strength',
+      'cardio',
+      'exercise',
+      'training',
+      'yoga',
+      'mobility',
+      'fitness',
+    ])) {
+      return FitnessActivityType.gymWorkout;
+    }
+    return null;
+  }
+
   Future<void> _createOneOffTask(AddTaskRequest request) async {
     final now = DateTime.now();
     final taskId = generateId();
@@ -766,6 +824,9 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     final windowAsync = ref.watch(routineWindowTasksProvider);
     final windowTasks = windowAsync.valueOrNull ?? const <TaskModel>[];
     final selectedTasks = selectedDayAsync.valueOrNull ?? const <TaskModel>[];
+    final tasksById = {
+      for (final task in [...windowTasks, ...selectedTasks]) task.id: task,
+    };
     final isTimelineLoading =
         selectedDayAsync.isLoading && selectedDayAsync.valueOrNull == null;
     final timelineError = selectedDayAsync.hasError
@@ -999,10 +1060,11 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                                                         isLast: i ==
                                                             entry.value.length -
                                                                 1,
-                                                        onStart: (taskId) => ref
-                                                            .read(
-                                                                taskServiceProvider)
-                                                            .startTask(taskId),
+                                                        onStart: (taskId) =>
+                                                            _handleStartTask(
+                                                          taskId,
+                                                          tasksById[taskId],
+                                                        ),
                                                         onComplete: (taskId) => ref
                                                             .read(
                                                                 taskServiceProvider)

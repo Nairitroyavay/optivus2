@@ -20,6 +20,14 @@ import '../../views/routine/supplement_setup_screen.dart';
 import '../../views/fitness/fitness_dashboard_screen.dart';
 import '../../views/fitness/activity_selection_screen.dart';
 import '../../views/fitness/activity_pre_start_screen.dart';
+import '../../views/fitness/live_activity_tracking_screen.dart';
+import '../../views/fitness/activity_summary_screen.dart';
+import '../../views/fitness/activity_route_review_screen.dart';
+import '../../views/fitness/activity_history_screen.dart';
+import '../../views/fitness/activity_detail_screen.dart';
+import '../../views/fitness/fitness_stats_screen.dart';
+import '../../views/fitness/fitness_goals_screen.dart';
+import '../../views/fitness/fitness_settings_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
 import '../../providers/routine_provider.dart';
@@ -160,10 +168,48 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const ActivitySelectionScreen(),
       ),
       GoRoute(
+        path: '/fitness/stats',
+        builder: (_, __) => const FitnessStatsScreen(),
+      ),
+      GoRoute(
+        path: '/fitness/goals',
+        builder: (_, __) => const FitnessGoalsScreen(),
+      ),
+      GoRoute(
+        path: '/fitness/settings',
+        builder: (_, __) => const FitnessSettingsScreen(),
+      ),
+      GoRoute(
         path: '/fitness/pre-start',
         builder: (_, state) => ActivityPreStartScreen(
-          activityType:
-              state.uri.queryParameters['type'] ?? 'running',
+          activityType: state.uri.queryParameters['type'] ?? 'running',
+          routineTaskId: state.uri.queryParameters['routineTaskId'],
+        ),
+      ),
+      GoRoute(
+        path: '/fitness/live',
+        builder: (_, __) => const LiveActivityTrackingScreen(),
+      ),
+      GoRoute(
+        path: '/fitness/history',
+        builder: (_, __) => const ActivityHistoryScreen(),
+      ),
+      GoRoute(
+        path: '/fitness/activity/:activityId',
+        builder: (_, state) => ActivityDetailScreen(
+          activityId: state.pathParameters['activityId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/fitness/activity/:activityId/summary',
+        builder: (_, state) => ActivitySummaryScreen(
+          activityId: state.pathParameters['activityId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/fitness/activity/:activityId/route',
+        builder: (_, state) => ActivityRouteReviewScreen(
+          activityId: state.pathParameters['activityId']!,
         ),
       ),
     ],

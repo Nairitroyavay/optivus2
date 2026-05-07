@@ -31,6 +31,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] =
+            providers.gradleProperty("GOOGLE_MAPS_API_KEY").orElse("").get()
     }
 
     buildTypes {
@@ -71,4 +73,9 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+}
+
+configurations.all {
+    resolutionStrategy.force("androidx.core:core:1.16.0")
+    resolutionStrategy.force("androidx.core:core-ktx:1.16.0")
 }

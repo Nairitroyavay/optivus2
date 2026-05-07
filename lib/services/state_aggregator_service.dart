@@ -52,12 +52,15 @@ class StateAggregatorService {
           .get(),
       // [3] profile/main
       userRef.collection('profile').doc('main').get(),
+      // [4] fitnessStats — today's stats doc
+      userRef.collection('fitnessStats').doc('daily_$todayStr').get(),
     ]);
 
     final eventsSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
     final streaksSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
     final summariesSnap = results[2] as QuerySnapshot<Map<String, dynamic>>;
     final profileSnap = results[3] as DocumentSnapshot<Map<String, dynamic>>;
+    final fitnessStatsSnap = results[4] as DocumentSnapshot<Map<String, dynamic>>;
 
     debugPrint('[StateAggregator] events_recent: ${eventsSnap.size} doc(s)');
     debugPrint('[StateAggregator] streaks(active): ${streaksSnap.size} doc(s)');
@@ -110,6 +113,18 @@ class StateAggregatorService {
           '[StateAggregator] dailySummaries → missionScore=$missionScore userState=$summaryUserState');
     } else {
       debugPrint('[StateAggregator] dailySummaries → no doc yet (intra-day)');
+    }
+
+    // ── fitnessStats ─────────────────────────────────────────────────────────
+    int fitnessActivitiesToday = 0;
+    double fitnessDistanceToday = 0;
+    int fitnessCaloriesToday = 0;
+
+    if (fitnessStatsSnap.exists) {
+      final d = fitnessStatsSnap.data()!;
+      fitnessActivitiesToday = d['totalActivities'] as int? ?? 0;
+      fitnessDistanceToday = (d['totalDistanceMeters'] as num?)?.toDouble() ?? 0;
+      fitnessCaloriesToday = d['totalCalories'] as int? ?? 0;
     }
 
     // ── profile/main ─────────────────────────────────────────────────────────
@@ -183,6 +198,9 @@ class StateAggregatorService {
       notificationsSentToday: notificationsSentToday,
       quietDayMode: quietDayMode,
       daysSinceLastActive: daysSinceLastActive,
+      fitnessActivitiesToday: fitnessActivitiesToday,
+      fitnessDistanceToday: fitnessDistanceToday,
+      fitnessCaloriesToday: fitnessCaloriesToday,
     );
 
     debugPrint('[StateAggregator] Snapshot ready: ${snapshot.debugSummary}');

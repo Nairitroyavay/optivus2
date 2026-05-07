@@ -205,6 +205,9 @@ class TaskModel {
   final DateTime updatedAt;
   final int schemaVersion;
 
+  // Fitness-routine linking
+  final String? fitnessActivityId;
+
   const TaskModel({
     required this.id,
     this.type = TaskType.custom,
@@ -231,6 +234,7 @@ class TaskModel {
     required this.createdAt,
     required this.updatedAt,
     this.schemaVersion = 1,
+    this.fitnessActivityId,
   });
 
   /// Computed: planned duration in minutes.
@@ -276,6 +280,7 @@ class TaskModel {
       createdAt: _asDateTime(d['createdAt']) ?? DateTime.now(),
       updatedAt: _asDateTime(d['updatedAt']) ?? DateTime.now(),
       schemaVersion: d['schemaVersion'] as int? ?? 1,
+      fitnessActivityId: d['fitnessActivityId'] as String?,
     );
   }
 
@@ -315,6 +320,7 @@ class TaskModel {
       createdAt: _asDateTime(map['createdAt']) ?? DateTime.now(),
       updatedAt: _asDateTime(map['updatedAt']) ?? DateTime.now(),
       schemaVersion: map['schemaVersion'] as int? ?? 1,
+      fitnessActivityId: map['fitnessActivityId'] as String?,
     );
   }
 
@@ -351,6 +357,7 @@ class TaskModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
+      if (fitnessActivityId != null) 'fitnessActivityId': fitnessActivityId,
     };
   }
 
@@ -377,6 +384,7 @@ class TaskModel {
     String? reasonTag,
     AbandonReason? reasonCategory,
     DateTime? updatedAt,
+    String? fitnessActivityId,
   }) {
     return TaskModel(
       id: id,
@@ -405,6 +413,7 @@ class TaskModel {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       schemaVersion: schemaVersion,
+      fitnessActivityId: fitnessActivityId ?? this.fitnessActivityId,
     );
   }
 

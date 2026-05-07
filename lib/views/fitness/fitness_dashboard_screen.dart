@@ -93,9 +93,46 @@ class FitnessDashboardScreen extends ConsumerWidget {
                 ),
               ),
 
+              // ── Navigation Row (Stats · Goals · Settings) ──
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                  child: Row(
+                    children: [
+                      _NavPill(
+                        icon: Icons.bar_chart_rounded,
+                        label: 'Stats',
+                        onTap: () => context.push('/fitness/stats'),
+                      ),
+                      const SizedBox(width: 8),
+                      _NavPill(
+                        icon: Icons.flag_rounded,
+                        label: 'Goals',
+                        onTap: () => context.push('/fitness/goals'),
+                      ),
+                      const SizedBox(width: 8),
+                      _NavPill(
+                        icon: Icons.settings_rounded,
+                        label: 'Settings',
+                        onTap: () => context.push('/fitness/settings'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── Today's Stats Summary ──
+              SliverToBoxAdapter(
+                child: _TodayStatsSummary(),
+              ),
+
               // ── Activity History ──
-              const SliverToBoxAdapter(
-                child: LiquidSectionHeader(title: 'Recent Activities'),
+              SliverToBoxAdapter(
+                child: LiquidSectionHeader(
+                  title: 'Recent Activities',
+                  actionLabel: 'History',
+                  onAction: () => context.push('/fitness/history'),
+                ),
               ),
               historyAsync.when(
                 loading: () => const SliverToBoxAdapter(
@@ -130,8 +167,13 @@ class FitnessDashboardScreen extends ConsumerWidget {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => Padding(
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                        child: _ActivityHistoryCard(
-                          activity: activities[index],
+                        child: GestureDetector(
+                          onTap: () => context.push(
+                            '/fitness/activity/${activities[index].activityId}',
+                          ),
+                          child: _ActivityHistoryCard(
+                            activity: activities[index],
+                          ),
                         ),
                       ),
                       childCount: activities.length,
@@ -254,8 +296,8 @@ class _ActivityHistoryCard extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: _accentForType(activity.activityType)
-                  .withValues(alpha: 0.15),
+              color:
+                  _accentForType(activity.activityType).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Center(
@@ -424,6 +466,179 @@ class _EmptyHistoryCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Navigation Pill
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _NavPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _NavPill({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: kWhite.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: kWhite.withValues(alpha: 0.9),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: kInk.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: kInk, size: 20),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: kInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Today's Stats Summary Card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TodayStatsSummary extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statsAsync = ref.watch(todayFitnessStatsProvider);
+
+    return statsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (stats) {
+        if (stats == null || stats.totalActivities == 0) {
+          return const SizedBox.shrink();
+        }
+
+        final distKm =
+            (stats.totalDistanceMeters / 1000).toStringAsFixed(1);
+        final durMin = stats.totalDurationMs ~/ 60000;
+        final durStr = durMin >= 60
+            ? '${durMin ~/ 60}h ${durMin % 60}m'
+            : '${durMin}m';
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+          child: LiquidCard(
+            frosted: true,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Today's Summary",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: kSub.withValues(alpha: 0.6),
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _MiniStat(
+                      icon: Icons.directions_run_rounded,
+                      value: '${stats.totalActivities}',
+                      label: 'Activities',
+                    ),
+                    _MiniStat(
+                      icon: Icons.straighten_rounded,
+                      value: '$distKm km',
+                      label: 'Distance',
+                    ),
+                    _MiniStat(
+                      icon: Icons.timer_rounded,
+                      value: durStr,
+                      label: 'Duration',
+                    ),
+                    _MiniStat(
+                      icon: Icons.local_fire_department_rounded,
+                      value: '${stats.totalCalories}',
+                      label: 'Cal',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+
+  const _MiniStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, color: kBlue, size: 16),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: kInk,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: kSub.withValues(alpha: 0.6),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -103,6 +103,36 @@ abstract final class EventNames {
 
   // ── Fitness ─────────────────────────────────────────────────────────────
   static const fitnessActivityStarted = 'fitness_activity_started';
+  static const fitnessActivityPaused = 'fitness_activity_paused';
+  static const fitnessActivityResumed = 'fitness_activity_resumed';
+  static const fitnessActivityCompleted = 'fitness_activity_completed';
+  static const runningActivityCompleted = 'running_activity_completed';
+  static const walkingActivityCompleted = 'walking_activity_completed';
+  static const cyclingActivityCompleted = 'cycling_activity_completed';
+  static const hikingActivityCompleted = 'hiking_activity_completed';
+  static const swimmingActivityCompleted = 'swimming_activity_completed';
+  static const gymActivityCompleted = 'gym_activity_completed';
   static const fitnessActivityCancelled = 'fitness_activity_cancelled';
   static const fitnessActivityDiscarded = 'fitness_activity_discarded';
+  static const routeTrackingStarted = 'route_tracking_started';
+  static const routeTrackingStopped = 'route_tracking_stopped';
+  static const routeSaved = 'route_saved';
+  static const routeReviewOpened = 'route_review_opened';
+
+  // ── Fitness goals ──────────────────────────────────────────────────────
+  static const fitnessGoalCreated = 'fitness_goal_created';
+  static const fitnessGoalProgressUpdated = 'fitness_goal_progress_updated';
+  static const fitnessGoalCompleted = 'fitness_goal_completed';
+  static const weeklyDistanceGoalCompleted = 'weekly_distance_goal_completed';
+
+  // ── Fitness streaks ────────────────────────────────────────────────────
+  static const fitnessStreakUpdated = 'fitness_streak_updated';
+
+  // ── Fitness AI feedback ────────────────────────────────────────────────
+  static const fitnessAiFeedbackRequested = 'fitness_ai_feedback_requested';
+  static const fitnessAiFeedbackGenerated = 'fitness_ai_feedback_generated';
+
+  // ── Routine-fitness linking ────────────────────────────────────────────
+  static const routineFitnessStarted = 'routine_fitness_started';
+  static const routineFitnessCompleted = 'routine_fitness_completed';
 }

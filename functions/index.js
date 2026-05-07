@@ -147,3 +147,12 @@ exports.scheduledDayClose = scheduledDayClose;
 exports.scheduledInactivityCheck = scheduledInactivityCheck;
 exports.scheduledMorningBrief = scheduledMorningBrief;
 exports.scheduledMiddayPulse = scheduledMiddayPulse;
+
+// ── Fitness engine triggers & scheduled jobs ────────────────────────────────
+const { onFitnessActivityCompleted } = require("./jobs/fitnessActivityCompleted");
+const { onFitnessGoalUpdated } = require("./jobs/fitnessGoalUpdated");
+const { scheduledFitnessWeeklySummary } = require("./jobs/fitnessWeeklySummary");
+
+exports.onFitnessActivityCompleted = onFitnessActivityCompleted;
+exports.onFitnessGoalUpdated = onFitnessGoalUpdated;
+exports.scheduledFitnessWeeklySummary = scheduledFitnessWeeklySummary;

@@ -53,6 +53,11 @@ class ContextSnapshot {
   /// 0 = active today, 1 = missed yesterday, 7+ = ghost territory.
   final int daysSinceLastActive;
 
+  // ── Fitness metrics (optional) ─────────────────────────────────────────
+  final int fitnessActivitiesToday;
+  final double fitnessDistanceToday;
+  final int fitnessCaloriesToday;
+
   const ContextSnapshot({
     this.tasksCompletedToday = 0,
     this.tasksAbandonedToday = 0,
@@ -67,6 +72,9 @@ class ContextSnapshot {
     this.notificationsSentToday = 0,
     this.quietDayMode = false,
     this.daysSinceLastActive = 0,
+    this.fitnessActivitiesToday = 0,
+    this.fitnessDistanceToday = 0,
+    this.fitnessCaloriesToday = 0,
   });
 
   // ── Factory constructors ─────────────────────────────────────────────────
@@ -86,6 +94,9 @@ class ContextSnapshot {
       notificationsSentToday: map['notificationsSentToday'] as int? ?? 0,
       quietDayMode: map['quietDayMode'] as bool? ?? false,
       daysSinceLastActive: map['daysSinceLastActive'] as int? ?? 0,
+      fitnessActivitiesToday: map['fitnessActivitiesToday'] as int? ?? 0,
+      fitnessDistanceToday: (map['fitnessDistanceToday'] as num?)?.toDouble() ?? 0,
+      fitnessCaloriesToday: map['fitnessCaloriesToday'] as int? ?? 0,
     );
   }
 
@@ -107,6 +118,9 @@ class ContextSnapshot {
       'notificationsSentToday': notificationsSentToday,
       'quietDayMode': quietDayMode,
       'daysSinceLastActive': daysSinceLastActive,
+      'fitnessActivitiesToday': fitnessActivitiesToday,
+      'fitnessDistanceToday': fitnessDistanceToday,
+      'fitnessCaloriesToday': fitnessCaloriesToday,
     };
   }
 
@@ -126,6 +140,9 @@ class ContextSnapshot {
     int? notificationsSentToday,
     bool? quietDayMode,
     int? daysSinceLastActive,
+    int? fitnessActivitiesToday,
+    double? fitnessDistanceToday,
+    int? fitnessCaloriesToday,
   }) {
     return ContextSnapshot(
       tasksCompletedToday: tasksCompletedToday ?? this.tasksCompletedToday,
@@ -144,6 +161,9 @@ class ContextSnapshot {
           notificationsSentToday ?? this.notificationsSentToday,
       quietDayMode: quietDayMode ?? this.quietDayMode,
       daysSinceLastActive: daysSinceLastActive ?? this.daysSinceLastActive,
+      fitnessActivitiesToday: fitnessActivitiesToday ?? this.fitnessActivitiesToday,
+      fitnessDistanceToday: fitnessDistanceToday ?? this.fitnessDistanceToday,
+      fitnessCaloriesToday: fitnessCaloriesToday ?? this.fitnessCaloriesToday,
     );
   }
 
@@ -157,7 +177,8 @@ class ContextSnapshot {
       'mission=$missionScore '
       'ghost=${daysSinceLastActive}d '
       'budget=$notificationsSentToday/$dailyNotificationBudget '
-      'quiet=$quietDayMode';
+      'quiet=$quietDayMode '
+      'fitness(acts=$fitnessActivitiesToday,dist=${fitnessDistanceToday.round()}m,cal=$fitnessCaloriesToday)';
 
   // ── Private helpers ──────────────────────────────────────────────────────
 

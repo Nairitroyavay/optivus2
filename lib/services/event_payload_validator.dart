@@ -58,7 +58,9 @@ class EventPayloadValidator {
       ['uid', 'userId', 'user_id', 'email'],
     ]),
     EventNames.accountDeleted: _StrictEventRule(
-      requiredAny: [['uid', 'userId', 'user_id', 'email']],
+      requiredAny: [
+        ['uid', 'userId', 'user_id', 'email']
+      ],
       allowedFields: {
         'uid': (v) => v is String,
         'userId': (v) => v is String,
@@ -80,7 +82,10 @@ class EventPayloadValidator {
       ['fieldsChanged', 'fields_changed'],
     ]),
     EventNames.screenTimeSynced: _StrictEventRule(
-      requiredAny: [['logId', 'log_id'], ['totalMinutes', 'total_minutes']],
+      requiredAny: [
+        ['logId', 'log_id'],
+        ['totalMinutes', 'total_minutes']
+      ],
       allowedFields: {
         'logId': (v) => v is String,
         'log_id': (v) => v is String,
@@ -117,7 +122,10 @@ class EventPayloadValidator {
       ['count'],
     ]),
     EventNames.slipLogDismissed: _StrictEventRule(
-      requiredAny: [['logId', 'log_id'], ['habitId', 'habit_id']],
+      requiredAny: [
+        ['logId', 'log_id'],
+        ['habitId', 'habit_id']
+      ],
       allowedFields: {
         'logId': (v) => v is String,
         'log_id': (v) => v is String,
@@ -151,7 +159,9 @@ class EventPayloadValidator {
       ['text'],
     ]),
     EventNames.coachReEnabled: _StrictEventRule(
-      requiredAny: [['reason']],
+      requiredAny: [
+        ['reason']
+      ],
       allowedFields: {
         'reason': (v) => v is String,
       },
@@ -167,7 +177,9 @@ class EventPayloadValidator {
       ['reason'],
     ]),
     EventNames.notificationMissed: _StrictEventRule(
-      requiredAny: [['notifId', 'notif_id', 'notificationId', 'notification_id']],
+      requiredAny: [
+        ['notifId', 'notif_id', 'notificationId', 'notification_id']
+      ],
       allowedFields: {
         'notifId': (v) => v is String,
         'notif_id': (v) => v is String,
@@ -197,7 +209,9 @@ class EventPayloadValidator {
       ['date'],
     ]),
     EventNames.badDayDetected: _StrictEventRule(
-      requiredAny: [['date']],
+      requiredAny: [
+        ['date']
+      ],
       allowedFields: {
         'date': (v) => v is String,
       },
@@ -211,21 +225,51 @@ class EventPayloadValidator {
       ['gapDays', 'gap_days'],
     ]),
     EventNames.comebackPathChosen: _StrictEventRule(
-      requiredAny: [['path']],
+      requiredAny: [
+        ['path']
+      ],
       allowedFields: {
         'path': (v) => v is String,
       },
     ),
     EventNames.weeklyInsightReady: _StrictEventRule(
-      requiredAny: [['insightId', 'insight_id']],
+      requiredAny: [
+        ['insightId', 'insight_id']
+      ],
       allowedFields: {
         'insightId': (v) => v is String,
         'insight_id': (v) => v is String,
       },
     ),
     EventNames.fitnessActivityStarted: _fitnessActivityRule,
+    EventNames.fitnessActivityPaused: _fitnessActivityRule,
+    EventNames.fitnessActivityResumed: _fitnessActivityRule,
+    EventNames.fitnessActivityCompleted: _fitnessActivityRule,
+    EventNames.runningActivityCompleted: _fitnessActivityRule,
+    EventNames.walkingActivityCompleted: _fitnessActivityRule,
+    EventNames.cyclingActivityCompleted: _fitnessActivityRule,
+    EventNames.hikingActivityCompleted: _fitnessActivityRule,
+    EventNames.swimmingActivityCompleted: _fitnessActivityRule,
+    EventNames.gymActivityCompleted: _fitnessActivityRule,
     EventNames.fitnessActivityCancelled: _fitnessActivityRule,
     EventNames.fitnessActivityDiscarded: _fitnessActivityRule,
+    EventNames.routeTrackingStarted: _fitnessActivityRule,
+    EventNames.routeTrackingStopped: _fitnessActivityRule,
+    EventNames.routeSaved: _fitnessActivityRule,
+    EventNames.routeReviewOpened: _fitnessActivityRule,
+    EventNames.fitnessGoalCreated: _fitnessGoalRule,
+    EventNames.fitnessGoalProgressUpdated: _fitnessGoalRule,
+    EventNames.fitnessGoalCompleted: _fitnessGoalRule,
+    EventNames.weeklyDistanceGoalCompleted: _EventRule.any([
+      ['goalId', 'goal_id'],
+    ]),
+    EventNames.fitnessStreakUpdated: _EventRule.any([
+      ['streakId', 'streak_id'],
+    ]),
+    EventNames.fitnessAiFeedbackRequested: _fitnessActivityRule,
+    EventNames.fitnessAiFeedbackGenerated: _fitnessActivityRule,
+    EventNames.routineFitnessStarted: _routineFitnessRule,
+    EventNames.routineFitnessCompleted: _routineFitnessRule,
   };
 
   static final _taskRule = _EventRule.any([
@@ -273,6 +317,17 @@ class EventPayloadValidator {
     ['activityId', 'activity_id'],
     ['activityType', 'activity_type'],
   ]);
+
+  static final _fitnessGoalRule = _EventRule.any([
+    ['goalId', 'goal_id'],
+    ['goalType', 'goal_type'],
+  ]);
+
+  static final _routineFitnessRule = _EventRule.any([
+    ['activityId', 'activity_id'],
+    ['activityType', 'activity_type'],
+    ['routineTaskId', 'routine_task_id'],
+  ]);
 }
 
 class _EventRule {
@@ -292,7 +347,8 @@ class _StrictEventRule extends _EventRule {
     required this.allowedFields,
   });
 
-  EventPayloadValidationResult validateStrict(String eventName, Map<String, dynamic> payload) {
+  EventPayloadValidationResult validateStrict(
+      String eventName, Map<String, dynamic> payload) {
     final missing = <String>[];
     final wrongType = <String>[];
     final unknown = <String>[];
@@ -342,7 +398,8 @@ class _StrictEventRule extends _EventRule {
     }
 
     if (unknown.isNotEmpty) {
-      final msg = 'Unknown fields in payload for "$eventName": ${unknown.join(', ')}.';
+      final msg =
+          'Unknown fields in payload for "$eventName": ${unknown.join(', ')}.';
       if (kDebugMode) {
         return EventPayloadValidationResult.invalid(msg);
       } else {
