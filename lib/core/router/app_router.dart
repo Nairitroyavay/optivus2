@@ -30,6 +30,7 @@ import '../../views/fitness/fitness_stats_screen.dart';
 import '../../views/fitness/fitness_goals_screen.dart';
 import '../../views/fitness/fitness_settings_screen.dart';
 import '../../views/settings/archived_identities_screen.dart';
+import '../../views/settings/notification_settings_screen.dart';
 import '../../views/notifications/notification_center_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
@@ -142,6 +143,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/archived-identities',
         builder: (_, __) => const ArchivedIdentitiesScreen(),
+      ),
+      GoRoute(
+        path: '/settings/notifications',
+        builder: (_, __) => const NotificationSettingsScreen(),
       ),
       GoRoute(
         path: '/settings/fixed-schedule',

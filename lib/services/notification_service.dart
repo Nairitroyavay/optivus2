@@ -84,6 +84,228 @@ class NotificationBudgetDecision {
   });
 }
 
+class _NotificationUserSettings {
+  final int dailyBudget;
+  final bool quietToday;
+  final Set<String> quietDays;
+  final Map<String, _NotificationCategorySetting> categories;
+  final List<_BlackoutWindow> blackouts;
+  final List<_CustomAlarmSetting> customAlarms;
+  final String sound;
+  final String vibration;
+
+  const _NotificationUserSettings({
+    required this.dailyBudget,
+    required this.quietToday,
+    required this.quietDays,
+    required this.categories,
+    required this.blackouts,
+    required this.customAlarms,
+    required this.sound,
+    required this.vibration,
+  });
+
+  factory _NotificationUserSettings.fromProfile(Map<String, dynamic> data) {
+    final rawSettings =
+        Map<String, dynamic>.from(data['notificationSettings'] as Map? ?? {});
+    final rawCategories =
+        Map<String, dynamic>.from(rawSettings['categories'] as Map? ?? {});
+    final defaults = NotificationService._defaultCategorySettings();
+    final categories = <String, _NotificationCategorySetting>{};
+    for (final entry in defaults.entries) {
+      categories[entry.key] = _NotificationCategorySetting.fromMap(
+        Map<String, dynamic>.from(rawCategories[entry.key] as Map? ?? {}),
+        fallback: entry.value,
+      );
+    }
+
+    final quietDays = (rawSettings['quietDays'] as List? ?? const [])
+        .whereType<Object>()
+        .map((value) => value.toString())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+
+    final blackouts = (rawSettings['blackoutWindows'] as List? ?? const [])
+        .whereType<Map>()
+        .map((value) => _BlackoutWindow.fromMap(
+              Map<String, dynamic>.from(value),
+            ))
+        .toList();
+
+    final customAlarms = (rawSettings['customAlarms'] as List? ?? const [])
+        .whereType<Map>()
+        .map((value) => _CustomAlarmSetting.fromMap(
+              Map<String, dynamic>.from(value),
+            ))
+        .toList();
+
+    final fallbackBudget = NotificationService._asNonNegativeInt(
+      data['dailyNotificationBudget'],
+      fallback: 3,
+    );
+    final hasSettingsBudget = rawSettings.containsKey('dailyBudget');
+    final dailyBudget = hasSettingsBudget
+        ? NotificationService._asNonNegativeInt(
+            rawSettings['dailyBudget'],
+            fallback: fallbackBudget,
+          )
+        : fallbackBudget;
+
+    return _NotificationUserSettings(
+      dailyBudget: dailyBudget,
+      quietToday: rawSettings['quietToday'] as bool? ??
+          data['quietDayMode'] as bool? ??
+          false,
+      quietDays: quietDays,
+      categories: categories,
+      blackouts: blackouts,
+      customAlarms: customAlarms,
+      sound: NotificationService._asString(rawSettings['sound']) ?? 'default',
+      vibration:
+          NotificationService._asString(rawSettings['vibration']) ?? 'standard',
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'dailyBudget': dailyBudget,
+      'quietToday': quietToday,
+      'quietDays': quietDays.toList()..sort(),
+      'categories':
+          categories.map((key, value) => MapEntry(key, value.toFirestore())),
+      'blackoutWindows':
+          blackouts.map((window) => window.toFirestore()).toList(),
+      'customAlarms': customAlarms.map((alarm) => alarm.toFirestore()).toList(),
+      'sound': sound,
+      'vibration': vibration,
+    };
+  }
+
+  bool isQuietDay(DateTime date) {
+    return quietToday &&
+            NotificationService._formatDate(date) ==
+                NotificationService._todayString() ||
+        quietDays.contains(NotificationService._formatDate(date));
+  }
+
+  bool isInBlackout(DateTime date) {
+    return blackouts.any((window) => window.enabled && window.includes(date));
+  }
+
+  _NotificationCategorySetting categorySetting(String category) {
+    return categories[NotificationService._categoryGroup(category)] ??
+        const _NotificationCategorySetting(enabled: true, cap: 3);
+  }
+
+  bool isCustomAlarmEnabled(String id) {
+    final alarm = customAlarms.cast<_CustomAlarmSetting?>().firstWhere(
+          (item) => item?.id == id,
+          orElse: () => null,
+        );
+    return alarm?.enabled ?? true;
+  }
+}
+
+class _NotificationCategorySetting {
+  final bool enabled;
+  final int cap;
+
+  const _NotificationCategorySetting({
+    required this.enabled,
+    required this.cap,
+  });
+
+  factory _NotificationCategorySetting.fromMap(
+    Map<String, dynamic> data, {
+    required _NotificationCategorySetting fallback,
+  }) {
+    return _NotificationCategorySetting(
+      enabled: data['enabled'] as bool? ?? fallback.enabled,
+      cap: NotificationService._asNonNegativeInt(
+        data['cap'],
+        fallback: fallback.cap,
+      ).clamp(0, 15),
+    );
+  }
+
+  Map<String, dynamic> toFirestore() => {
+        'enabled': enabled,
+        'cap': cap,
+      };
+}
+
+class _BlackoutWindow {
+  final String id;
+  final String start;
+  final String end;
+  final bool enabled;
+
+  const _BlackoutWindow({
+    required this.id,
+    required this.start,
+    required this.end,
+    required this.enabled,
+  });
+
+  factory _BlackoutWindow.fromMap(Map<String, dynamic> data) {
+    return _BlackoutWindow(
+      id: NotificationService._asString(data['id']) ?? 'blackout',
+      start: NotificationService._asString(data['start']) ?? '22:00',
+      end: NotificationService._asString(data['end']) ?? '07:00',
+      enabled: data['enabled'] as bool? ?? true,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() => {
+        'id': id,
+        'start': start,
+        'end': end,
+        'enabled': enabled,
+      };
+
+  bool includes(DateTime date) {
+    final current = date.hour * 60 + date.minute;
+    final startMinutes = NotificationService._minutesForTime(start);
+    final endMinutes = NotificationService._minutesForTime(end);
+    if (startMinutes == null || endMinutes == null) return false;
+    if (startMinutes == endMinutes) return true;
+    if (startMinutes < endMinutes) {
+      return current >= startMinutes && current < endMinutes;
+    }
+    return current >= startMinutes || current < endMinutes;
+  }
+}
+
+class _CustomAlarmSetting {
+  final String id;
+  final String label;
+  final String time;
+  final bool enabled;
+
+  const _CustomAlarmSetting({
+    required this.id,
+    required this.label,
+    required this.time,
+    required this.enabled,
+  });
+
+  factory _CustomAlarmSetting.fromMap(Map<String, dynamic> data) {
+    return _CustomAlarmSetting(
+      id: NotificationService._asString(data['id']) ?? 'alarm',
+      label: NotificationService._asString(data['label']) ?? 'Custom alarm',
+      time: NotificationService._asString(data['time']) ?? '09:00',
+      enabled: data['enabled'] as bool? ?? true,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() => {
+        'id': id,
+        'label': label,
+        'time': time,
+        'enabled': enabled,
+      };
+}
+
 class NotificationService {
   final FlutterLocalNotificationsPlugin _plugin;
   final FirebaseFirestore _firestore;
@@ -186,6 +408,49 @@ class NotificationService {
       return granted ?? false;
     }
     return false;
+  }
+
+  Future<bool> sendTestNotification(String uid) async {
+    if (kIsWeb) {
+      debugPrint('[NotificationService] Test notification unsupported on web.');
+      return false;
+    }
+    if (!_isInitialized) await init();
+
+    final settings = await _loadNotificationSettings(uid);
+    await _plugin.show(
+      id: DateTime.now().millisecondsSinceEpoch & 0x7FFFFFFF,
+      title: 'Optivus test notification',
+      body: 'Your notification settings are ready.',
+      notificationDetails:
+          _detailsForCategoryWithSettings('test_notification', settings),
+      payload: json.encode({
+        'notifId': 'test_${DateTime.now().millisecondsSinceEpoch}',
+        'uid': uid,
+        'category': 'test_notification',
+      }),
+    );
+    return true;
+  }
+
+  Future<void> reconcilePendingNotificationsWithSettings(String uid) async {
+    final settings = await _loadNotificationSettings(uid);
+    final snapshots = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('scheduled_notifications')
+        .where('status', isEqualTo: NotifStatus.pending)
+        .get();
+
+    for (final doc in snapshots.docs) {
+      final notif = ScheduledNotification.fromFirestore(doc);
+      if (settings.categorySetting(notif.category).enabled) continue;
+      await _cancelAndPersist(
+        uid: uid,
+        notifId: notif.notifId,
+        reason: 'notification_settings_category_disabled',
+      );
+    }
   }
 
   // ── V1 typed schedule helpers ─────────────────────────────────────────────
@@ -297,6 +562,26 @@ class NotificationService {
   }
 
   Future<void> scheduleCustom(Map<String, dynamic> input, String uid) async {
+    final settings = await _loadNotificationSettings(uid);
+    final customAlarmId = _asString(input['customAlarmId']) ??
+        _asString(input['alarmId']) ??
+        _asString(input['id']);
+    if (customAlarmId != null &&
+        !settings.isCustomAlarmEnabled(customAlarmId)) {
+      final intent = _asString(input['intentDescription']) ?? 'custom_reminder';
+      await writeSuppressionEvent(
+        uid: uid,
+        reason: 'custom_alarm_disabled',
+        intentDescription: intent,
+        category: _asString(input['category']) ?? 'custom',
+        triggerEventId: _asString(input['triggerEventId']),
+        notifId: _asString(input['notifId']),
+        taskId: _asString(input['taskId']),
+        habitId: _asString(input['habitId']),
+      );
+      return;
+    }
+
     final title = _asString(input['title']) ?? 'Reminder';
     final body = _asString(input['body']) ?? '';
     final scheduledFor = _asDateTime(input['scheduledFor']) ??
@@ -396,9 +681,18 @@ class NotificationService {
       'pending notifications.',
     );
 
+    final settings = await _loadNotificationSettings(uid);
     for (final doc in snapshots.docs) {
       final notif = ScheduledNotification.fromFirestore(doc);
       if (notif.scheduledFor.isAfter(now)) {
+        if (!settings.categorySetting(notif.category).enabled) {
+          await _cancelAndPersist(
+            uid: uid,
+            notifId: notif.notifId,
+            reason: 'notification_settings_category_disabled',
+          );
+          continue;
+        }
         final registrationKey = _registrationKey(uid, notif.notifId);
         if (_reRegisteredNotificationKeys.contains(registrationKey)) continue;
 
@@ -407,7 +701,8 @@ class NotificationService {
           title: notif.title ?? '',
           body: notif.body ?? '',
           scheduledDate: tz.TZDateTime.from(notif.scheduledFor, tz.local),
-          notificationDetails: _detailsForCategory(notif.category),
+          notificationDetails:
+              _detailsForCategoryWithSettings(notif.category, settings),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           payload: json.encode({
             'notifId': notif.notifId,
@@ -791,17 +1086,18 @@ class NotificationService {
     await _firestore.runTransaction((transaction) async {
       final snap = await transaction.get(profileRef);
       final data = snap.data() ?? <String, dynamic>{};
+      final settings = _NotificationUserSettings.fromProfile(data);
       final lastBudgetDate = data['notificationBudgetDate'] as String?;
 
       transaction.set(
         profileRef,
         {
-          'dailyNotificationBudget':
-              _asNonNegativeInt(data['dailyNotificationBudget'], fallback: 3),
+          'notificationSettings': settings.toFirestore(),
+          'dailyNotificationBudget': settings.dailyBudget,
           'notificationsSentToday': lastBudgetDate == today
               ? _asNonNegativeInt(data['notificationsSentToday'])
               : 0,
-          'quietDayMode': data['quietDayMode'] as bool? ?? false,
+          'quietDayMode': settings.quietToday,
           'notificationBudgetDate': today,
           'updatedAt': FieldValue.serverTimestamp(),
           'schemaVersion': 1,
@@ -833,13 +1129,23 @@ class NotificationService {
     final decision = await _firestore.runTransaction((transaction) async {
       final snap = await transaction.get(profileRef);
       final data = snap.data() ?? <String, dynamic>{};
+      final settings = _NotificationUserSettings.fromProfile(data);
       final lastBudgetDate = data['notificationBudgetDate'] as String?;
       final sentToday = lastBudgetDate == today
           ? _asNonNegativeInt(data['notificationsSentToday'])
           : 0;
-      final dailyBudget =
-          _asNonNegativeInt(data['dailyNotificationBudget'], fallback: 3);
-      final quietDayMode = data['quietDayMode'] as bool? ?? false;
+      final categoryGroup = _categoryGroup(category);
+      final categorySetting = settings.categorySetting(category);
+      final rawCategoryCounts = Map<String, dynamic>.from(
+          data['notificationCategoryCounts'] as Map? ??
+              const <String, dynamic>{});
+      final categoryCounts = lastBudgetDate == today
+          ? rawCategoryCounts.map(
+              (key, value) => MapEntry(key, _asNonNegativeInt(value)),
+            )
+          : <String, int>{};
+      final sentForCategory = categoryCounts[categoryGroup] ?? 0;
+      final quietDayMode = settings.isQuietDay(targetDate);
 
       // ── Quiet Hours Check ────────────────────────────────────────────────
       bool inQuietHours = false;
@@ -853,16 +1159,23 @@ class NotificationService {
       }
 
       String? reason;
-      if (!isCritical && quietDayMode) {
+      if (!isCritical && !categorySetting.enabled) {
+        reason = 'category_disabled';
+      } else if (!isCritical && quietDayMode) {
         reason = 'quiet_day_mode';
+      } else if (!isCritical && settings.isInBlackout(targetDate)) {
+        reason = 'blackout_window';
       } else if (!isCritical && inQuietHours) {
         reason = 'quiet_hours';
-      } else if (!isCritical && sentToday >= dailyBudget) {
+      } else if (!isCritical && sentForCategory >= categorySetting.cap) {
+        reason = 'category_cap_exhausted';
+      } else if (!isCritical && sentToday >= settings.dailyBudget) {
         reason = 'budget_exhausted';
       }
 
       final basePatch = <String, dynamic>{
-        'dailyNotificationBudget': dailyBudget,
+        'notificationSettings': settings.toFirestore(),
+        'dailyNotificationBudget': settings.dailyBudget,
         'quietDayMode': quietDayMode,
         'notificationBudgetDate': today,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -875,6 +1188,7 @@ class NotificationService {
           {
             ...basePatch,
             'notificationsSentToday': sentToday,
+            'notificationCategoryCounts': categoryCounts,
           },
           SetOptions(merge: true),
         );
@@ -882,24 +1196,26 @@ class NotificationService {
         return NotificationBudgetDecision(
           allowed: false,
           reason: reason,
-          dailyNotificationBudget: dailyBudget,
+          dailyNotificationBudget: settings.dailyBudget,
           notificationsSentToday: sentToday,
           quietDayMode: quietDayMode,
         );
       }
 
+      categoryCounts[categoryGroup] = sentForCategory + 1;
       transaction.set(
         profileRef,
         {
           ...basePatch,
           'notificationsSentToday': sentToday + 1,
+          'notificationCategoryCounts': categoryCounts,
         },
         SetOptions(merge: true),
       );
 
       return NotificationBudgetDecision(
         allowed: true,
-        dailyNotificationBudget: dailyBudget,
+        dailyNotificationBudget: settings.dailyBudget,
         notificationsSentToday: sentToday + 1,
         quietDayMode: quietDayMode,
       );
@@ -1091,6 +1407,9 @@ class NotificationService {
     if (!budgetDecision.allowed) return false;
 
     if (!_isInitialized) await init();
+    final settings = await _loadNotificationSettings(uid);
+    final resolvedDetails =
+        _detailsForCategoryWithSettings(category, settings, fallback: details);
 
     // ── 1. Enqueue local notification ───────────────────────────────────────
     await _plugin.zonedSchedule(
@@ -1098,7 +1417,7 @@ class NotificationService {
       title: title,
       body: body,
       scheduledDate: tz.TZDateTime.from(scheduledFor, tz.local),
-      notificationDetails: details,
+      notificationDetails: resolvedDetails,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload:
           json.encode({'notifId': notifId, 'uid': uid, 'category': category}),
@@ -1180,6 +1499,7 @@ class NotificationService {
   Future<void> _cancelAndPersist({
     required String uid,
     required String notifId,
+    String? reason,
   }) async {
     if (!_isInitialized) await init();
 
@@ -1197,6 +1517,7 @@ class NotificationService {
           .doc(notifId)
           .set({
         'status': NotifStatus.cancelled,
+        if (reason != null) 'cancellationReason': reason,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -1237,6 +1558,65 @@ class NotificationService {
       default:
         return _kTaskNotifDetails;
     }
+  }
+
+  Future<_NotificationUserSettings> _loadNotificationSettings(
+      String uid) async {
+    final snap = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('profile')
+        .doc('main')
+        .get();
+    return _NotificationUserSettings.fromProfile(
+      snap.data() ?? const <String, dynamic>{},
+    );
+  }
+
+  static NotificationDetails _detailsForCategoryWithSettings(
+    String category,
+    _NotificationUserSettings settings, {
+    NotificationDetails? fallback,
+  }) {
+    final base = fallback ?? _detailsForCategory(category);
+    if (settings.sound != 'none' && settings.vibration == 'standard') {
+      return base;
+    }
+
+    final baseAndroid = base.android;
+    final channelPrefix = baseAndroid?.channelId ?? 'optivus';
+    final channelName = baseAndroid?.channelName ?? 'Optivus Notifications';
+    final silent = settings.sound == 'none';
+    final vibrationPattern = switch (settings.vibration) {
+      'urgent' => Int64List.fromList([0, 240, 120, 240, 120, 360]),
+      'soft' => Int64List.fromList([0, 120]),
+      'none' => null,
+      _ => null,
+    };
+    final enableVibration = settings.vibration != 'none';
+
+    final android = AndroidNotificationDetails(
+      '${channelPrefix}_${settings.sound}_${settings.vibration}',
+      channelName,
+      channelDescription: baseAndroid?.channelDescription,
+      importance: baseAndroid?.importance ?? Importance.defaultImportance,
+      priority: baseAndroid?.priority ?? Priority.defaultPriority,
+      playSound: !silent,
+      enableVibration: enableVibration,
+      vibrationPattern: vibrationPattern,
+    );
+
+    final darwin = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: !silent,
+    );
+
+    return NotificationDetails(
+      android: android,
+      iOS: darwin,
+      macOS: darwin,
+    );
   }
 
   static String _makeDeterministicId(
@@ -1291,6 +1671,37 @@ class NotificationService {
 
   static String _formatTime(DateTime dt) {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  static Map<String, _NotificationCategorySetting> _defaultCategorySettings() {
+    return const {
+      'tasks': _NotificationCategorySetting(enabled: true, cap: 8),
+      'coach': _NotificationCategorySetting(enabled: true, cap: 4),
+      'streaks': _NotificationCategorySetting(enabled: true, cap: 4),
+      'custom': _NotificationCategorySetting(enabled: true, cap: 3),
+    };
+  }
+
+  static String _categoryGroup(String category) {
+    final key = category.toLowerCase();
+    if (key.contains('coach')) return 'coach';
+    if (key.contains('streak') ||
+        key.contains('slip') ||
+        key.contains('habit')) {
+      return 'streaks';
+    }
+    if (key.contains('task') || key.contains('routine')) return 'tasks';
+    return 'custom';
+  }
+
+  static int? _minutesForTime(String value) {
+    final parts = value.split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+    return hour * 60 + minute;
   }
 
   static bool _isInQuietHours(

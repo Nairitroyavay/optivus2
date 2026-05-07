@@ -318,6 +318,10 @@ class ProfileTab extends StatelessWidget {
             icon: Icons.notifications_outlined,
             iconColor: const Color(0xFF4DB685),
             title: 'Notification',
+            hasArrow: true,
+            onTap: () {
+              context.push('/settings/notifications');
+            },
           ),
           _buildDivider(),
           _buildPrefTile(
