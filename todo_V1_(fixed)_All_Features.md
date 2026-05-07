@@ -2668,7 +2668,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 - [ ] Validation works.
 - [ ] Repeat rule presets work.
 - [ ] Reminder toggle creates notification doc.
-- [ ] Empty state visible.
+- [x] Empty state.visible.
 
 ---
 
@@ -5554,7 +5554,7 @@ Return:
 
 ---
 
-### Task 9.2 — Goals home tab + identity grid
+### Task 9.2 — Goals home tab + identity grid (COMPLETED)
 
 #### Status
 
@@ -5633,9 +5633,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] All sections per UF §9.1.
-- [ ] Empty state.
-- [ ] Long-press menu.
+- [x] All sections per UF §9.1.
+- [x] Empty state.
+- [x] Long-press menu.
 
 ---
 
