@@ -11,6 +11,7 @@ import '../../views/screens/loading_screen.dart';
 import '../../views/habits/habit_detail_screen.dart';
 import '../../views/habits/habit_editor_screen.dart';
 import '../../views/streaks/streak_detail_screen.dart';
+import '../../views/goals/identity_detail_screen.dart';
 import '../../views/tabs/routine_settings_screen.dart';
 import '../../views/routine/fixed_schedule_setup_screen.dart';
 import '../../views/routine/skin_care_setup_screen.dart';
@@ -120,6 +121,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/streaks/:streakId',
         builder: (_, state) => StreakDetailScreen(
           streakId: state.pathParameters['streakId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/identities/:goalId',
+        builder: (_, state) => IdentityDetailScreen(
+          goalId: state.pathParameters['goalId']!,
         ),
       ),
       GoRoute(
