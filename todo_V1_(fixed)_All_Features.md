@@ -4239,7 +4239,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 ---
 
-### Task 7.12 — Exercise / running tracker (NEW — Problem 10)
+### Task 7.12.1 — Optivus Fitness Foundation inside Track tab (NEW — Problem 10)
 
 #### Status
 
@@ -4247,54 +4247,126 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-UF §8.4.9: workout type chips, type-specific fields, PRs, opt-in Health/Fit integration, weekly summary.
+The old exercise tracker task is too narrow. Optivus needs its own Fitness Engine inside the existing Track tab, not a Strava dependency and not a separate bottom-nav tab.
+
+This foundation task creates the domain model, Firestore contract, repository/provider layer, and first Track-tab fitness UI surfaces while preserving the current habit tracker behavior.
 
 #### What to tell Gemini CLI / Antigravity
 
 ```text
-Use `.gemini/GEMINI.md` as the project rules.
+Use `.gemini/GEMINI.md` as the project rules. If that file is absent, use root `GEMINI.md`.
 
 Work in planning mode first. Do not edit code until you inspect the files and give a plan.
 
 ## Task
 
-Build the exercise/running tracker per UF §8.4.9.
+Build Phase 1 of the Optivus-native Fitness Engine inside the existing Track tab.
 
-## Files allowed to modify
+Do not depend on Strava or any external fitness app for the core experience.
 
-Only modify these files:
+## Must inspect before editing
 
-- `lib/views/habits/variants/exercise_tracker_view.dart`
-- `lib/services/health_kit_bridge.dart` (new — opt-in)
+- Existing Flutter project structure
+- Existing routing/navigation
+- Existing Riverpod providers
+- Existing models/repositories/services
+- Existing Firebase paths
+- Existing event system
+- Existing AI coach system
+- Existing Track tab, Routine tab, Home dashboard, Settings, and Analytics screens
+
+## Scope
+
+- Add a Fitness section/entry point inside `TrackerTab`.
+- Add Fitness dashboard UI inside Track.
+- Add Activity Selection UI.
+- Add Activity Pre-Start UI.
+- Create/extend models only if similar models do not already exist.
+- Create Firestore schema constants if the project has a schema/constants pattern.
+- Create repository and Riverpod providers using existing project conventions.
+- Preserve existing habit tracker cards, logs, streaks, and Track tab behavior.
+
+## UI screens
+
+- `FitnessDashboardScreen`
+- `ActivitySelectionScreen`
+- `ActivityPreStartScreen`
+- Permission state UI for pre-start flows
+
+## Models
+
+- `FitnessActivityModel`
+- `RoutePointModel`
+- `ActivitySplitModel`
+- `HeartRateSampleModel`
+- `FitnessStatsModel`
+- `FitnessGoalModel`
+- `LiveActivityMetricsModel`
+- `FitnessPermissionStateModel`
+- `FitnessActivityType`
+- `FitnessActivityStatus`
+
+Models must include safe `fromMap`, `toMap`, `copyWith`, null-safe Timestamp conversion, defaults, and backward compatibility for old/missing fields.
+
+## Providers / repository
+
+- `fitnessActivityRepositoryProvider`
+- `activityHistoryProvider`
+- `activityDetailProvider`
+- `fitnessStatsProvider`
+- `fitnessGoalsProvider`
+- `fitnessPermissionProvider`
+- `FitnessActivityRepository`
+
+Repository methods required in this foundation:
+
+- `createActivity`
+- `updateActivity`
+- `watchActivity`
+- `watchActivityHistory`
+- `deleteActivity`
 
 ## Firestore paths
 
-- `/users/{uid}/habit_logs/{logId}` with type, duration, intensity, distance, mood.
+- `/users/{uid}/fitnessActivities/{activityId}`
+- `/users/{uid}/fitnessActivities/{activityId}/routePoints/{pointId}`
+- `/users/{uid}/fitnessActivities/{activityId}/splits/{splitId}`
+- `/users/{uid}/fitnessActivities/{activityId}/heartRateSamples/{sampleId}`
+- `/users/{uid}/fitnessStats/daily_{dateKey}`
+- `/users/{uid}/fitnessStats/weekly_{weekKey}`
+- `/users/{uid}/fitnessStats/monthly_{monthKey}`
+- `/users/{uid}/fitnessGoals/{goalId}`
 
 ## Requirements
 
-- Workout type chips: Run · Weights · Bike · Swim · Yoga · Other.
-- Universal fields: duration, intensity, optional pre/post mood.
-- Type-specific extras: distance/pace for run/bike/swim; muscle-group + sets/reps for weights; style/instructor for yoga.
-- PR auto-detect (compare to all prior logs of same type) → highlight at top.
-- Opt-in health pull (Google Fit/Apple Health) with confirm review.
-- Weekly summary: total volume, distance, type breakdown, vs last week.
+- Track tab shows Fitness card/section with Start Activity.
+- Quick start buttons: Run, Walk, Cycle, Hike, Gym, Swim.
+- Activity selection supports running, walking, cycling, hiking, swimming, gym/workout, custom.
+- Pre-start screen shows selected type, Start, Back, Settings, permissions, GPS status where applicable, goal/target inputs, and notes.
+- GPS activities are running, walking, cycling, hiking, and open-water swimming when available.
+- Pool swimming and gym/workout do not require a map.
+- UI must use the existing Liquid UI / Optivus design language.
+- All async screens must handle loading, error, empty, permission denied, and offline states.
 
 ## Events
 
-- `good_habit_logged` (exercise event).
+Add event names to the central constants/validator only when implementation needs them:
+
+- `fitness_activity_started`
+- `fitness_activity_cancelled`
+- `fitness_activity_discarded`
 
 ## Dependencies
 
-- Tasks 7.1, 7.2.
+- Existing Track tab and routing.
+- Existing Auth, Firestore, Riverpod, event, and AI coach services.
 
 ## Verification
 
-Log run with 5K distance → PR detected if first/best.
-
-## Final response format
-
-Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore paths affected 5. Events implemented or skipped 6. Analyzer result 7. Remaining risks or missing dependencies
+- `flutter pub get`
+- `flutter analyze`
+- `flutter test` if relevant tests exist
+- Manual: Open Track tab, see Fitness section, tap Start Activity, choose activity, land on pre-start.
 ```
 
 #### Dependencies
@@ -4303,19 +4375,501 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### How to verify
 
-- Type chips.
-- PR detection.
-- Health import opt-in flow.
+- Track tab still loads existing habit tracker content.
+- Fitness entry appears inside Track tab.
+- Activity selection and pre-start flows work without duplicate models/providers.
 
 #### Estimate
 
-1 day
+2 days
 
 #### Done Criteria
 
-- [ ] Type chips.
-- [ ] PR detect.
-- [ ] Health import.
+- [ ] Fitness entry exists inside Track tab.
+- [ ] Dashboard, selection, and pre-start screens exist.
+- [ ] Foundation models/repository/providers exist or existing equivalents are extended.
+- [ ] Firestore schema plan is reflected in code constants/models.
+- [ ] Existing Track habit behavior is preserved.
+
+---
+
+### Task 7.12.2 — Live Activity Tracking, GPS, Map, and Controls
+
+#### Status
+
+- [ ] Not started
+
+#### Why
+
+Optivus must own the live tracking experience for running, walking, cycling, hiking, and optional open-water swimming. Users must see live distance, pace/speed, time, calories, GPS status, current location, and a route line while tracking.
+
+#### What to tell Gemini CLI / Antigravity
+
+```text
+Use `.gemini/GEMINI.md` as the project rules. If that file is absent, use root `GEMINI.md`.
+
+Work in planning mode first. Do not edit code until you inspect the files and give a plan.
+
+## Task
+
+Build live activity tracking, GPS, map, metrics, and controls for the Optivus Fitness Engine inside Track tab.
+
+## Scope
+
+- Add location permission handling.
+- Add foreground GPS tracking.
+- Add background-safe active activity state if supported by platform setup.
+- Add live timer, moving time, paused time.
+- Add live distance, speed, pace, calories.
+- Add Start / Pause / Resume / Finish / Cancel controls.
+- Add live route point capture and route filtering.
+- Add live map with current location marker and route polyline.
+- Add map controls: recenter, follow mode, zoom, map type toggle, lock controls, collapse metrics.
+
+## Services/controllers
+
+- `LocationTrackingService`
+- `FitnessMapController`
+- `FitnessMetricsCalculator`
+- `FitnessRouteService` basics for filtering/bounds
+- `activeActivityControllerProvider`
+- `liveActivityMetricsProvider`
+- `locationTrackingServiceProvider`
+- `fitnessMapControllerProvider`
+
+## UI screens/sheets
+
+- `LiveActivityTrackingScreen`
+- `ActivityPauseBottomSheet`
+- `FinishActivityConfirmationSheet`
+- Permission-required state UI
+
+## Firestore writes
+
+- Create active activity at `/users/{uid}/fitnessActivities/{activityId}`.
+- Save route points under `/routePoints/{pointId}`.
+- Do not store unlimited GPS points inside the activity document.
+- Route points must be ordered by `sequence`.
+- Use batching where safe.
+- Mark `syncStatus` as `synced`, `pending`, or `failed`.
+
+## GPS filtering
+
+Ignore points when:
+
+- accuracy is too poor
+- jump is unrealistic
+- timestamp is invalid
+- user is paused
+- movement is too tiny to be useful
+
+## Events
+
+- `fitness_activity_started`
+- `fitness_activity_paused`
+- `fitness_activity_resumed`
+- `fitness_activity_cancelled`
+- `fitness_activity_discarded`
+- `route_tracking_started`
+- `route_tracking_stopped`
+
+## Privacy rules
+
+- Never track silently.
+- Only track after user taps Start.
+- Stop immediately after Finish or Cancel.
+- Show visible tracking-active UI.
+- Handle permission denied, permanently denied, GPS disabled, weak GPS, no internet, app background, phone lock where supported.
+
+## Verification
+
+- `flutter pub get`
+- `flutter analyze`
+- `flutter test` if relevant tests exist
+- Manual: Start Running, see timer, distance, pace, map, marker, live polyline, pause, resume, finish confirmation, cancel/discard.
+```
+
+#### Dependencies
+
+- Task 7.12.1.
+- Map/location packages chosen after inspecting existing platform setup.
+
+#### How to verify
+
+- GPS activity starts only after user action.
+- Live route line updates.
+- Pause stops moving time and distance accumulation.
+- Finish/cancel stops tracking.
+
+#### Estimate
+
+3 days
+
+#### Done Criteria
+
+- [ ] Live tracking works for running/walking/cycling/hiking.
+- [ ] Map controls work during tracking.
+- [ ] Route points are saved to subcollection.
+- [ ] Bad GPS points are filtered.
+- [ ] Permission and GPS edge states are handled.
+
+---
+
+### Task 7.12.3 — Activity Completion, Summary, History, Route Review, Swim, and Gym
+
+#### Status
+
+- [ ] Not started
+
+#### Why
+
+Users must be able to finish an activity, review the saved route and stats, reopen old activities, and use non-GPS flows for pool swimming and gym/workout.
+
+#### What to tell Gemini CLI / Antigravity
+
+```text
+Use `.gemini/GEMINI.md` as the project rules. If that file is absent, use root `GEMINI.md`.
+
+Work in planning mode first. Do not edit code until you inspect the files and give a plan.
+
+## Task
+
+Build the saved activity experience for the Optivus Fitness Engine.
+
+## Scope
+
+- Finish and save activity.
+- Calculate final stats.
+- Generate splits where applicable.
+- Save notes/manual fields.
+- Show post-activity summary.
+- Show saved route review from Firestore route points.
+- Show activity history and detail.
+- Support pool swimming without GPS by default.
+- Support open-water swimming with optional route data.
+- Support gym/workout without map.
+
+## UI screens
+
+- `ActivitySummaryScreen`
+- `ActivityRouteReviewScreen`
+- `ActivityHistoryScreen`
+- `ActivityDetailScreen`
+
+## Swimming
+
+- Pool swimming: timer, pool length, laps, manual distance, calories, heart rate optional, notes.
+- Open-water swimming: GPS optional; allow manual distance when no route is available.
+- Do not assume GPS works underwater.
+
+## Gym / workout
+
+- Timer, pause/resume/finish.
+- Workout category.
+- Optional exercises, sets, reps, weight later.
+- Calories estimate.
+- Heart rate optional.
+- Notes and AI feedback slot.
+
+## Route review
+
+- Use saved `/routePoints`.
+- Show full polyline, start marker, finish marker, split markers.
+- Allow zoom, pan, recenter full route, map type toggle.
+- Must not require an active tracking session.
+- Old activities must reopen safely.
+
+## Repository methods
+
+- `completeActivity`
+- `cancelActivity`
+- `saveRoutePoint`
+- `saveRoutePointsBatch`
+- `watchRoutePoints`
+- `saveSplits`
+- `saveHeartRateSamples`
+
+## Events
+
+- `fitness_activity_completed`
+- `running_activity_completed`
+- `walking_activity_completed`
+- `cycling_activity_completed`
+- `hiking_activity_completed`
+- `swimming_activity_completed`
+- `gym_activity_completed`
+- `route_saved`
+- `route_review_opened`
+
+## Verification
+
+- `flutter analyze`
+- `flutter test` if relevant tests exist
+- Manual: Finish activity, see summary, open route review, open history, reopen old activity, view route from saved points.
+```
+
+#### Dependencies
+
+- Tasks 7.12.1 and 7.12.2.
+
+#### How to verify
+
+- Finished GPS activity has route review.
+- Pool swim can finish without route.
+- Gym workout can finish without map.
+- History and detail screens reopen saved activities.
+
+#### Estimate
+
+3 days
+
+#### Done Criteria
+
+- [ ] Summary screen supports GPS and non-GPS activities.
+- [ ] History and detail screens exist.
+- [ ] Saved route review uses Firestore route points.
+- [ ] Swimming and gym flows are supported.
+- [ ] Splits and notes are persisted where applicable.
+
+---
+
+### Task 7.12.4 — Stats, Goals, Routine, Events, AI, Backend, Rules, and Polish
+
+#### Status
+
+- [ ] Not started
+
+#### Why
+
+The Fitness Engine is not production-ready until it updates stats/goals/streaks/daily summaries, integrates Routine and AI Coach, emits validated events, has backend automation, has security rules, and handles offline/error cases.
+
+#### What to tell Gemini CLI / Antigravity
+
+```text
+Use `.gemini/GEMINI.md` as the project rules. If that file is absent, use root `GEMINI.md`.
+
+Work in planning mode first. Do not edit code until you inspect the files and give a plan.
+
+## Task
+
+Complete production integrations for the Optivus Fitness Engine.
+
+## Scope
+
+- Daily, weekly, monthly fitness stats.
+- Fitness goals.
+- Routine tab integration.
+- Home dashboard fitness card integration if it fits existing architecture.
+- AI Coach post-activity feedback.
+- Streak and daily summary integration.
+- Event system integration.
+- Analytics surfaces.
+- Firestore security rules.
+- Cloud Functions automation.
+- Offline queue/sync state.
+- Error, empty, loading, permission, and map failure states.
+- Tests and analyzer/build verification.
+
+## UI screens
+
+- `FitnessStatsScreen`
+- `FitnessGoalsScreen`
+- `FitnessSettingsScreen`
+
+## Services
+
+- `FitnessStatsService`
+- `FitnessEventService`
+- `FitnessAICoachService`
+- `FitnessHealthConnectorService`
+- `FitnessRouteService`
+
+## Routine integration
+
+- Add running, walking, cycling, hiking, swimming, and gym routine support.
+- Routine item can start a Fitness activity.
+- On finish, link `fitnessActivityId` back to the routine task/item.
+- Mark routine item complete.
+- Emit routine and fitness events.
+- Update daily summary and streaks.
+
+## AI Coach
+
+After completion, request personalized feedback using:
+
+- activity type
+- distance
+- duration
+- pace/speed
+- calories
+- heart rate if available
+- goals
+- routine completion
+- missed days
+- streak state
+- previous activities
+
+Do not use user fitness data to train external models. Use it only for that user's coaching experience.
+
+## Cloud Functions
+
+- `onFitnessActivityCompleted`
+- `onFitnessGoalUpdated`
+- `scheduledFitnessWeeklySummary`
+- `cleanupOrCompressRoutePoints` optional
+
+Functions must be idempotent and avoid duplicate stats/events.
+
+## Security rules
+
+Add owner-only rules for:
+
+- `/users/{uid}/fitnessActivities/{activityId}`
+- `/users/{uid}/fitnessActivities/{activityId}/routePoints/{pointId}`
+- `/users/{uid}/fitnessActivities/{activityId}/splits/{splitId}`
+- `/users/{uid}/fitnessActivities/{activityId}/heartRateSamples/{sampleId}`
+- `/users/{uid}/fitnessStats/{statId}`
+- `/users/{uid}/fitnessGoals/{goalId}`
+
+Protect aggregate stats if backend-managed.
+
+## Events
+
+- `fitness_goal_created`
+- `fitness_goal_progress_updated`
+- `fitness_goal_completed`
+- `weekly_distance_goal_completed`
+- `fitness_streak_updated`
+- `fitness_ai_feedback_requested`
+- `fitness_ai_feedback_generated`
+- `routine_fitness_started`
+- `routine_fitness_completed`
+
+## Verification
+
+- `flutter pub get`
+- `flutter analyze`
+- `flutter test` if tests exist
+- Android debug build
+- iOS build if available
+- `npm test` in `functions/`
+- Firebase emulator rules/function verification where possible
+- Manual edge cases: denied permission, GPS off, no internet, pause/resume, cancel, duplicate finish, very short activity, no heart rate.
+```
+
+#### Dependencies
+
+- Tasks 7.12.1, 7.12.2, and 7.12.3.
+
+#### How to verify
+
+- Stats update after completed activity.
+- Goals progress updates.
+- Routine-started fitness activity completes the routine item.
+- AI feedback is requested/generated.
+- Security rules cover all new paths.
+- Offline and error states are visible.
+
+#### Estimate
+
+4 days
+
+#### Done Criteria
+
+- [ ] Stats/goals services and UI exist.
+- [ ] Routine, streak, daily summary, analytics, event, and AI integrations exist.
+- [ ] Cloud Functions are idempotent.
+- [ ] Firestore rules secure all fitness paths.
+- [ ] Offline/error/empty states are handled.
+
+---
+
+### Task 7.12 — Final build and confirmation: full Optivus Fitness Engine
+
+#### Status
+
+- [ ] Not started
+
+#### Why
+
+This is the final parent acceptance task for the complete Optivus Fitness Engine. Tasks 7.12.1, 7.12.2, 7.12.3, and 7.12.4 together cover the full requested scope: Track-tab fitness entry, activity selection, live GPS tracking, live map controls, saved route review, activity history/detail, swimming, gym/workout, stats, goals, routine, streaks, daily summary, events, AI Coach, backend automation, security rules, offline support, and verification.
+
+#### What to tell Gemini CLI / Antigravity
+
+```text
+Use `.gemini/GEMINI.md` as the project rules. If that file is absent, use root `GEMINI.md`.
+
+Work in planning mode first. Do not edit code until you inspect the files and give a plan.
+
+## Task
+
+Build and verify the full Optivus-native Fitness Engine by completing Tasks 7.12.1, 7.12.2, 7.12.3, and 7.12.4.
+
+This parent task is complete only when the user can:
+
+1. Open Optivus.
+2. Go to the existing Track tab.
+3. Tap Start Activity.
+4. Select Running, Walking, Cycling, Hiking, Swimming, Gym/Workout, or Custom.
+5. Start an activity.
+6. See live map and route for GPS activities.
+7. See timer, distance, pace/speed, calories, GPS status, and optional heart rate.
+8. Pause, resume, finish, cancel, recenter, zoom, change map type, and control follow mode.
+9. Save the activity.
+10. See summary and route review.
+11. Reopen old activities from history.
+12. Use gym and pool swimming without GPS.
+13. See stats/goals update.
+14. Complete routine-linked fitness activities.
+15. Receive AI Coach feedback.
+
+## Confirmation
+
+Confirm explicitly in the final response that Tasks 7.12.1-7.12.4 cover the full Optivus Fitness Engine requirement and that Task 7.12 is the final build/acceptance task.
+
+## Final verification
+
+- `flutter pub get`
+- `flutter analyze`
+- `flutter test` if tests exist
+- Android debug build
+- iOS build if available
+- `npm test` in `functions/`
+- Firebase emulator verification for functions/rules where possible
+- Manual UI flow verification from Track tab through completed route review
+- Firestore document verification for activities, route points, splits, daily stats, and weekly stats
+- Event verification for fitness start, complete, route saved, streak updated, and AI feedback requested
+```
+
+#### Dependencies
+
+- Task 7.12.1.
+- Task 7.12.2.
+- Task 7.12.3.
+- Task 7.12.4.
+
+#### How to verify
+
+- Full user flow works from Track tab.
+- GPS and non-GPS activities work.
+- Saved route map reopens from history.
+- Firestore data, events, stats, goals, routine, streak, and AI integrations work.
+- Verification commands pass or remaining issues are explicitly documented.
+
+#### Estimate
+
+1 day final acceptance after 7.12.1-7.12.4 are implemented.
+
+#### Done Criteria
+
+- [ ] Tasks 7.12.1-7.12.4 are complete.
+- [ ] Full Optivus Fitness Engine is implemented inside the existing Track tab.
+- [ ] No Strava dependency is required for the core experience.
+- [ ] Running, walking, cycling, hiking, swimming, gym/workout, and custom activities are supported.
+- [ ] Live route map and saved route review work for GPS activities.
+- [ ] Map controls work live and after activity.
+- [ ] Stats, goals, routine, streak, daily summary, events, AI, backend, rules, and offline/error states are covered.
+- [ ] Final verification results are reported.
 
 ---
 
@@ -9076,4 +9630,3 @@ Every task includes:
 - per-task done criteria
 
 Use this file as the single source of truth from now on. When a task closes, set its Status to `Done (YYYY-MM-DD)` and tick the Done Criteria — do not delete the entry.
-
