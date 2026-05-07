@@ -106,7 +106,10 @@ final stateAggregatorServiceProvider = Provider<StateAggregatorService>(
 
 /// Local and push notification scheduling service.
 final notificationServiceProvider = Provider<NotificationService>(
-  (_) => NotificationService(),
+  (ref) => NotificationService(
+    auth: FirebaseAuth.instance,
+    eventService: ref.read(eventServiceProvider),
+  ),
 );
 
 /// Central side-effect dispatcher — listens to the event bus and

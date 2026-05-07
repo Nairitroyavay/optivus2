@@ -92,17 +92,28 @@ void main() async {
   );
 }
 
-class OptivusApp extends ConsumerWidget {
+class OptivusApp extends ConsumerStatefulWidget {
   const OptivusApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Eagerly initialize the EventOrchestrator so it starts
-    // listening to the event bus as soon as the app launches.
-    ref.read(eventOrchestratorProvider);
+  ConsumerState<OptivusApp> createState() => _OptivusAppState();
+}
 
-    // Check if we need to close the previous day
-    ref.read(routineServiceProvider).runDayCloseIfNeeded();
+class _OptivusAppState extends ConsumerState<OptivusApp> {
+  @override
+  void initState() {
+    super.initState();
+    ref.read(eventOrchestratorProvider);
+    final notificationService = ref.read(notificationServiceProvider);
+    final routineService = ref.read(routineServiceProvider);
+    Future.microtask(() async {
+      await notificationService.reRegisterAllOnAppStart();
+      await routineService.runDayCloseIfNeeded();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     ref.read(appRemoteConfigProvider);
 
     return MaterialApp.router(

@@ -1,226 +1,622 @@
 // test/services/notification_service_contract_test.dart
-//
-// Contract tests for NotificationService.
-// All groups are skipped (TODO) — implement with fake_cloud_firestore and
-// mocked FlutterLocalNotificationsPlugin once those dev-dependencies are added.
-//
-// Public surface under test:
-//   NotificationService.init()
-//   NotificationService.scheduleTaskReminder(task, uid)
-//   NotificationService.scheduleTaskEndReminder(task, uid)
-//   NotificationService.cancelTaskEndReminder(task, uid)
-//   NotificationService.scheduleStreakMilestone({uid, habitId, milestone, isCritical})
-//   NotificationService.scheduleSlipRecovery({uid, habitId, habitName})
-//   NotificationService.ensureNotificationSettings(uid)
-//   NotificationService.reserveNotificationSlot({uid, intentDescription, category, ...})
-//   NotificationService.writeSuppressionEvent({uid, reason, intentDescription, ...})
-//
-// Firestore paths:
-//   /users/{uid}/scheduled_notifications/{notifId}
-//   /users/{uid}/profile/main  (budget counters)
-//   /users/{uid}/events/{eventId}
-//   /users/{uid}/events_recent/{eventId}
+import 'dart:convert';
 
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/models/scheduled_notification_model.dart';
+import 'package:optivus2/models/task_model.dart';
+import 'package:optivus2/services/event_service.dart';
+import 'package:optivus2/services/notification_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+
+class MockLocalNotificationsPlugin extends Fake
+    implements FlutterLocalNotificationsPlugin {
+  bool initialized = false;
+  final List<Map<String, dynamic>> scheduled = [];
+  final List<int> cancelled = [];
+  DidReceiveNotificationResponseCallback? onResponse;
+
+  @override
+  Future<bool?> initialize({
+    required InitializationSettings settings,
+    DidReceiveNotificationResponseCallback? onDidReceiveNotificationResponse,
+    DidReceiveBackgroundNotificationResponseCallback?
+        onDidReceiveBackgroundNotificationResponse,
+  }) async {
+    initialized = true;
+    onResponse = onDidReceiveNotificationResponse;
+    return true;
+  }
+
+  @override
+  T? resolvePlatformSpecificImplementation<
+      T extends FlutterLocalNotificationsPlatform>() {
+    return null;
+  }
+
+  @override
+  Future<void> zonedSchedule({
+    required int id,
+    String? title,
+    String? body,
+    required tz.TZDateTime scheduledDate,
+    required NotificationDetails notificationDetails,
+    required AndroidScheduleMode androidScheduleMode,
+    String? payload,
+    DateTimeComponents? matchDateTimeComponents,
+  }) async {
+    scheduled.add({
+      'id': id,
+      'title': title,
+      'body': body,
+      'scheduledDate': scheduledDate,
+      'payload': payload,
+    });
+  }
+
+  @override
+  Future<void> cancel({required int id, String? tag}) async {
+    cancelled.add(id);
+  }
+
+  @override
+  Future<List<PendingNotificationRequest>> pendingNotificationRequests() async {
+    return [];
+  }
+
+  void respondTo(String payload, {String? actionId}) {
+    onResponse?.call(
+      NotificationResponse(
+        notificationResponseType: actionId == null
+            ? NotificationResponseType.selectedNotification
+            : NotificationResponseType.selectedNotificationAction,
+        actionId: actionId,
+        payload: payload,
+      ),
+    );
+  }
+}
 
 void main() {
-  // ── init ─────────────────────────────────────────────────────────────────────
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late FakeFirebaseFirestore firestore;
+  late MockFirebaseAuth auth;
+  late MockLocalNotificationsPlugin plugin;
+  late EventService eventService;
+  late NotificationService service;
+  const uid = 'test_uid';
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    tz.initializeTimeZones();
+    firestore = FakeFirebaseFirestore();
+    auth = MockFirebaseAuth(mockUser: MockUser(uid: uid), signedIn: true);
+    plugin = MockLocalNotificationsPlugin();
+    eventService = EventService(firestore: firestore, auth: auth);
+    service = NotificationService(
+      firestore: firestore,
+      auth: auth,
+      plugin: plugin,
+      eventService: eventService,
+    );
+  });
 
   group('NotificationService.init', () {
-    test(
-      'TODO: sets _isInitialized to true after first call',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('initializes plugin', () async {
+      await service.init();
+      expect(plugin.initialized, isTrue);
+    });
 
-    test(
-      'TODO: calling init() a second time is a no-op (idempotent)',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('requestPermissions returns false without a platform implementation',
+        () async {
+      expect(await service.requestPermissions(), isFalse);
+    });
   });
 
-  // ── scheduleTaskReminder ──────────────────────────────────────────────────────
-
-  group('NotificationService.scheduleTaskReminder — happy path', () {
-    test(
-      'TODO: schedules a local notification 5 minutes before task.plannedStart',
-      () {},
-      skip: 'Not yet implemented',
+  group('NotificationService.scheduleTaskReminder', () {
+    final task = TaskModel(
+      id: 'task_1',
+      title: 'Test Task',
+      plannedStart: DateTime.now().add(const Duration(hours: 1)),
+      plannedEnd: DateTime.now().add(const Duration(hours: 2)),
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
     );
 
-    test(
-      'TODO: persists a task_reminder doc to /scheduled_notifications/{notifId}',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('schedules local notification and persists to Firestore', () async {
+      final success = await service.scheduleTaskReminder(task, uid);
+      expect(success, isTrue);
 
-    test(
-      'TODO: returns true when notification is scheduled successfully',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      expect(plugin.scheduled.length, 1);
+      expect(plugin.scheduled.first['title'], contains('Test Task'));
 
-    test(
-      'TODO: returns false and does not schedule when fireAt is in the past',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      final snapshots = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .get();
+      expect(snapshots.docs.length, 1);
+      expect(
+          snapshots.docs.first.data()['category'], NotifCategory.taskReminder);
+      expect(snapshots.docs.first.data()['status'], NotifStatus.pending);
+    });
+
+    test('deduplicates by deterministic ID', () async {
+      await service.scheduleTaskReminder(task, uid);
+      await service.scheduleTaskReminder(task, uid);
+
+      final snapshots = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .get();
+      // Should only have 1 doc because of deterministic ID
+      expect(snapshots.docs.length, 1);
+      expect(plugin.scheduled.length, 1);
+    });
   });
 
-  // ── scheduleTaskEndReminder ───────────────────────────────────────────────────
+  group('NotificationService lifecycle recording', () {
+    const notifId = 'notif_123';
+    const category = 'test_cat';
 
-  group('NotificationService.scheduleTaskEndReminder — happy path', () {
-    test(
-      'TODO: schedules a local notification at task.plannedEnd',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('recordTapped updates status and writes to notificationLog', () async {
+      await service.recordTapped(notifId, uid, category);
 
-    test(
-      'TODO: persists a task_end_reminder doc to /scheduled_notifications/{notifId}',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      final notifDoc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .doc(notifId)
+          .get();
+      expect(notifDoc.data()?['status'], NotifStatus.tapped);
+
+      final logs = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('notificationLog')
+          .get();
+      expect(logs.docs.length, 1);
+      expect(logs.docs.first.data()['notifId'], notifId);
+      expect(logs.docs.first.data()['status'], NotifStatus.tapped);
+    });
+
+    test('record methods update status, notificationLog, and events_recent',
+        () async {
+      await service.recordSent(notifId, uid, category);
+      await service.recordTapped(notifId, uid, category);
+      await service.recordDismissed(notifId, uid, category);
+      await service.recordSuppressed(
+        notifId,
+        uid,
+        category,
+        'quiet_hours',
+      );
+      await service.recordMissed(notifId, uid, category);
+
+      final logs = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('notificationLog')
+          .get();
+      final loggedEvents =
+          logs.docs.map((doc) => doc.data()['eventName']).toSet();
+      expect(loggedEvents, contains(EventNames.notificationSent));
+      expect(loggedEvents, contains(EventNames.notificationTapped));
+      expect(loggedEvents, contains(EventNames.notificationDismissed));
+      expect(loggedEvents, contains(EventNames.notificationSuppressed));
+      expect(loggedEvents, contains(EventNames.notificationMissed));
+
+      final recentEvents = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events_recent')
+          .get();
+      final recentNames =
+          recentEvents.docs.map((doc) => doc.data()['eventName']).toSet();
+      expect(recentNames, contains(EventNames.notificationSent));
+      expect(recentNames, contains(EventNames.notificationTapped));
+      expect(recentNames, contains(EventNames.notificationDismissed));
+      expect(recentNames, contains(EventNames.notificationSuppressed));
+      expect(recentNames, contains(EventNames.notificationMissed));
+    });
+
+    test('record methods write events_recent without EventService', () async {
+      final serviceWithoutEventBus = NotificationService(
+        firestore: firestore,
+        auth: auth,
+        plugin: plugin,
+      );
+
+      await serviceWithoutEventBus.recordSent(notifId, uid, category);
+
+      final recentEvents = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events_recent')
+          .where('eventName', isEqualTo: EventNames.notificationSent)
+          .get();
+      expect(recentEvents.docs.length, 1);
+      expect(recentEvents.docs.first.data()['payload']['notifId'], notifId);
+    });
+
+    test('tap callback records notification_tapped from payload', () async {
+      await service.init();
+      plugin.respondTo(json.encode({
+        'notifId': notifId,
+        'uid': uid,
+        'category': category,
+      }));
+      await Future<void>.delayed(Duration.zero);
+
+      final notifDoc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .doc(notifId)
+          .get();
+      expect(notifDoc.data()?['status'], NotifStatus.tapped);
+    });
   });
 
-  // ── cancelTaskEndReminder ─────────────────────────────────────────────────────
+  group('NotificationService public scheduling methods', () {
+    test('scheduleForTask schedules start and end reminders', () async {
+      final task = TaskModel(
+        id: 'task_for_task',
+        title: 'Task API',
+        parentRoutine: 'morning_template',
+        plannedStart: DateTime.now().add(const Duration(hours: 2)),
+        plannedEnd: DateTime.now().add(const Duration(hours: 3)),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
 
-  group('NotificationService.cancelTaskEndReminder — happy path', () {
-    test(
-      'TODO: cancels the local notification by notifId',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.scheduleForTask(task);
 
-    test(
-      'TODO: updates Firestore doc status to cancelled',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      expect(plugin.scheduled.length, 2);
+      final snapshots = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .get();
+      final categories =
+          snapshots.docs.map((doc) => doc.data()['category']).toSet();
+      expect(categories, contains(NotifCategory.taskReminder));
+      expect(categories, contains(NotifCategory.taskEndReminder));
+    });
+
+    test('scheduleForRoutineTemplate dedupes by template/date/time/category',
+        () async {
+      final date = DateTime.now().add(const Duration(days: 1));
+      final template = {
+        'templateId': 'morning_template',
+        'startTime': '08:30',
+        'title': 'Morning routine',
+        'routineType': 'routine',
+      };
+
+      await service.scheduleForRoutineTemplate(template, date, uid);
+      await service.scheduleForRoutineTemplate({
+        ...template,
+        'title': 'Morning routine renamed',
+      }, date, uid);
+
+      expect(plugin.scheduled.length, 1);
+      final snapshots = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .get();
+      expect(snapshots.docs.length, 1);
+      expect(
+        snapshots.docs.first.data()['routineTemplateId'],
+        'morning_template',
+      );
+
+      final profile = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('main')
+          .get();
+      expect(profile.data()?['notificationsSentToday'], 1);
+
+      final logs = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('notificationLog')
+          .where('eventName', isEqualTo: EventNames.notificationScheduled)
+          .get();
+      expect(logs.docs.length, 1);
+    });
+
+    test('scheduleCustom persists and cancel marks cancelled', () async {
+      await service.scheduleCustom({
+        'entityId': 'custom_1',
+        'title': 'Custom reminder',
+        'body': 'Custom body',
+        'category': 'custom',
+        'scheduledFor': DateTime.now().add(const Duration(hours: 1)),
+      }, uid);
+
+      final snapshots = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .get();
+      expect(snapshots.docs.length, 1);
+
+      final notifId = snapshots.docs.first.id;
+      await service.cancel(notifId, uid);
+
+      final cancelled = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .doc(notifId)
+          .get();
+      expect(cancelled.data()?['status'], NotifStatus.cancelled);
+      expect(plugin.cancelled, contains(notifId.hashCode & 0x7FFFFFFF));
+    });
   });
 
-  // ── scheduleStreakMilestone ───────────────────────────────────────────────────
+  group('NotificationService.reRegisterAllOnAppStart', () {
+    test('re-registers pending future notifications', () async {
+      final fireAt = DateTime.now().add(const Duration(hours: 1));
+      final notif = ScheduledNotification(
+        notifId: 'future_notif',
+        category: 'test',
+        scheduledFor: fireAt,
+        createdAt: DateTime.now(),
+        status: NotifStatus.pending,
+        title: 'Future Title',
+      );
 
-  group('NotificationService.scheduleStreakMilestone — happy path', () {
-    test(
-      'TODO: schedules a local notification ~1 second from now',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .doc(notif.notifId)
+          .set(notif.toFirestore());
 
-    test(
-      'TODO: persists a streak_milestone doc to /scheduled_notifications/{notifId}',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.reRegisterAllOnAppStart();
+
+      expect(plugin.scheduled.length, 1);
+      expect(plugin.scheduled.first['title'], 'Future Title');
+    });
+
+    test('re-register is idempotent during the same app run', () async {
+      final fireAt = DateTime.now().add(const Duration(hours: 1));
+      final notif = ScheduledNotification(
+        notifId: 'future_idempotent',
+        category: 'test',
+        scheduledFor: fireAt,
+        createdAt: DateTime.now(),
+        status: NotifStatus.pending,
+        title: 'Future Idempotent',
+      );
+
+      await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .doc(notif.notifId)
+          .set(notif.toFirestore());
+
+      await service.reRegisterAllOnAppStart();
+      await service.reRegisterAllOnAppStart();
+
+      expect(plugin.scheduled.length, 1);
+    });
+
+    test('marks past pending notifications as missed', () async {
+      final fireAt = DateTime.now().subtract(const Duration(hours: 1));
+      final notif = ScheduledNotification(
+        notifId: 'past_notif',
+        category: 'test',
+        scheduledFor: fireAt,
+        createdAt: DateTime.now(),
+        status: NotifStatus.pending,
+      );
+
+      await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .doc(notif.notifId)
+          .set(notif.toFirestore());
+
+      await service.reRegisterAllOnAppStart();
+
+      final notifDoc = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .doc(notif.notifId)
+          .get();
+      expect(notifDoc.data()?['status'], NotifStatus.missed);
+
+      final logs = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('notificationLog')
+          .where('eventName', isEqualTo: EventNames.notificationMissed)
+          .get();
+      expect(logs.docs.length, 1);
+    });
   });
 
-  // ── scheduleSlipRecovery ──────────────────────────────────────────────────────
+  group('NotificationService quiet hours and budget', () {
+    setUp(() async {
+      await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('main')
+          .set({
+        'dailyNotificationBudget': 1,
+        'notificationsSentToday': 0,
+        'quietDayMode': false,
+        'bodyBasics': {
+          'wakeTime': '07:00',
+          'sleepTime': '22:00',
+        }
+      });
+    });
 
-  group('NotificationService.scheduleSlipRecovery — happy path', () {
-    test(
-      'TODO: schedules a slip-recovery local notification ~1 second from now',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('suppresses when budget is exhausted', () async {
+      // Use up the budget
+      await service.reserveNotificationSlot(
+          uid: uid, intentDescription: 'test1', category: 'test');
 
-    test(
-      'TODO: persists a slip_recovery doc to /scheduled_notifications/{notifId}',
-      () {},
-      skip: 'Not yet implemented',
-    );
-  });
+      final decision = await service.reserveNotificationSlot(
+          uid: uid, intentDescription: 'test2', category: 'test');
+      expect(decision.allowed, isFalse);
+      expect(decision.reason, 'budget_exhausted');
+    });
 
-  // ── ensureNotificationSettings ────────────────────────────────────────────────
+    test('scheduleCustom applies budget before enqueue and records suppression',
+        () async {
+      final now = DateTime.now();
+      var allowedTime = DateTime(now.year, now.month, now.day, 12);
+      if (!allowedTime.isAfter(now)) {
+        allowedTime = allowedTime.add(const Duration(days: 1));
+      }
 
-  group('NotificationService.ensureNotificationSettings', () {
-    test(
-      'TODO: creates profile/main doc with dailyNotificationBudget: 3 when absent',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.scheduleCustom({
+        'entityId': 'allowed',
+        'title': 'Allowed reminder',
+        'category': 'test',
+        'scheduledFor': allowedTime,
+      }, uid);
 
-    test(
-      'TODO: resets notificationsSentToday to 0 when notificationBudgetDate < today',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.scheduleCustom({
+        'entityId': 'blocked',
+        'title': 'Blocked reminder',
+        'category': 'test',
+        'scheduledFor': allowedTime.add(const Duration(hours: 1)),
+      }, uid);
 
-    test(
-      'TODO: preserves notificationsSentToday when notificationBudgetDate == today',
-      () {},
-      skip: 'Not yet implemented',
-    );
-  });
+      expect(plugin.scheduled.length, 1);
 
-  // ── reserveNotificationSlot ───────────────────────────────────────────────────
+      final suppressed = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .where('status', isEqualTo: NotifStatus.suppressed)
+          .get();
+      expect(suppressed.docs.length, 1);
 
-  group('NotificationService.reserveNotificationSlot — allowed', () {
-    test(
-      'TODO: returns allowed: true when sentToday < dailyBudget and quietDayMode is false',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      final logs = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('notificationLog')
+          .where('eventName', isEqualTo: EventNames.notificationSuppressed)
+          .get();
+      expect(logs.docs.length, 1);
 
-    test(
-      'TODO: increments notificationsSentToday by 1 when slot is reserved',
-      () {},
-      skip: 'Not yet implemented',
-    );
-  });
+      final recentEvents = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('events_recent')
+          .where('eventName', isEqualTo: EventNames.notificationSuppressed)
+          .get();
+      expect(recentEvents.docs.length, 1);
+    });
 
-  group('NotificationService.reserveNotificationSlot — suppressed', () {
-    test(
-      'TODO: returns allowed: false with reason budget_exhausted when sentToday >= budget',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('suppresses during quiet hours', () async {
+      final quietTime = DateTime(2024, 1, 1, 2, 0); // 2 AM
+      final decision = await service.reserveNotificationSlot(
+        uid: uid,
+        intentDescription: 'test',
+        category: 'test',
+        scheduledFor: quietTime,
+      );
+      expect(decision.allowed, isFalse);
+      expect(decision.reason, 'quiet_hours');
+    });
 
-    test(
-      'TODO: returns allowed: false with reason quiet_day_mode when quietDayMode is true',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('scheduleCustom applies quiet hours before enqueue', () async {
+      final now = DateTime.now();
+      var quietTime = DateTime(now.year, now.month, now.day, 2);
+      if (!quietTime.isAfter(now)) {
+        quietTime = quietTime.add(const Duration(days: 1));
+      }
 
-    test(
-      'TODO: isCritical: true bypasses budget_exhausted and quiet_day_mode checks',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.scheduleCustom({
+        'entityId': 'quiet_blocked',
+        'title': 'Quiet reminder',
+        'category': 'test',
+        'scheduledFor': quietTime,
+      }, uid);
 
-    test(
-      'TODO: writes a suppression event doc when slot is denied',
-      () {},
-      skip: 'Not yet implemented',
-    );
-  });
+      expect(plugin.scheduled, isEmpty);
 
-  // ── writeSuppressionEvent ─────────────────────────────────────────────────────
+      final suppressed = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .where('status', isEqualTo: NotifStatus.suppressed)
+          .get();
+      expect(suppressed.docs.length, 1);
+      expect(suppressed.docs.first.data()['status'], NotifStatus.suppressed);
+    });
 
-  group('NotificationService.writeSuppressionEvent', () {
-    test(
-      'TODO: writes notification_suppressed event to /events/{eventId}',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('isCritical bypasses quiet hours and budget', () async {
+      // Use up budget
+      await service.reserveNotificationSlot(
+          uid: uid, intentDescription: 'test1', category: 'test');
 
-    test(
-      'TODO: writes same event to /events_recent/{eventId} in the same batch',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      final quietTime = DateTime(2024, 1, 1, 2, 0); // 2 AM
+      final decision = await service.reserveNotificationSlot(
+        uid: uid,
+        intentDescription: 'test',
+        category: 'test',
+        scheduledFor: quietTime,
+        isCritical: true,
+      );
+      expect(decision.allowed, isTrue);
+    });
 
-    test(
-      'TODO: event payload contains reason, intent, category, and dailyNotificationBudget',
-      () {},
-      skip: 'Not yet implemented',
-    );
+    test('scheduleCustom carries metadata and critical bypass', () async {
+      final now = DateTime.now();
+      var quietTime = DateTime(now.year, now.month, now.day, 2);
+      if (!quietTime.isAfter(now)) {
+        quietTime = quietTime.add(const Duration(days: 1));
+      }
 
-    test(
-      'TODO: eventId is deterministic (sha256 of reason + intent + triggerEventId + ts)',
-      () {},
-      skip: 'Not yet implemented',
-    );
+      await service.scheduleCustom({
+        'entityId': 'critical_custom',
+        'taskId': 'task_custom',
+        'habitId': 'habit_custom',
+        'title': 'Critical reminder',
+        'category': 'test',
+        'priority': 'P1',
+        'intentDescription': 'critical_custom_intent',
+        'triggerEventId': 'event_custom',
+        'isCritical': true,
+        'scheduledFor': quietTime,
+      }, uid);
+
+      expect(plugin.scheduled.length, 1);
+
+      final snapshots = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .get();
+      expect(snapshots.docs.length, 1);
+      final data = snapshots.docs.first.data();
+      expect(data['taskId'], 'task_custom');
+      expect(data['habitId'], 'habit_custom');
+      expect(data['priority'], 'P1');
+      expect(data['intentDescription'], 'critical_custom_intent');
+      expect(data['triggerEventId'], 'event_custom');
+    });
   });
 }

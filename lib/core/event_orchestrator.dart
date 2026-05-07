@@ -43,6 +43,7 @@ class EventOrchestrator {
   final FirebaseAuth _auth;
 
   StreamSubscription<Event>? _subscription;
+  StreamSubscription<User?>? _authSubscription;
 
   EventOrchestrator({
     required EventService eventService,
@@ -77,7 +78,14 @@ class EventOrchestrator {
       return true;
     }());
 
-    _notificationService.init();
+    unawaited(_notificationService.init());
+
+    _authSubscription?.cancel();
+    _authSubscription = _auth.authStateChanges().listen((user) {
+      if (user != null) {
+        unawaited(_notificationService.reRegisterAllOnAppStart());
+      }
+    });
 
     _subscription?.cancel();
     _subscription = _eventService.onAny().listen(
@@ -95,6 +103,8 @@ class EventOrchestrator {
   void dispose() {
     _subscription?.cancel();
     _subscription = null;
+    _authSubscription?.cancel();
+    _authSubscription = null;
     debugPrint('[EventOrchestrator] Disposed.');
   }
 
@@ -211,10 +221,10 @@ class EventOrchestrator {
         if (uid != null) {
           try {
             final task = TaskModel.fromMap(event.payload);
-            await _notificationService.scheduleTaskReminder(task, uid);
+            await _notificationService.scheduleForTask(task);
           } catch (e) {
             debugPrint(
-                '[EventOrchestrator] Failed to schedule task reminder: $e');
+                '[EventOrchestrator] Failed to schedule task notifications: $e');
           }
         }
         break;

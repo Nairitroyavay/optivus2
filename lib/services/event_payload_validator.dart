@@ -185,6 +185,8 @@ class EventPayloadValidator {
         'notif_id': (v) => v is String,
         'notificationId': (v) => v is String,
         'notification_id': (v) => v is String,
+        'category': (v) => v is String,
+        'status': (v) => v is String,
       },
     ),
     EventNames.identityCreated: _identityRule,
@@ -227,10 +229,10 @@ class EventPayloadValidator {
     EventNames.comebackPathChosen: _StrictEventRule(
       requiredAny: [
         ['path'],
-        ['gapDays', 'gap_days']
       ],
       allowedFields: {
-        'path': (v) => v == 'easy' || v == 'half' || v == 'full',
+        'path': (v) =>
+            v == 'gentle' || v == 'easy' || v == 'half' || v == 'full',
         'gapDays': (v) => v is int || v is num,
         'gap_days': (v) => v is int || v is num,
       },
