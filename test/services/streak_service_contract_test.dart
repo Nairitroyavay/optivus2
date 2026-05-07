@@ -587,6 +587,32 @@ void main() {
       expect(streak!.state, StreakState.broken);
       expect(streak.currentCount, 0);
     });
+
+    test('per-habit accountabilityOverride respects habit setting over user global',
+        () async {
+      await setMode(AccountabilityMode.strict);
+      // Habit is forgiving, even though user is strict.
+      final habit = _goodHabit(id: 'water', dailyGoal: 8).copyWith(
+        accountabilityOverride: 'forgiving',
+      );
+      await writeHabit(habit);
+      await writeStreak(Streak(
+        habitId: 'water',
+        currentCount: 5,
+        longestCount: 5,
+        state: StreakState.active,
+        mode: AccountabilityMode.forgiving,
+        updatedAt: DateTime.now(),
+      ));
+      // No logs → goal missed. Should be forgiven.
+
+      await service.runDayCloseRollup(_kDate);
+
+      final streak = await service.getStreak('water');
+      expect(streak!.state, StreakState.active);
+      expect(streak.currentCount, 5);
+      expect(streak.mode, AccountabilityMode.forgiving);
+    });
   });
 
   // ── routine completion streaks ────────────────────────────────────────────
@@ -721,32 +747,77 @@ void main() {
       expect(streak.currentCount, 5);
     });
 
-    test(
-        'resumeAllPausedStreaks restores prePauseCount and emits streak_resumed',
-        () async {
-      await writeStreak(Streak(
-        habitId: 'water',
-        currentCount: 7,
-        longestCount: 7,
-        state: StreakState.paused,
-        prePauseCount: 7,
-        pausedAt: DateTime(2026, 4, 30),
-        pauseReason: 'ghost',
-        updatedAt: DateTime.now(),
-      ));
+    for (final mode in [
+      AccountabilityMode.strict,
+      AccountabilityMode.forgiving,
+      AccountabilityMode.ruthless
+    ]) {
+      test(
+          'resumeAllPausedStreaks (${mode.name}) restores prePauseCount and emits streak_resumed on gapDays 4',
+          () async {
+        final weekKey = StreakService.isoWeekKey(DateTime(2026, 5, 2));
+        await writeStreak(Streak(
+          habitId: 'water',
+          currentCount: 7,
+          longestCount: 7,
+          state: StreakState.paused,
+          mode: mode,
+          prePauseCount: 7,
+          pausedAt: DateTime(2026, 4, 30),
+          pauseReason: 'ghost',
+          weeklySkipsUsed: mode == AccountabilityMode.forgiving ? {weekKey: 1} : const {},
+          updatedAt: DateTime.now(),
+        ));
 
-      await service.resumeAllPausedStreaks();
+        await service.resumeAllPausedStreaks(gapDays: 4);
 
-      final streak = await service.getStreak('water');
-      expect(streak!.state, StreakState.active);
-      expect(streak.currentCount, 7);
-      expect(streak.prePauseCount, isNull);
-      expect(streak.pausedAt, isNull);
+        final streak = await service.getStreak('water');
+        expect(streak!.state, StreakState.active);
+        expect(streak.currentCount, 7);
+        expect(streak.prePauseCount, isNull);
+        expect(streak.pausedAt, isNull);
 
-      final events = await eventsNamed(EventNames.streakResumed);
-      expect(events.length, 1);
-      expect(events.first.data()['payload']['restoredCount'], 7);
-    });
+        if (mode == AccountabilityMode.forgiving) {
+          expect(streak.weeklySkipsUsed[weekKey], 1,
+              reason: 'forgiving ledger should be preserved across pause/resume cycle');
+        }
+
+        final events = await eventsNamed(EventNames.streakResumed);
+        expect(events.length, 1);
+        expect(events.first.data()['payload']['restoredCount'], 7);
+      });
+
+      test(
+          'resumeAllPausedStreaks (${mode.name}) breaks and resets streak if gapDays >= 8',
+          () async {
+        await writeStreak(Streak(
+          habitId: 'water',
+          currentCount: 10,
+          longestCount: 10,
+          state: StreakState.paused,
+          mode: mode,
+          prePauseCount: 10,
+          pausedAt: DateTime(2026, 4, 20),
+          pauseReason: 'ghost',
+          updatedAt: DateTime.now(),
+        ));
+
+        await service.resumeAllPausedStreaks(gapDays: 8);
+
+        final streak = await service.getStreak('water');
+        expect(streak!.state, StreakState.broken);
+        expect(streak.currentCount, 0);
+        expect(streak.lastBreakDate, isNotNull);
+        expect(streak.prePauseCount, isNull);
+
+        final events = await eventsNamed(EventNames.streakBroken);
+        expect(events.length, 1);
+        final payload = events.first.data()['payload'] as Map<String, dynamic>;
+        expect(payload['habitId'], 'water');
+        expect(payload['previousCount'], 10);
+        expect(payload['reason'], 'long_absence');
+      });
+    }
   });
 
   // ── error resilience ──────────────────────────────────────────────────────

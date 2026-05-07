@@ -90,6 +90,7 @@ class HabitModel {
   final bool remindersEnabled;
   final String? reminderTime;
   final String? accountability;
+  final String? accountabilityOverride;
 
   // Appearance & identity
   final List<String> identityTags;
@@ -120,6 +121,7 @@ class HabitModel {
     this.remindersEnabled = false,
     this.reminderTime,
     this.accountability,
+    this.accountabilityOverride,
     this.identityTags = const [],
     this.emoji,
     this.color,
@@ -152,6 +154,7 @@ class HabitModel {
       remindersEnabled: data['remindersEnabled'] as bool? ?? false,
       reminderTime: data['reminderTime'] as String?,
       accountability: data['accountability'] as String?,
+      accountabilityOverride: data['accountabilityOverride'] as String?,
       identityTags: List<String>.from(data['identityTags'] as List? ?? []),
       emoji: data['emoji'] as String? ?? data['icon'] as String?,
       color: data['color'] as String?,
@@ -186,6 +189,7 @@ class HabitModel {
       remindersEnabled: map['remindersEnabled'] as bool? ?? false,
       reminderTime: map['reminderTime'] as String?,
       accountability: map['accountability'] as String?,
+      accountabilityOverride: map['accountabilityOverride'] as String?,
       identityTags: List<String>.from(map['identityTags'] as List? ?? []),
       emoji: map['emoji'] as String? ?? map['icon'] as String?,
       color: map['color'] as String?,
@@ -215,6 +219,8 @@ class HabitModel {
       'remindersEnabled': remindersEnabled,
       if (reminderTime != null) 'reminderTime': reminderTime,
       if (accountability != null) 'accountability': accountability,
+      if (accountabilityOverride != null)
+        'accountabilityOverride': accountabilityOverride,
       'identityTags': identityTags,
       if (emoji != null) 'emoji': emoji,
       if (color != null) 'color': color,
@@ -245,6 +251,7 @@ class HabitModel {
     bool? remindersEnabled,
     String? reminderTime,
     String? accountability,
+    String? accountabilityOverride,
     List<String>? identityTags,
     String? emoji,
     String? color,
@@ -270,6 +277,8 @@ class HabitModel {
       remindersEnabled: remindersEnabled ?? this.remindersEnabled,
       reminderTime: reminderTime ?? this.reminderTime,
       accountability: accountability ?? this.accountability,
+      accountabilityOverride:
+          accountabilityOverride ?? this.accountabilityOverride,
       identityTags: identityTags ?? this.identityTags,
       emoji: emoji ?? this.emoji,
       color: color ?? this.color,

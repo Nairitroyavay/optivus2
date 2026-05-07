@@ -274,9 +274,13 @@ class StreakService {
       })> _rollupHabit(
     HabitModel habit,
     String date,
-    AccountabilityMode mode,
+    AccountabilityMode userMode,
   ) async {
     try {
+      final mode = habit.accountabilityOverride != null
+          ? AccountabilityMode.fromString(habit.accountabilityOverride)
+          : userMode;
+
       final num logged = habit.kind == HabitKind.good
           ? await _sumGoodLogsForDate(habit.id, date)
           : (await _slipCountForDate(habit.id, date)).toDouble();
@@ -616,8 +620,11 @@ class StreakService {
     return pausedCount;
   }
 
-  /// Restores every paused streak to its pre-pause count. Called by the
-  /// orchestrator when `comeback_initiated` fires.
+  /// Resolves every paused streak. Called by the orchestrator when
+  /// `comeback_initiated` fires.
+  ///
+  /// If [gapDays] >= 8 → streak is broken and reset to 0.
+  /// If 3 <= [gapDays] <= 7 → streak is resumed at prePauseCount.
   Future<int> resumeAllPausedStreaks({
     String reason = 'ghost',
     int? gapDays,
@@ -626,46 +633,76 @@ class StreakService {
         .where('state', isEqualTo: StreakState.paused.name)
         .get();
 
-    var resumedCount = 0;
+    var resolvedCount = 0;
     for (final doc in snap.docs) {
       try {
         final streak = Streak.fromFirestore(doc);
         if (streak.state != StreakState.paused) continue;
         if (reason.isNotEmpty && streak.pauseReason != reason) continue;
 
-        final restored = streak.prePauseCount ?? streak.currentCount;
         final batch = _firestore.batch();
-        batch.update(doc.reference, {
-          'state': StreakState.active.name,
-          'currentCount': restored,
-          'pausedAt': FieldValue.delete(),
-          'prePauseCount': FieldValue.delete(),
-          'pauseReason': FieldValue.delete(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+        final isBroken = (gapDays ?? 0) >= 8;
 
-        await _eventService.emit(
-          eventName: EventNames.streakResumed,
-          payload: {
-            'habitId': streak.habitId,
-            'scope': streak.scope.name,
-            'reason': reason,
-            if (gapDays != null) 'gapDays': gapDays,
-            'prePauseCount': streak.prePauseCount,
-            'restoredCount': restored,
+        if (isBroken) {
+          // Reset streak
+          batch.update(doc.reference, {
+            'state': StreakState.broken.name,
+            'currentCount': 0,
+            'lastBreakDate': DateTime.now().toIso8601String().split('T')[0],
+            'pausedAt': FieldValue.delete(),
+            'prePauseCount': FieldValue.delete(),
+            'pauseReason': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+          await _eventService.emit(
+            eventName: EventNames.streakBroken,
+            payload: {
+              'habitId': streak.habitId,
+              'scope': streak.scope.name,
+              'mode': streak.mode.name,
+              'brokenAt': DateTime.now().toIso8601String().split('T')[0],
+              'previousCount': streak.prePauseCount ?? streak.currentCount,
+              'reason': 'long_absence',
+              'gapDays': gapDays,
+            },
+            batch: batch,
+          );
+        } else {
+          // Resume streak
+          final restored = streak.prePauseCount ?? streak.currentCount;
+          batch.update(doc.reference, {
+            'state': StreakState.active.name,
             'currentCount': restored,
-            'longestCount': streak.longestCount,
-          },
-          batch: batch,
-        );
+            'pausedAt': FieldValue.delete(),
+            'prePauseCount': FieldValue.delete(),
+            'pauseReason': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+          await _eventService.emit(
+            eventName: EventNames.streakResumed,
+            payload: {
+              'habitId': streak.habitId,
+              'scope': streak.scope.name,
+              'reason': reason,
+              if (gapDays != null) 'gapDays': gapDays,
+              'prePauseCount': streak.prePauseCount,
+              'restoredCount': restored,
+              'currentCount': restored,
+              'longestCount': streak.longestCount,
+            },
+            batch: batch,
+          );
+        }
 
         await batch.commit();
-        resumedCount++;
+        resolvedCount++;
       } catch (e, st) {
-        debugPrint('[StreakService] resume failed for ${doc.id}: $e\n$st');
+        debugPrint('[StreakService] resolution failed for ${doc.id}: $e\n$st');
       }
     }
-    return resumedCount;
+    return resolvedCount;
   }
 
   // ── Read helpers for UI ───────────────────────────────────────────────────
