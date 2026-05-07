@@ -305,6 +305,16 @@ class ProfileTab extends StatelessWidget {
           ),
           _buildDivider(),
           _buildPrefTile(
+            icon: Icons.archive_outlined,
+            iconColor: const Color(0xFF5E4B9C),
+            title: 'Archived identities',
+            hasArrow: true,
+            onTap: () {
+              context.push('/settings/archived-identities');
+            },
+          ),
+          _buildDivider(),
+          _buildPrefTile(
             icon: Icons.notifications_outlined,
             iconColor: const Color(0xFF4DB685),
             title: 'Notification',

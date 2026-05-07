@@ -57,7 +57,8 @@ class IdentityDetailScreen extends ConsumerWidget {
             }
 
             final habitsAsync = ref.watch(habitsProvider);
-            final recentSummariesAsync = ref.watch(recentDailySummariesProvider(7));
+            final recentSummariesAsync =
+                ref.watch(recentDailySummariesProvider(7));
 
             return ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -100,8 +101,8 @@ class IdentityDetailScreen extends ConsumerWidget {
                   },
                   loading: () => const Center(
                       child: CircularProgressIndicator(color: kBlue)),
-                  error: (e, st) => Text('Error: $e',
-                      style: const TextStyle(color: kCoral)),
+                  error: (e, st) =>
+                      Text('Error: $e', style: const TextStyle(color: kCoral)),
                 ),
                 const SizedBox(height: 24),
                 _buildMilestones(context, ref, goal),
@@ -110,14 +111,15 @@ class IdentityDetailScreen extends ConsumerWidget {
                   data: (summaries) => _buildTimeline(summaries),
                   loading: () => const Center(
                       child: CircularProgressIndicator(color: kBlue)),
-                  error: (e, st) => Text('Error: $e',
-                      style: const TextStyle(color: kCoral)),
+                  error: (e, st) =>
+                      Text('Error: $e', style: const TextStyle(color: kCoral)),
                 ),
                 const SizedBox(height: 32),
                 LiquidButton.outline(
                   label: 'Talk to Coach',
                   color: kPurple,
-                  leading: const Icon(Icons.chat_bubble_outline, color: kPurple),
+                  leading:
+                      const Icon(Icons.chat_bubble_outline, color: kPurple),
                   onTap: () {
                     // Talk-to-coach button
                   },
@@ -126,9 +128,10 @@ class IdentityDetailScreen extends ConsumerWidget {
               ],
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator(color: kBlue)),
-          error: (e, st) =>
-              Center(child: Text('Error: $e', style: const TextStyle(color: kCoral))),
+          loading: () =>
+              const Center(child: CircularProgressIndicator(color: kBlue)),
+          error: (e, st) => Center(
+              child: Text('Error: $e', style: const TextStyle(color: kCoral))),
         ),
       ),
     );
@@ -249,7 +252,8 @@ class IdentityDetailScreen extends ConsumerWidget {
                   value: milestone.completed,
                   activeColor: kMint,
                   onChanged: (val) {
-                    final newMilestones = List<GoalMilestone>.from(goal.milestones);
+                    final newMilestones =
+                        List<GoalMilestone>.from(goal.milestones);
                     newMilestones[index] = GoalMilestone(
                       milestoneId: milestone.milestoneId,
                       title: milestone.title,
@@ -302,7 +306,8 @@ class IdentityDetailScreen extends ConsumerWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: summaries.take(7).toList().reversed.map((summary) {
-              final date = DateTime.tryParse(summary.date) ?? summary.computedAt;
+              final date =
+                  DateTime.tryParse(summary.date) ?? summary.computedAt;
               final weekday = _shortWeekday(date.weekday);
               final color = summary.habitsBadLogged > 0
                   ? kRose
@@ -370,18 +375,17 @@ class IdentityDetailScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               ListTile(
                 leading: const Icon(Icons.link, color: kInk),
-                title: const Text('Connect Habits',
-                    style: TextStyle(color: kInk)),
+                title:
+                    const Text('Connect Habits', style: TextStyle(color: kInk)),
                 onTap: () {
                   context.pop();
                   // TODO: implement habit connection modal
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.monitor_weight_outlined,
-                    color: kInk),
-                title: const Text('Adjust Weights',
-                    style: TextStyle(color: kInk)),
+                leading: const Icon(Icons.monitor_weight_outlined, color: kInk),
+                title:
+                    const Text('Adjust Weights', style: TextStyle(color: kInk)),
                 onTap: () {
                   context.pop();
                   _showWeightDialog(context, ref);
@@ -389,22 +393,20 @@ class IdentityDetailScreen extends ConsumerWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.pause, color: kAmber),
-                title:
-                    const Text('Pause Identity', style: TextStyle(color: kAmber)),
+                title: const Text('Pause Identity',
+                    style: TextStyle(color: kAmber)),
                 onTap: () {
-                  context.pop();
-                  ref.read(goalRepositoryProvider).pauseGoal(goalId);
-                  context.pop(); // pop identity detail
+                  Navigator.of(context).pop();
+                  _showPauseDurationSheet(context, ref);
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.archive_outlined, color: kCoral),
-                title:
-                    const Text('Archive Identity', style: TextStyle(color: kCoral)),
+                title: const Text('Archive Identity',
+                    style: TextStyle(color: kCoral)),
                 onTap: () {
-                  context.pop();
-                  ref.read(goalRepositoryProvider).archiveGoal(goalId);
-                  context.pop(); // pop identity detail
+                  Navigator.of(context).pop();
+                  _confirmArchiveIdentity(context, ref);
                 },
               ),
               const SizedBox(height: 16),
@@ -413,6 +415,172 @@ class IdentityDetailScreen extends ConsumerWidget {
         );
       },
     );
+  }
+
+  void _showPauseDurationSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: kSub.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Pause identity',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: kInk,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _PauseDurationTile(
+                label: '7 days',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pauseIdentity(context, ref, durationDays: 7);
+                },
+              ),
+              _PauseDurationTile(
+                label: '30 days',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pauseIdentity(context, ref, durationDays: 30);
+                },
+              ),
+              _PauseDurationTile(
+                label: '90 days',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pauseIdentity(context, ref, durationDays: 90);
+                },
+              ),
+              _PauseDurationTile(
+                label: 'Until I unpause',
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _pauseIdentity(context, ref);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pauseIdentity(
+    BuildContext context,
+    WidgetRef ref, {
+    int? durationDays,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final pausedUntil = durationDays == null
+        ? null
+        : DateTime.now().add(Duration(days: durationDays));
+
+    try {
+      await ref.read(goalRepositoryProvider).pauseGoal(
+            goalId,
+            pausedUntil: pausedUntil,
+            pauseDurationDays: durationDays,
+          );
+      if (!context.mounted) return;
+      if (context.canPop()) context.pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            durationDays == null
+                ? 'Identity paused until you reactivate it.'
+                : 'Identity paused for $durationDays days.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not pause identity: $e')),
+      );
+    }
+  }
+
+  Future<void> _confirmArchiveIdentity(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kWhite,
+        title: const Text('Archive identity', style: TextStyle(color: kInk)),
+        content: const Text(
+          'This removes the identity from your active list and saves a final summary card.',
+          style: TextStyle(color: kSub),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: kSub)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Archive', style: TextStyle(color: kCoral)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+    await _archiveIdentity(context, ref);
+  }
+
+  Future<void> _archiveIdentity(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: kBlue),
+      ),
+    );
+
+    try {
+      await ref.read(goalRepositoryProvider).archiveGoal(goalId);
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      if (context.canPop()) context.pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Identity archived.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not archive identity: $e')),
+      );
+    }
   }
 
   void _showWeightDialog(BuildContext context, WidgetRef ref) async {
@@ -431,8 +599,7 @@ class IdentityDetailScreen extends ConsumerWidget {
           builder: (context, setState) {
             return AlertDialog(
               backgroundColor: kWhite,
-              title: const Text('Adjust Weight',
-                  style: TextStyle(color: kInk)),
+              title: const Text('Adjust Weight', style: TextStyle(color: kInk)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -506,5 +673,24 @@ class IdentityDetailScreen extends ConsumerWidget {
       default:
         return '';
     }
+  }
+}
+
+class _PauseDurationTile extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _PauseDurationTile({
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: const Icon(Icons.pause_circle_outline, color: kAmber),
+      title: Text(label, style: const TextStyle(color: kInk)),
+      onTap: onTap,
+    );
   }
 }

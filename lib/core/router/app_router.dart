@@ -29,6 +29,7 @@ import '../../views/fitness/activity_detail_screen.dart';
 import '../../views/fitness/fitness_stats_screen.dart';
 import '../../views/fitness/fitness_goals_screen.dart';
 import '../../views/fitness/fitness_settings_screen.dart';
+import '../../views/settings/archived_identities_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
 import '../../providers/routine_provider.dart';
@@ -132,6 +133,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/routine',
         builder: (_, __) => const RoutineSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/archived-identities',
+        builder: (_, __) => const ArchivedIdentitiesScreen(),
       ),
       GoRoute(
         path: '/settings/fixed-schedule',

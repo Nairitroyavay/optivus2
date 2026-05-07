@@ -1,18 +1,93 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../core/constants/event_names.dart';
 import '../models/goal_model.dart';
 import '../services/event_service.dart';
 import '../services/firestore_service.dart';
+import '../services/gemini_service.dart';
+
+class GoalArchiveSummary {
+  final String title;
+  final String body;
+  final String source;
+  final DateTime? generatedAt;
+
+  const GoalArchiveSummary({
+    required this.title,
+    required this.body,
+    required this.source,
+    this.generatedAt,
+  });
+
+  factory GoalArchiveSummary.fromMap(Map<String, dynamic> map) {
+    return GoalArchiveSummary(
+      title: _asString(map['title'], fallback: 'Final summary'),
+      body: _asString(map['body']),
+      source: _asString(map['source'], fallback: 'unknown'),
+      generatedAt: _asDateTime(map['generatedAt']),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'body': body,
+      'source': source,
+      'generatedAt':
+          generatedAt == null ? null : Timestamp.fromDate(generatedAt!),
+    };
+  }
+}
+
+class ArchivedIdentityRecord {
+  final GoalModel goal;
+  final GoalArchiveSummary? archiveSummary;
+
+  const ArchivedIdentityRecord({
+    required this.goal,
+    this.archiveSummary,
+  });
+}
 
 class GoalRepository {
   final FirestoreService _service;
   final EventService? _eventService;
+  final GeminiService _geminiService;
 
   GoalRepository(
     this._service, {
     EventService? eventService,
-  }) : _eventService = eventService;
+    GeminiService? geminiService,
+  })  : _eventService = eventService,
+        _geminiService = geminiService ?? GeminiService();
 
   Future<List<GoalModel>> getGoals() => _service.getGoals();
+
+  Stream<List<ArchivedIdentityRecord>> watchInactiveGoals() {
+    return _service
+        .userCollection(FirestoreService.kGoals)
+        .where('status', whereIn: [GoalStatus.paused, GoalStatus.archived])
+        .snapshots()
+        .map((snapshot) {
+          final records = snapshot.docs.map((doc) {
+            final data = doc.data();
+            final summary = data['archiveSummary'];
+            return ArchivedIdentityRecord(
+              goal: GoalModel.fromMap(data, fallbackId: doc.id),
+              archiveSummary: summary is Map
+                  ? GoalArchiveSummary.fromMap(
+                      Map<String, dynamic>.from(summary))
+                  : null,
+            );
+          }).toList();
+          records.sort((a, b) {
+            final aDate = a.goal.archivedAt ?? a.goal.updatedAt;
+            final bDate = b.goal.archivedAt ?? b.goal.updatedAt;
+            return bDate.compareTo(aDate);
+          });
+          return records;
+        });
+  }
 
   Future<GoalModel?> getGoal(String goalId) async {
     final data = await _service.getUserSubdocument(
@@ -115,18 +190,39 @@ class GoalRepository {
   /// Pauses a goal and emits [EventNames.identityPaused].
   ///
   /// Note: [EventNames.identityPaused] refers to the "goal-as-identity" entity.
-  Future<void> pauseGoal(String goalId) async {
+  Future<void> pauseGoal(
+    String goalId, {
+    DateTime? pausedUntil,
+    int? pauseDurationDays,
+  }) async {
     _validateGoalId(goalId);
     final goal = await getGoal(goalId);
     if (goal == null) return;
+    if (goal.status == GoalStatus.archived) return;
+
+    final now = DateTime.now();
     final paused = goal.copyWith(
       status: GoalStatus.paused,
-      updatedAt: DateTime.now(),
+      updatedAt: now,
     );
-    await _saveGoal(paused);
+    await _service.saveUserSubdocument(
+      FirestoreService.kGoals,
+      paused.goalId,
+      {
+        ...paused.toMap(),
+        'pausedAt': Timestamp.fromDate(now),
+        'pausedUntil':
+            pausedUntil == null ? null : Timestamp.fromDate(pausedUntil),
+        'pauseDurationDays': pauseDurationDays,
+      },
+    );
     await _emit(
       eventName: EventNames.identityPaused,
-      payload: _goalPayload(paused),
+      payload: {
+        ..._goalPayload(paused),
+        if (pausedUntil != null) 'pausedUntil': pausedUntil.toIso8601String(),
+        if (pauseDurationDays != null) 'pauseDurationDays': pauseDurationDays,
+      },
     );
   }
 
@@ -137,15 +233,49 @@ class GoalRepository {
     _validateGoalId(goalId);
     final goal = await getGoal(goalId);
     if (goal == null) return;
+    if (goal.status == GoalStatus.archived) return;
+
+    final now = DateTime.now();
+    final summary = await _buildArchiveSummary(goal, now);
     final archived = goal.copyWith(
       status: GoalStatus.archived,
-      archivedAt: DateTime.now(),
-      updatedAt: DateTime.now(),
+      archivedAt: now,
+      updatedAt: now,
     );
-    await _saveGoal(archived);
+    await _service.saveUserSubdocument(
+      FirestoreService.kGoals,
+      archived.goalId,
+      {
+        ...archived.toMap(),
+        'archiveSummary': summary.toMap(),
+      },
+    );
     await _emit(
       eventName: EventNames.identityArchived,
       payload: _goalPayload(archived),
+    );
+  }
+
+  Future<void> reactivateGoal(String goalId) async {
+    _validateGoalId(goalId);
+    final goal = await getGoal(goalId);
+    if (goal == null) return;
+    if (goal.status == GoalStatus.active) return;
+
+    final reactivated = goal.copyWith(
+      status: GoalStatus.active,
+      updatedAt: DateTime.now(),
+      clearArchivedAt: true,
+    );
+    await _service.saveUserSubdocument(
+      FirestoreService.kGoals,
+      reactivated.goalId,
+      {
+        ...reactivated.toMap(),
+        'pausedAt': FieldValue.delete(),
+        'pausedUntil': FieldValue.delete(),
+        'pauseDurationDays': FieldValue.delete(),
+      },
     );
   }
 
@@ -222,6 +352,48 @@ class GoalRepository {
     );
   }
 
+  Future<GoalArchiveSummary> _buildArchiveSummary(
+    GoalModel goal,
+    DateTime generatedAt,
+  ) async {
+    final tag = goal.identityTag.isNotEmpty ? goal.identityTag : goal.title;
+    final prompt = '''
+Write a warm, concise final summary card for an archived Optivus identity.
+Identity: $tag
+Why it mattered: ${goal.why.isEmpty ? 'Not provided' : goal.why}
+Progress: ${goal.progress}%
+Milestones completed: ${goal.milestones.where((m) => m.completed).length}/${goal.milestones.length}
+
+Return 2 short sentences. No markdown. No shame or judgment.
+''';
+
+    try {
+      final body = await _geminiService.generate(
+        systemPrompt:
+            'You write kind, concise identity reflection cards for Optivus.',
+        userMessage: prompt,
+      );
+      if (body.trim().isNotEmpty) {
+        return GoalArchiveSummary(
+          title: 'Final summary',
+          body: body.trim(),
+          source: 'ai',
+          generatedAt: generatedAt,
+        );
+      }
+    } catch (_) {
+      // Archive must remain available if AI generation is temporarily offline.
+    }
+
+    return GoalArchiveSummary(
+      title: 'Final summary',
+      body:
+          '$tag was part of your progress, with ${goal.progress}% identity score when archived.',
+      source: 'fallback',
+      generatedAt: generatedAt,
+    );
+  }
+
   Future<void> _emit({
     required String eventName,
     required Map<String, dynamic> payload,
@@ -234,4 +406,16 @@ class GoalRepository {
       source: 'goal_repository',
     );
   }
+}
+
+DateTime? _asDateTime(Object? value) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value);
+  return null;
+}
+
+String _asString(Object? value, {String fallback = ''}) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? fallback : text;
 }

@@ -29,7 +29,9 @@ final goalProvider = StreamProvider<List<GoalModel>>((ref) {
       .map((snapshot) {
     return snapshot.docs
         .map((doc) => GoalModel.fromMap(doc.data(), fallbackId: doc.id))
-        .where((goal) => goal.status != GoalStatus.archived)
+        .where((goal) =>
+            goal.status != GoalStatus.archived &&
+            goal.status != GoalStatus.paused)
         .toList();
   });
 });
