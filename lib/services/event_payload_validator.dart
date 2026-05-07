@@ -226,10 +226,13 @@ class EventPayloadValidator {
     ]),
     EventNames.comebackPathChosen: _StrictEventRule(
       requiredAny: [
-        ['path']
+        ['path'],
+        ['gapDays', 'gap_days']
       ],
       allowedFields: {
-        'path': (v) => v is String,
+        'path': (v) => v == 'easy' || v == 'half' || v == 'full',
+        'gapDays': (v) => v is int || v is num,
+        'gap_days': (v) => v is int || v is num,
       },
     ),
     EventNames.weeklyInsightReady: _StrictEventRule(

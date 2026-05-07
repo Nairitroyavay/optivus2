@@ -85,7 +85,11 @@ Return only the final coach message text, with no JSON or markdown.''';
     final tone = (onboarding?['coachStyle'] as String?)?.isNotEmpty == true
         ? onboarding!['coachStyle'] as String
         : 'Empathetic and motivating';
-    final resolvedTone = await _resolveCoachTone(tone, uid: uid);
+    final resolvedTone = await _resolveCoachTone(
+      tone,
+      uid: uid,
+      snapshot: snapshot,
+    );
     final context = await _loadCoachGroundingContext();
 
     return <String, dynamic>{
@@ -104,30 +108,59 @@ Return only the final coach message text, with no JSON or markdown.''';
     };
   }
 
-  Future<String> _resolveCoachTone(String fallback, {String? uid}) async {
+  Future<String> _resolveCoachTone(
+    String fallback, {
+    String? uid,
+    ContextSnapshot? snapshot,
+  }) async {
     final resolvedUid = uid ?? FirebaseAuth.instance.currentUser?.uid;
     if (resolvedUid == null) return fallback;
 
     try {
       final now = DateTime.now();
+
+      // ── Priority 1: 48h Comeback Tone Lock ─────────────────────────────
+      // If we already have the value from a snapshot, use it.
+      if (snapshot != null && snapshot.isToneLocked) {
+        return 'Highly supportive, non-judgmental, and encouraging';
+      }
+
+      // If no snapshot or it doesn't have the lock, check Firestore directly
+      // (important for one-off calls outside the aggregator flow).
+      if (snapshot == null) {
+        final profileSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(resolvedUid)
+            .collection('profile')
+            .doc('main')
+            .get();
+        final profileData = profileSnap.data() ?? const <String, dynamic>{};
+        final toneLockUntil = _parseFlexibleDate(profileData['toneLockUntil']);
+
+        if (toneLockUntil != null && toneLockUntil.isAfter(now)) {
+          return 'Highly supportive, non-judgmental, and encouraging';
+        }
+      }
+
       final userSnap = await FirebaseFirestore.instance
           .collection('users')
           .doc(resolvedUid)
           .get();
       final root = userSnap.data() ?? const <String, dynamic>{};
+
+      // ── Priority 2: Generic root-level override ────────────────────────
       final rootTone = _unexpiredToneOverride(root, now);
       if (rootTone != null) return rootTone;
 
+      // ── Priority 3: profile/main override ──────────────────────────────
       final profileSnap = await FirebaseFirestore.instance
           .collection('users')
           .doc(resolvedUid)
           .collection('profile')
           .doc('main')
           .get();
-      final profileTone = _unexpiredToneOverride(
-        profileSnap.data() ?? const <String, dynamic>{},
-        now,
-      );
+      final profileData = profileSnap.data() ?? const <String, dynamic>{};
+      final profileTone = _unexpiredToneOverride(profileData, now);
       return profileTone ?? fallback;
     } catch (e) {
       debugPrint('[CoachService] Could not resolve coach tone override: $e');

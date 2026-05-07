@@ -129,6 +129,7 @@ class StateAggregatorService {
 
     // ── profile/main ─────────────────────────────────────────────────────────
     DateTime? lastCoachMessageAt;
+    DateTime? toneLockUntil;
     int dailyNotificationBudget = 3;
     int notificationsSentToday = 0;
     bool quietDayMode = false;
@@ -142,6 +143,13 @@ class StateAggregatorService {
         lastCoachMessageAt = rawCoachTs.toDate();
       } else if (rawCoachTs is String) {
         lastCoachMessageAt = DateTime.tryParse(rawCoachTs);
+      }
+
+      final rawToneLock = d['toneLockUntil'];
+      if (rawToneLock is Timestamp) {
+        toneLockUntil = rawToneLock.toDate();
+      } else if (rawToneLock is String) {
+        toneLockUntil = DateTime.tryParse(rawToneLock);
       }
 
       dailyNotificationBudget =
@@ -169,6 +177,7 @@ class StateAggregatorService {
       debugPrint('[StateAggregator] profile/main → '
           'budget=$notificationsSentToday/$dailyNotificationBudget '
           'quiet=$quietDayMode '
+          'toneLocked=${toneLockUntil != null && toneLockUntil.isAfter(now)} '
           'daysSinceLastActive=$daysSinceLastActive');
     }
 
@@ -197,6 +206,7 @@ class StateAggregatorService {
       dailyNotificationBudget: dailyNotificationBudget,
       notificationsSentToday: notificationsSentToday,
       quietDayMode: quietDayMode,
+      toneLockUntil: toneLockUntil,
       daysSinceLastActive: daysSinceLastActive,
       fitnessActivitiesToday: fitnessActivitiesToday,
       fitnessDistanceToday: fitnessDistanceToday,

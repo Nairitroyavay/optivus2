@@ -49,6 +49,13 @@ class ContextSnapshot {
     return remaining < 0 ? 0 : remaining;
   }
 
+  /// 48-hour supportive tone lock expiration after a comeback.
+  final DateTime? toneLockUntil;
+
+  /// Whether the AI coach should use a forced supportive tone.
+  bool get isToneLocked =>
+      toneLockUntil != null && toneLockUntil!.isAfter(DateTime.now());
+
   /// Calendar days elapsed since `profile/main.lastActiveDate`.
   /// 0 = active today, 1 = missed yesterday, 7+ = ghost territory.
   final int daysSinceLastActive;
@@ -71,6 +78,7 @@ class ContextSnapshot {
     this.dailyNotificationBudget = 3,
     this.notificationsSentToday = 0,
     this.quietDayMode = false,
+    this.toneLockUntil,
     this.daysSinceLastActive = 0,
     this.fitnessActivitiesToday = 0,
     this.fitnessDistanceToday = 0,
@@ -93,6 +101,7 @@ class ContextSnapshot {
       dailyNotificationBudget: map['dailyNotificationBudget'] as int? ?? 3,
       notificationsSentToday: map['notificationsSentToday'] as int? ?? 0,
       quietDayMode: map['quietDayMode'] as bool? ?? false,
+      toneLockUntil: _asDateTime(map['toneLockUntil']),
       daysSinceLastActive: map['daysSinceLastActive'] as int? ?? 0,
       fitnessActivitiesToday: map['fitnessActivitiesToday'] as int? ?? 0,
       fitnessDistanceToday: (map['fitnessDistanceToday'] as num?)?.toDouble() ?? 0,
@@ -117,6 +126,8 @@ class ContextSnapshot {
       'dailyNotificationBudget': dailyNotificationBudget,
       'notificationsSentToday': notificationsSentToday,
       'quietDayMode': quietDayMode,
+      if (toneLockUntil != null)
+        'toneLockUntil': toneLockUntil!.toIso8601String(),
       'daysSinceLastActive': daysSinceLastActive,
       'fitnessActivitiesToday': fitnessActivitiesToday,
       'fitnessDistanceToday': fitnessDistanceToday,
@@ -139,6 +150,7 @@ class ContextSnapshot {
     int? dailyNotificationBudget,
     int? notificationsSentToday,
     bool? quietDayMode,
+    DateTime? toneLockUntil,
     int? daysSinceLastActive,
     int? fitnessActivitiesToday,
     double? fitnessDistanceToday,
@@ -160,6 +172,7 @@ class ContextSnapshot {
       notificationsSentToday:
           notificationsSentToday ?? this.notificationsSentToday,
       quietDayMode: quietDayMode ?? this.quietDayMode,
+      toneLockUntil: toneLockUntil ?? this.toneLockUntil,
       daysSinceLastActive: daysSinceLastActive ?? this.daysSinceLastActive,
       fitnessActivitiesToday: fitnessActivitiesToday ?? this.fitnessActivitiesToday,
       fitnessDistanceToday: fitnessDistanceToday ?? this.fitnessDistanceToday,
