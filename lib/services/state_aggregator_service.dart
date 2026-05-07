@@ -1,11 +1,14 @@
 // lib/services/state_aggregator_service.dart
 //
-// Aggregates 4 Firestore collections into a single ContextSnapshot.
+// Aggregates Firestore state into a single ContextSnapshot.
 // Collections (all under /users/{uid}/):
 //   events_recent   — today's events filtered by ts
 //   streaks         — active streaks (state == active)
 //   dailySummaries  — today's summary doc (written at day-close)
 //   profile/main    — lastCoachMessageAt, budget, lastActiveDate
+//   goals/{goalId}  — goal-as-identity progress docs
+//   identity_profile/main — aggregate identity profile doc
+//   habits/{habitId}, tasks/{taskId} — optional linking signals
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -60,7 +63,8 @@ class StateAggregatorService {
     final streaksSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
     final summariesSnap = results[2] as QuerySnapshot<Map<String, dynamic>>;
     final profileSnap = results[3] as DocumentSnapshot<Map<String, dynamic>>;
-    final fitnessStatsSnap = results[4] as DocumentSnapshot<Map<String, dynamic>>;
+    final fitnessStatsSnap =
+        results[4] as DocumentSnapshot<Map<String, dynamic>>;
 
     debugPrint('[StateAggregator] events_recent: ${eventsSnap.size} doc(s)');
     debugPrint('[StateAggregator] streaks(active): ${streaksSnap.size} doc(s)');
@@ -123,7 +127,8 @@ class StateAggregatorService {
     if (fitnessStatsSnap.exists) {
       final d = fitnessStatsSnap.data()!;
       fitnessActivitiesToday = d['totalActivities'] as int? ?? 0;
-      fitnessDistanceToday = (d['totalDistanceMeters'] as num?)?.toDouble() ?? 0;
+      fitnessDistanceToday =
+          (d['totalDistanceMeters'] as num?)?.toDouble() ?? 0;
       fitnessCaloriesToday = d['totalCalories'] as int? ?? 0;
     }
 
@@ -288,7 +293,11 @@ class StateAggregatorService {
     final batch = _firestore.batch();
     final goalRef = userRef.collection('goals');
     for (final goal in goalModels) {
-      batch.set(goalRef.doc(goal.goalId), goal.toFirestore());
+      batch.set(
+        goalRef.doc(goal.goalId),
+        goal.toFirestore(),
+        SetOptions(merge: true),
+      );
     }
 
     final identities = _deriveIdentities(
@@ -351,6 +360,7 @@ class StateAggregatorService {
         'updatedAt': FieldValue.serverTimestamp(),
         'schemaVersion': 3,
       },
+      SetOptions(merge: true),
     );
 
     await batch.commit();

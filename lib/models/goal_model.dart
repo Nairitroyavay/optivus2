@@ -33,10 +33,14 @@ class GoalMilestone {
   });
 
   factory GoalMilestone.fromMap(Map<String, dynamic> map) {
+    final title = _asString(map['title']);
+    final milestoneId = _asString(map['milestoneId'] ?? map['id']);
     return GoalMilestone(
-      milestoneId: map['milestoneId'] as String? ?? map['id'] as String? ?? '',
-      title: map['title'] as String? ?? '',
-      completed: map['completed'] as bool? ?? false,
+      milestoneId: milestoneId.isNotEmpty
+          ? milestoneId
+          : (_slug(title).isEmpty ? 'milestone' : _slug(title)),
+      title: title,
+      completed: _asBool(map['completed']),
       completedAt: _asDateTime(map['completedAt']),
     );
   }
@@ -134,16 +138,20 @@ class GoalModel {
     String fallbackId = '',
   }) {
     final legacyIdentityTags = _cleanStringList(map['identityTags']);
-    final identityTag = map['identityTag'] as String? ??
+    final identityTag = _asNullableString(map['identityTag']) ??
         (legacyIdentityTags.isEmpty ? null : legacyIdentityTags.first);
 
     return GoalModel(
-      goalId: map['goalId'] as String? ?? map['id'] as String? ?? fallbackId,
-      title: map['title'] as String? ?? '',
+      goalId: _asNullableString(map['goalId']) ??
+          _asNullableString(map['id']) ??
+          fallbackId,
+      title: _asString(map['title']),
       identityTag: identityTag,
-      why: map['why'] as String? ?? map['description'] as String? ?? '',
-      status: map['status'] as String? ??
-          ((map['isCompleted'] as bool? ?? false)
+      why: _asNullableString(map['why']) ??
+          _asNullableString(map['description']) ??
+          '',
+      status: _asNullableString(map['status']) ??
+          (_asBool(map['isCompleted'])
               ? GoalStatus.completed
               : GoalStatus.active),
       weight: _asPositiveInt(map['weight'], fallback: 1),
@@ -198,6 +206,8 @@ class GoalModel {
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? archivedAt,
+    bool clearTargetDate = false,
+    bool clearArchivedAt = false,
     String? description,
     bool? isCompleted,
     int? progressPct,
@@ -222,14 +232,14 @@ class GoalModel {
               : (isCompleted ? GoalStatus.completed : GoalStatus.active)),
       weight: weight ?? this.weight,
       progress: progress ?? progressPct ?? this.progress,
-      targetDate: targetDate ?? this.targetDate,
+      targetDate: clearTargetDate ? null : (targetDate ?? this.targetDate),
       milestones: milestones ?? this.milestones,
       connectedHabitIds: connectedHabitIds ?? this.connectedHabitIds,
       connectedRoutineTypes:
           connectedRoutineTypes ?? this.connectedRoutineTypes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? lastComputedAt ?? this.updatedAt,
-      archivedAt: archivedAt ?? this.archivedAt,
+      archivedAt: clearArchivedAt ? null : (archivedAt ?? this.archivedAt),
     );
   }
 
@@ -255,15 +265,32 @@ DateTime? _asDateTime(Object? value) {
 }
 
 int _asProgress(Object? value) {
-  if (value is int) return value.clamp(0, 100);
-  if (value is num) return value.round().clamp(0, 100);
+  if (value is int) return value.clamp(0, 100).toInt();
+  if (value is num) return value.round().clamp(0, 100).toInt();
   return 0;
 }
 
 int _asPositiveInt(Object? value, {required int fallback}) {
   if (value is int && value > 0) return value;
-  if (value is num && value > 0) return value.round();
+  if (value is num && value > 0) {
+    final rounded = value.round();
+    return rounded > 0 ? rounded : fallback;
+  }
   return fallback;
+}
+
+String _asString(Object? value) => value?.toString().trim() ?? '';
+
+String? _asNullableString(Object? value) {
+  final text = _asString(value);
+  return text.isEmpty ? null : text;
+}
+
+bool _asBool(Object? value) {
+  if (value is bool) return value;
+  if (value is String) return value.trim().toLowerCase() == 'true';
+  if (value is num) return value != 0;
+  return false;
 }
 
 String _cleanString(String? value) => value?.trim() ?? '';

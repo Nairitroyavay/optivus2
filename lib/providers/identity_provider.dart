@@ -18,7 +18,7 @@ final identityProvider = StreamProvider<IdentityProfileModel?>((ref) {
       .doc(FirestoreService.kIdentityProfileDoc)
       .snapshots()
       .map((doc) {
-    if (doc.exists) {
+    if (doc.exists && doc.data() != null) {
       return IdentityProfileModel.fromFirestore(doc);
     }
     return null;

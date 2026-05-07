@@ -4,6 +4,7 @@ class IdentityProfileModel {
   final List<String> identities;
   final int progressPct;
   final DateTime lastComputedAt;
+  final DateTime? updatedAt;
   final List<String> activeGoalIds;
   final List<String> pausedGoalIds;
   final List<String> archivedGoalIds;
@@ -16,6 +17,7 @@ class IdentityProfileModel {
     this.identities = const [],
     this.progressPct = 0,
     required this.lastComputedAt,
+    this.updatedAt,
     this.activeGoalIds = const [],
     this.pausedGoalIds = const [],
     this.archivedGoalIds = const [],
@@ -42,13 +44,14 @@ class IdentityProfileModel {
       lastComputedAt: _asDateTime(map['lastComputedAt']) ??
           _asDateTime(map['updatedAt']) ??
           DateTime.now(),
+      updatedAt: _asDateTime(map['updatedAt']),
       activeGoalIds: _stringList(map['activeGoalIds']),
       pausedGoalIds: _stringList(map['pausedGoalIds']),
       archivedGoalIds: _stringList(map['archivedGoalIds']),
       goalProgress: _intMap(map['goalProgress']),
       connectedHabitIds: _stringList(map['connectedHabitIds']),
       connectedRoutineTypes: _stringList(map['connectedRoutineTypes']),
-      schemaVersion: map['schemaVersion'] as int? ?? 3,
+      schemaVersion: _positiveInt(map['schemaVersion'], fallback: 3),
     );
   }
 
@@ -63,7 +66,9 @@ class IdentityProfileModel {
       'goalProgress': goalProgress,
       'connectedHabitIds': connectedHabitIds,
       'connectedRoutineTypes': connectedRoutineTypes,
-      'updatedAt': FieldValue.serverTimestamp(),
+      'updatedAt': updatedAt == null
+          ? FieldValue.serverTimestamp()
+          : Timestamp.fromDate(updatedAt!),
       'schemaVersion': schemaVersion,
     };
   }
@@ -74,6 +79,8 @@ class IdentityProfileModel {
     List<String>? identities,
     int? progressPct,
     DateTime? lastComputedAt,
+    DateTime? updatedAt,
+    bool clearUpdatedAt = false,
     List<String>? activeGoalIds,
     List<String>? pausedGoalIds,
     List<String>? archivedGoalIds,
@@ -86,6 +93,7 @@ class IdentityProfileModel {
       identities: identities ?? this.identities,
       progressPct: progressPct ?? this.progressPct,
       lastComputedAt: lastComputedAt ?? this.lastComputedAt,
+      updatedAt: clearUpdatedAt ? null : (updatedAt ?? this.updatedAt),
       activeGoalIds: activeGoalIds ?? this.activeGoalIds,
       pausedGoalIds: pausedGoalIds ?? this.pausedGoalIds,
       archivedGoalIds: archivedGoalIds ?? this.archivedGoalIds,
@@ -105,9 +113,18 @@ class IdentityProfileModel {
   }
 
   static int _progress(Object? value) {
-    if (value is int) return value.clamp(0, 100);
-    if (value is num) return value.round().clamp(0, 100);
+    if (value is int) return value.clamp(0, 100).toInt();
+    if (value is num) return value.round().clamp(0, 100).toInt();
     return 0;
+  }
+
+  static int _positiveInt(Object? value, {required int fallback}) {
+    if (value is int && value > 0) return value;
+    if (value is num && value > 0) {
+      final rounded = value.round();
+      return rounded > 0 ? rounded : fallback;
+    }
+    return fallback;
   }
 
   static List<String> _stringList(Object? value) {
