@@ -177,6 +177,12 @@ class TaskModel {
   final String? color;
   final List<String> identityTags;
   final AlarmTier alarmTier;
+  final String alarmSound;
+  final String alarmSoundAsset;
+  final bool alarmVoiceEnabled;
+  final String alarmCoachVoiceAsset;
+  final String alarmVibrationPattern;
+  final List<int> alarmSnoozeDurations;
 
   // Scheduling
   final DateTime plannedStart;
@@ -217,6 +223,14 @@ class TaskModel {
     this.color,
     this.identityTags = const [],
     this.alarmTier = AlarmTier.gentle,
+    this.alarmSound = 'steady',
+    this.alarmSoundAsset =
+        'assets/audio/ambient_atmospheric/ambient_atmospheric_01.mp3',
+    this.alarmVoiceEnabled = true,
+    this.alarmCoachVoiceAsset =
+        'assets/audio/healing_432hz/healing_432hz_01.mp3',
+    this.alarmVibrationPattern = 'standard',
+    this.alarmSnoozeDurations = const [5, 10],
     required this.plannedStart,
     required this.plannedEnd,
     this.state = TaskState.scheduled,
@@ -238,15 +252,13 @@ class TaskModel {
   });
 
   /// Computed: planned duration in minutes.
-  int get plannedDurationMin =>
-      plannedEnd.difference(plannedStart).inMinutes;
+  int get plannedDurationMin => plannedEnd.difference(plannedStart).inMinutes;
 
   /// Computed: are all subtasks checked?
   bool get allSubtasksChecked =>
       subtasks.isNotEmpty && subtasks.every((s) => s.checked);
 
-  factory TaskModel.fromFirestore(
-      DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory TaskModel.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? <String, dynamic>{};
     return TaskModel(
       id: d['taskId'] as String? ?? doc.id,
@@ -255,9 +267,25 @@ class TaskModel {
       title: d['title'] as String? ?? '',
       emoji: d['emoji'] as String?,
       color: d['color'] as String?,
-      identityTags:
-          List<String>.from(d['identityTags'] as List? ?? []),
+      identityTags: List<String>.from(d['identityTags'] as List? ?? []),
       alarmTier: AlarmTier.fromString(d['alarmTier'] as String?),
+      alarmSound:
+          d['alarmSound'] as String? ?? d['sound'] as String? ?? 'steady',
+      alarmSoundAsset: d['alarmSoundAsset'] as String? ??
+          d['soundAsset'] as String? ??
+          'assets/audio/ambient_atmospheric/ambient_atmospheric_01.mp3',
+      alarmVoiceEnabled: d['alarmVoiceEnabled'] as bool? ??
+          d['coachVoiceEnabled'] as bool? ??
+          true,
+      alarmCoachVoiceAsset: d['alarmCoachVoiceAsset'] as String? ??
+          d['coachVoiceAsset'] as String? ??
+          'assets/audio/healing_432hz/healing_432hz_01.mp3',
+      alarmVibrationPattern: d['alarmVibrationPattern'] as String? ??
+          d['vibrationPattern'] as String? ??
+          'standard',
+      alarmSnoozeDurations: _asIntList(
+        d['alarmSnoozeDurations'] ?? d['snoozeDurations'],
+      ),
       plannedStart: _asDateTime(d['plannedStart']) ?? DateTime.now(),
       plannedEnd: _asDateTime(d['plannedEnd']) ?? DateTime.now(),
       state: TaskState.fromString(d['state'] as String?),
@@ -295,6 +323,23 @@ class TaskModel {
       color: map['color'] as String?,
       identityTags: List<String>.from(map['identityTags'] as List? ?? []),
       alarmTier: AlarmTier.fromString(map['alarmTier'] as String?),
+      alarmSound:
+          map['alarmSound'] as String? ?? map['sound'] as String? ?? 'steady',
+      alarmSoundAsset: map['alarmSoundAsset'] as String? ??
+          map['soundAsset'] as String? ??
+          'assets/audio/ambient_atmospheric/ambient_atmospheric_01.mp3',
+      alarmVoiceEnabled: map['alarmVoiceEnabled'] as bool? ??
+          map['coachVoiceEnabled'] as bool? ??
+          true,
+      alarmCoachVoiceAsset: map['alarmCoachVoiceAsset'] as String? ??
+          map['coachVoiceAsset'] as String? ??
+          'assets/audio/healing_432hz/healing_432hz_01.mp3',
+      alarmVibrationPattern: map['alarmVibrationPattern'] as String? ??
+          map['vibrationPattern'] as String? ??
+          'standard',
+      alarmSnoozeDurations: _asIntList(
+        map['alarmSnoozeDurations'] ?? map['snoozeDurations'],
+      ),
       plannedStart: map['time'] != null
           ? (_asDateTime(map['time']) ?? DateTime.now())
           : (_asDateTime(map['plannedStart']) ?? DateTime.now()),
@@ -334,17 +379,19 @@ class TaskModel {
       if (color != null) 'color': color,
       'identityTags': identityTags,
       'alarmTier': alarmTier.name,
+      'alarmSound': alarmSound,
+      'alarmSoundAsset': alarmSoundAsset,
+      'alarmVoiceEnabled': alarmVoiceEnabled,
+      'alarmCoachVoiceAsset': alarmCoachVoiceAsset,
+      'alarmVibrationPattern': alarmVibrationPattern,
+      'alarmSnoozeDurations': alarmSnoozeDurations,
       'plannedStart': Timestamp.fromDate(plannedStart),
       'plannedEnd': Timestamp.fromDate(plannedEnd),
       'state': state.name,
-      if (actualStart != null)
-        'actualStart': Timestamp.fromDate(actualStart!),
-      if (actualEnd != null)
-        'actualEnd': Timestamp.fromDate(actualEnd!),
-      if (pausedAt != null)
-        'pausedAt': Timestamp.fromDate(pausedAt!),
-      if (abandonedAt != null)
-        'abandonedAt': Timestamp.fromDate(abandonedAt!),
+      if (actualStart != null) 'actualStart': Timestamp.fromDate(actualStart!),
+      if (actualEnd != null) 'actualEnd': Timestamp.fromDate(actualEnd!),
+      if (pausedAt != null) 'pausedAt': Timestamp.fromDate(pausedAt!),
+      if (abandonedAt != null) 'abandonedAt': Timestamp.fromDate(abandonedAt!),
       if (skippedAt != null) 'skippedAt': Timestamp.fromDate(skippedAt!),
       if (actualDurationMin != null) 'actualDurationMin': actualDurationMin,
       if (totalPauseDurationMin != null)
@@ -352,8 +399,7 @@ class TaskModel {
       if (driftPct != null) 'driftPct': driftPct,
       'subtasks': subtasks.map((s) => s.toMap()).toList(),
       if (reasonTag != null) 'reasonTag': reasonTag,
-      if (reasonCategory != null)
-        'reasonCategory': reasonCategory!.toJson(),
+      if (reasonCategory != null) 'reasonCategory': reasonCategory!.toJson(),
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': schemaVersion,
@@ -368,12 +414,15 @@ class TaskModel {
     TaskState? state,
     DateTime? actualStart,
     DateTime? actualEnd,
+
     /// Pass [clearPausedAt] = true to set pausedAt to null.
     bool clearPausedAt = false,
     DateTime? pausedAt,
+
     /// Pass [clearAbandonedAt] = true to set abandonedAt to null.
     bool clearAbandonedAt = false,
     DateTime? abandonedAt,
+
     /// Pass [clearSkippedAt] = true to set skippedAt to null.
     bool clearSkippedAt = false,
     DateTime? skippedAt,
@@ -395,6 +444,12 @@ class TaskModel {
       color: color,
       identityTags: identityTags,
       alarmTier: alarmTier,
+      alarmSound: alarmSound,
+      alarmSoundAsset: alarmSoundAsset,
+      alarmVoiceEnabled: alarmVoiceEnabled,
+      alarmCoachVoiceAsset: alarmCoachVoiceAsset,
+      alarmVibrationPattern: alarmVibrationPattern,
+      alarmSnoozeDurations: alarmSnoozeDurations,
       plannedStart: plannedStart,
       plannedEnd: plannedEnd,
       state: state ?? this.state,
@@ -422,5 +477,21 @@ class TaskModel {
     if (value is DateTime) return value;
     if (value is String) return DateTime.tryParse(value);
     return null;
+  }
+
+  static List<int> _asIntList(Object? value) {
+    if (value is! List) return const [5, 10];
+    final values = value
+        .whereType<Object>()
+        .map((item) {
+          if (item is int) return item;
+          if (item is num) return item.round();
+          return int.tryParse(item.toString()) ?? 0;
+        })
+        .where((item) => item > 0)
+        .toSet()
+        .toList()
+      ..sort();
+    return values.isEmpty ? const [5] : values;
   }
 }

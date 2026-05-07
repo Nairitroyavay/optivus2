@@ -290,6 +290,44 @@ void main() {
       expect(categories, contains(NotifCategory.taskEndReminder));
     });
 
+    test('scheduleForTask schedules custom alarm with alarm metadata',
+        () async {
+      final task = TaskModel(
+        id: 'task_alarm',
+        title: 'Alarm API',
+        parentRoutine: 'alarm_template',
+        alarmTier: AlarmTier.custom,
+        alarmSound: 'nature',
+        alarmSoundAsset: 'assets/audio/nature_sounds/nature_sounds_01.mp3',
+        alarmVoiceEnabled: false,
+        alarmVibrationPattern: 'pulse',
+        alarmSnoozeDurations: const [10, 30],
+        plannedStart: DateTime.now().add(const Duration(hours: 2)),
+        plannedEnd: DateTime.now().add(const Duration(hours: 3)),
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      await service.scheduleForTask(task);
+
+      expect(plugin.scheduled.length, 3);
+      final snapshots = await firestore
+          .collection('users')
+          .doc(uid)
+          .collection('scheduled_notifications')
+          .where('category', isEqualTo: 'task_alarm')
+          .get();
+      expect(snapshots.docs.length, 1);
+
+      final data = snapshots.docs.first.data();
+      expect(data['priority'], 'P1');
+      expect(data['sound'], 'nature');
+      expect(data['soundAsset'], task.alarmSoundAsset);
+      expect(data['coachVoiceEnabled'], isFalse);
+      expect(data['vibrationPattern'], 'pulse');
+      expect(data['snoozeDurations'], [10, 30]);
+    });
+
     test('scheduleForRoutineTemplate dedupes by template/date/time/category',
         () async {
       final date = DateTime.now().add(const Duration(days: 1));
@@ -470,12 +508,22 @@ void main() {
     });
 
     test('suppresses when budget is exhausted', () async {
+      final budgetTime = DateTime(2024, 1, 1, 12);
+
       // Use up the budget
       await service.reserveNotificationSlot(
-          uid: uid, intentDescription: 'test1', category: 'test');
+        uid: uid,
+        intentDescription: 'test1',
+        category: 'test',
+        scheduledFor: budgetTime,
+      );
 
       final decision = await service.reserveNotificationSlot(
-          uid: uid, intentDescription: 'test2', category: 'test');
+        uid: uid,
+        intentDescription: 'test2',
+        category: 'test',
+        scheduledFor: budgetTime.add(const Duration(hours: 1)),
+      );
       expect(decision.allowed, isFalse);
       expect(decision.reason, 'budget_exhausted');
     });
@@ -568,9 +616,15 @@ void main() {
     });
 
     test('isCritical bypasses quiet hours and budget', () async {
+      final budgetTime = DateTime(2024, 1, 1, 12);
+
       // Use up budget
       await service.reserveNotificationSlot(
-          uid: uid, intentDescription: 'test1', category: 'test');
+        uid: uid,
+        intentDescription: 'test1',
+        category: 'test',
+        scheduledFor: budgetTime,
+      );
 
       final quietTime = DateTime(2024, 1, 1, 2, 0); // 2 AM
       final decision = await service.reserveNotificationSlot(

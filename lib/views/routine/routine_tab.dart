@@ -197,6 +197,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         taskId: task.id,
         taskState: task.state,
         actualStart: task.actualStart,
+        hasAlarm: task.alarmTier != AlarmTier.gentle,
       ));
     }
 
@@ -350,7 +351,11 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
               emoji: b.emoji,
               type: b.type,
               subtasks: b.subtasks,
-              isNow: true);
+              isNow: true,
+              taskId: b.taskId,
+              taskState: b.taskState,
+              actualStart: b.actualStart,
+              hasAlarm: b.hasAlarm);
           break;
         }
       }
@@ -615,6 +620,12 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       emoji: request.emoji,
       color: _hex(request.color),
       identityTags: [request.category],
+      alarmTier: request.reminderEnabled ? AlarmTier.custom : AlarmTier.gentle,
+      alarmSound: request.alarmSound,
+      alarmSoundAsset: request.alarmSoundAsset,
+      alarmVoiceEnabled: request.alarmVoiceEnabled,
+      alarmVibrationPattern: request.alarmVibrationPattern,
+      alarmSnoozeDurations: request.alarmSnoozeDurations,
       plannedStart: request.plannedStart,
       plannedEnd: request.plannedEnd,
       createdAt: now,
@@ -633,6 +644,14 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         'category': request.category,
         'notes': request.notes,
         'reminderEnabled': request.reminderEnabled,
+        'alarmTier': request.reminderEnabled
+            ? AlarmTier.custom.name
+            : AlarmTier.gentle.name,
+        'alarmSound': request.alarmSound,
+        'alarmSoundAsset': request.alarmSoundAsset,
+        'alarmVoiceEnabled': request.alarmVoiceEnabled,
+        'alarmVibrationPattern': request.alarmVibrationPattern,
+        'alarmSnoozeDurations': request.alarmSnoozeDurations,
       },
     );
 
@@ -661,6 +680,15 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       'repeatRule': _toFirestoreRepeatRule(request),
       'category': request.category,
       'notes': request.notes,
+      'reminderEnabled': request.reminderEnabled,
+      'alarmTier': request.reminderEnabled
+          ? AlarmTier.custom.name
+          : AlarmTier.gentle.name,
+      'alarmSound': request.alarmSound,
+      'alarmSoundAsset': request.alarmSoundAsset,
+      'alarmVoiceEnabled': request.alarmVoiceEnabled,
+      'alarmVibrationPattern': request.alarmVibrationPattern,
+      'alarmSnoozeDurations': request.alarmSnoozeDurations,
       'isActive': true,
       'startDate': _dateKey(request.date),
       'createdAt': now,

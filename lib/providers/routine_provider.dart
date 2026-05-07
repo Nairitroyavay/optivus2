@@ -25,6 +25,22 @@ String _normalizeRoutineTime(Object? value, {required String fallback}) {
   return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
 }
 
+List<int> _routineIntList(Object? value) {
+  if (value is! List) return const [5, 10];
+  final values = value
+      .whereType<Object>()
+      .map((item) {
+        if (item is int) return item;
+        if (item is num) return item.round();
+        return int.tryParse(item.toString()) ?? 0;
+      })
+      .where((item) => item > 0)
+      .toSet()
+      .toList()
+    ..sort();
+  return values.isEmpty ? const [5] : values;
+}
+
 int _routineMinutesFromTime(String value) {
   final normalized = _normalizeRoutineTime(value, fallback: '00:00');
   final parts = normalized.split(':');
@@ -654,9 +670,9 @@ class RoutineState {
   List<Map<String, dynamic>> skinCareTemplatesForDate(DateTime date) {
     final templates = routineTemplates['skin_care'] ?? const [];
     return (templates
-          .where((t) => _repeatRuleMatchesDate(
-              t['repeatRule']?.toString() ?? '', date))
-          .toList())
+        .where((t) =>
+            _repeatRuleMatchesDate(t['repeatRule']?.toString() ?? '', date))
+        .toList())
       ..sort((a, b) => (a['startTime']?.toString() ?? '')
           .compareTo(b['startTime']?.toString() ?? ''));
   }
@@ -781,6 +797,15 @@ List<_MaterializationCandidate> _candidatesForDate(
     String notes = '',
     bool reminderEnabled = false,
     int reminderOffsetMinutes = 5,
+    AlarmTier alarmTier = AlarmTier.gentle,
+    String alarmSound = 'steady',
+    String alarmSoundAsset =
+        'assets/audio/ambient_atmospheric/ambient_atmospheric_01.mp3',
+    bool alarmVoiceEnabled = true,
+    String alarmCoachVoiceAsset =
+        'assets/audio/healing_432hz/healing_432hz_01.mp3',
+    String alarmVibrationPattern = 'standard',
+    List<int> alarmSnoozeDurations = const [5, 10],
     List<Subtask> subtasks = const [],
     List<String> identityTags = const [],
   }) {
@@ -803,6 +828,13 @@ List<_MaterializationCandidate> _candidatesForDate(
       emoji: emoji,
       color: color,
       identityTags: identityTags,
+      alarmTier: alarmTier,
+      alarmSound: alarmSound,
+      alarmSoundAsset: alarmSoundAsset,
+      alarmVoiceEnabled: alarmVoiceEnabled,
+      alarmCoachVoiceAsset: alarmCoachVoiceAsset,
+      alarmVibrationPattern: alarmVibrationPattern,
+      alarmSnoozeDurations: alarmSnoozeDurations,
       plannedStart: plannedStart,
       plannedEnd: plannedEnd,
       subtasks: subtasks,
@@ -821,6 +853,12 @@ List<_MaterializationCandidate> _candidatesForDate(
         if (task.color != null) 'color': task.color,
         'identityTags': task.identityTags,
         'alarmTier': task.alarmTier.name,
+        'alarmSound': task.alarmSound,
+        'alarmSoundAsset': task.alarmSoundAsset,
+        'alarmVoiceEnabled': task.alarmVoiceEnabled,
+        'alarmCoachVoiceAsset': task.alarmCoachVoiceAsset,
+        'alarmVibrationPattern': task.alarmVibrationPattern,
+        'alarmSnoozeDurations': task.alarmSnoozeDurations,
         'plannedStart': Timestamp.fromDate(task.plannedStart),
         'plannedEnd': Timestamp.fromDate(task.plannedEnd),
         'subtasks': task.subtasks.map((s) => s.toMap()).toList(),
@@ -1061,6 +1099,22 @@ List<_MaterializationCandidate> _candidatesForDate(
         reminderOffsetMinutes:
             ((template['reminderOffsetMinutes'] as num?)?.toInt() ?? 5)
                 .clamp(0, 180),
+        alarmTier: AlarmTier.fromString(template['alarmTier'] as String?),
+        alarmSound: _cleanRoutineString(template['alarmSound']).isNotEmpty
+            ? _cleanRoutineString(template['alarmSound'])
+            : 'steady',
+        alarmSoundAsset:
+            _cleanRoutineString(template['alarmSoundAsset']).isNotEmpty
+                ? _cleanRoutineString(template['alarmSoundAsset'])
+                : 'assets/audio/ambient_atmospheric/ambient_atmospheric_01.mp3',
+        alarmVoiceEnabled: template['alarmVoiceEnabled'] as bool? ?? true,
+        alarmVibrationPattern:
+            _cleanRoutineString(template['alarmVibrationPattern']).isNotEmpty
+                ? _cleanRoutineString(template['alarmVibrationPattern'])
+                : 'standard',
+        alarmSnoozeDurations: _routineIntList(
+          template['alarmSnoozeDurations'],
+        ),
         subtasks: subtasks,
         identityTags: [candidateRoutineType],
       );

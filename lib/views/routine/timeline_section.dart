@@ -34,6 +34,7 @@ class DisplayBlock {
   final String? taskId;
   final TaskState? taskState;
   final DateTime? actualStart;
+  final bool hasAlarm;
 
   const DisplayBlock({
     required this.time,
@@ -48,6 +49,7 @@ class DisplayBlock {
     this.taskId,
     this.taskState,
     this.actualStart,
+    this.hasAlarm = false,
   });
 }
 
@@ -651,6 +653,13 @@ class _EventCardState extends State<_EventCard>
                           fontWeight: FontWeight.w500,
                         ),
                       ),
+                      if (b.hasAlarm &&
+                          b.taskId != null &&
+                          (b.taskState ?? TaskState.scheduled) ==
+                              TaskState.scheduled) ...[
+                        const SizedBox(height: 7),
+                        _AlarmChip(color: b.accentColor),
+                      ],
                       // ── Task action row ──────────────────────────────
                       if (b.taskId != null) ...[
                         const SizedBox(height: 10),
@@ -707,6 +716,38 @@ class _EventCardState extends State<_EventCard>
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AlarmChip extends StatelessWidget {
+  final Color color;
+
+  const _AlarmChip({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.alarm_rounded, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            'Alarm',
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }

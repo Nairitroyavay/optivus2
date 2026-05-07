@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:optivus2/views/alarms/alarm_editor_screen.dart';
+
 const _kInk = Color(0xFF0F111A);
 const _kSub = Color(0xFF6B7280);
 const _kAmber = Color(0xFFFFB830);
@@ -18,6 +20,11 @@ class AddTaskRequest {
   final String category;
   final String notes;
   final bool reminderEnabled;
+  final String alarmSound;
+  final String alarmSoundAsset;
+  final bool alarmVoiceEnabled;
+  final String alarmVibrationPattern;
+  final List<int> alarmSnoozeDurations;
   final String emoji;
   final Color color;
 
@@ -31,6 +38,12 @@ class AddTaskRequest {
     required this.category,
     required this.notes,
     required this.reminderEnabled,
+    this.alarmSound = 'steady',
+    this.alarmSoundAsset =
+        'assets/audio/ambient_atmospheric/ambient_atmospheric_01.mp3',
+    this.alarmVoiceEnabled = true,
+    this.alarmVibrationPattern = 'standard',
+    this.alarmSnoozeDurations = const [5, 10],
     required this.emoji,
     required this.color,
   });
@@ -87,15 +100,36 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
   // true once the user manually taps an emoji → stops auto-matching
   bool _userOverrodeEmoji = false;
   bool _reminderEnabled = false;
+  AlarmEditorResult _alarmSettings = AlarmEditorResult.defaults;
   bool _saving = false;
   String? _error;
 
   // Expanded grid — covers all auto-matched emojis so the highlight always lands.
   static const _quickEmojis = [
-    '📌', '🏋️', '📚', '🧘', '💧', '☕',
-    '🎯', '💼', '🌿', '🎓', '🍽️', '💊',
-    '🏏', '⚽', '🏃', '✍️', '🎵', '🎨',
-    '🏊', '🚴', '💻', '😴', '🛒', '🙏',
+    '📌',
+    '🏋️',
+    '📚',
+    '🧘',
+    '💧',
+    '☕',
+    '🎯',
+    '💼',
+    '🌿',
+    '🎓',
+    '🍽️',
+    '💊',
+    '🏏',
+    '⚽',
+    '🏃',
+    '✍️',
+    '🎵',
+    '🎨',
+    '🏊',
+    '🚴',
+    '💻',
+    '😴',
+    '🛒',
+    '🙏',
   ];
 
   static const _colors = [
@@ -172,22 +206,37 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
       (['eat', 'food', 'meal', 'snack'], '🍽️'),
       (['coffee', 'cafe', 'espresso', 'latte'], '☕'),
       (['water', 'hydrate', 'hydration', 'drink'], '💧'),
-      (['medicine', 'medication', 'pill', 'supplement', 'vitamin', 'capsule'], '💊'),
+      (
+        ['medicine', 'medication', 'pill', 'supplement', 'vitamin', 'capsule'],
+        '💊'
+      ),
       (['doctor', 'hospital', 'clinic', 'checkup', 'check-up', 'health'], '🏥'),
       (['dentist', 'teeth', 'dental'], '🦷'),
       (['skincare', 'skin care', 'moistur', 'face', 'serum', 'cleanser'], '🌿'),
       (['sleep', 'nap', 'rest', 'bed', 'bedtime'], '😴'),
       // Daily life
-      (['shop', 'shopping', 'grocery', 'groceries', 'market', 'supermarket'], '🛒'),
-      (['clean', 'cleaning', 'laundry', 'dishes', 'vacuum', 'mop', 'wash'], '🧹'),
+      (
+        ['shop', 'shopping', 'grocery', 'groceries', 'market', 'supermarket'],
+        '🛒'
+      ),
+      (
+        ['clean', 'cleaning', 'laundry', 'dishes', 'vacuum', 'mop', 'wash'],
+        '🧹'
+      ),
       (['travel', 'trip', 'flight', 'airport', 'vacation', 'holiday'], '✈️'),
       (['birthday', 'party', 'celebrat', 'anniversary'], '🎉'),
       (['call', 'phone', 'zoom', 'video call', 'facetime'], '📞'),
-      (['pray', 'prayer', 'worship', 'church', 'temple', 'mosque', 'namaz'], '🙏'),
+      (
+        ['pray', 'prayer', 'worship', 'church', 'temple', 'mosque', 'namaz'],
+        '🙏'
+      ),
       (['drive', 'driving', 'car', 'commute'], '🚗'),
       (['hair', 'haircut', 'barber', 'grooming', 'salon'], '✂️'),
       (['music', 'guitar', 'piano', 'sing', 'singing', 'drum', 'violin'], '🎵'),
-      (['art', 'draw', 'drawing', 'sketch', 'paint', 'painting', 'design'], '🎨'),
+      (
+        ['art', 'draw', 'drawing', 'sketch', 'paint', 'painting', 'design'],
+        '🎨'
+      ),
       (['photo', 'camera', 'shoot', 'photography'], '📷'),
       (['money', 'pay', 'bank', 'finance', 'invest', 'budget', 'bill'], '💰'),
       (['friend', 'family', 'social', 'hangout', 'catch up'], '👥'),
@@ -269,8 +318,8 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     final now = TimeOfDay.now();
     _selectedTime = TimeOfDay(hour: (now.hour + 1).clamp(0, 23), minute: 0);
     _titleCtrl.addListener(() => setState(() {
-      _autoMatchEmoji(_titleCtrl.text);
-    }));
+          _autoMatchEmoji(_titleCtrl.text);
+        }));
   }
 
   @override
@@ -315,6 +364,20 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
+  Future<void> _editAlarm() async {
+    final result = await Navigator.of(context).push<AlarmEditorResult>(
+      MaterialPageRoute(
+        builder: (_) => AlarmEditorScreen(initial: _alarmSettings),
+        fullscreenDialog: true,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _alarmSettings = result;
+      _reminderEnabled = true;
+    });
+  }
+
   Future<void> _save() async {
     final title = _titleCtrl.text.trim();
     final duration = int.tryParse(_durationCtrl.text.trim()) ?? 0;
@@ -343,6 +406,11 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
         category: _category,
         notes: _notesCtrl.text.trim(),
         reminderEnabled: _reminderEnabled,
+        alarmSound: _alarmSettings.sound,
+        alarmSoundAsset: _alarmSettings.soundAsset,
+        alarmVoiceEnabled: _alarmSettings.coachVoiceEnabled,
+        alarmVibrationPattern: _alarmSettings.vibrationPattern,
+        alarmSnoozeDurations: _alarmSettings.snoozeDurations,
         emoji: _selectedEmoji,
         color: _selectedColor,
       ));
@@ -537,8 +605,8 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                     _titleCtrl.text.trim().isNotEmpty &&
                     _emojiForTitle(_titleCtrl.text) != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: _selectedColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -608,12 +676,26 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
               value: _reminderEnabled,
               activeThumbColor: _selectedColor,
               title: const Text(
-                'Reminder',
+                'Alarm',
                 style: TextStyle(fontWeight: FontWeight.w800, color: _kInk),
               ),
-              subtitle: const Text('Schedule a reminder 5 minutes before'),
+              subtitle: Text(
+                _reminderEnabled
+                    ? '${_alarmSettings.sound} sound, '
+                        '${_alarmSettings.vibrationPattern} vibration, '
+                        '${_alarmSettings.snoozeDurations.join('/')} min snooze'
+                    : 'Use the full-screen alarm flow for this task',
+              ),
               onChanged: (value) => setState(() => _reminderEnabled = value),
             ),
+            if (_reminderEnabled) ...[
+              const SizedBox(height: 4),
+              _AlarmConfigTile(
+                settings: _alarmSettings,
+                color: _selectedColor,
+                onTap: _editAlarm,
+              ),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 4),
               Text(
@@ -874,6 +956,66 @@ class _IconChoice extends StatelessWidget {
           border: selected ? Border.all(color: color, width: 1.5) : null,
         ),
         child: Center(child: Text(label, style: const TextStyle(fontSize: 19))),
+      ),
+    );
+  }
+}
+
+class _AlarmConfigTile extends StatelessWidget {
+  final AlarmEditorResult settings;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _AlarmConfigTile({
+    required this.settings,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.11),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.24)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.tune_rounded, color: color, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Alarm settings',
+                    style: TextStyle(
+                      color: _kInk,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Voice ${settings.coachVoiceEnabled ? "on" : "off"} · '
+                    'snooze ${settings.snoozeDurations.join(", ")} min',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _kSub,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: _kSub),
+          ],
+        ),
       ),
     );
   }
