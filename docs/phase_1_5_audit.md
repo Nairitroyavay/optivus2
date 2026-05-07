@@ -2776,3 +2776,62 @@ This pattern:
 
 **Risk if shipped as-is: LOW for Task 7.2 core scope.** The five UI surfaces (home pills, log sheet, editor, detail, undo) are fully functional and correctly wired to the service layer with proper event emission. The 10 tracker variants render safely via the shared base but are all stubs. **MEDIUM overall** when accounting for the eating-disorder safety gap (G4) and the GEMINI.md §3 violations (G1, G6) that should be resolved before building Tasks 7.4–7.13.
 
+---
+
+## Task 8.1 — Streak Engine Re-Verification (2026-05-07)
+
+Scope: audit-only re-verification. No production Dart or JS files were modified.
+
+### Files inspected
+
+- `lib/services/streak_service.dart`
+- `lib/models/streak_model.dart`
+- `test/services/streak_service_contract_test.dart`
+- Supporting reads for event/dependency verification: `lib/core/constants/event_names.dart`, `lib/services/event_service.dart`, `lib/services/event_payload_validator.dart`, `lib/services/routine_service.dart`, `lib/models/habit_model.dart`
+
+### Requirements
+
+| Requirement | Status | Evidence |
+|---|---|---|
+| Good habit streaks compute | PASS | `streak_service.dart:95-115` reads good logs from `/habit_logs`; `streak_service.dart:177-180` evaluates `dailyGoal`; `streak_service.dart:280-307` rolls a habit into `/streaks`; contract test `streak_service_contract_test.dart:187-201` confirms increment/state/lastHitDate. |
+| Bad habit clean streaks compute | PASS | `streak_service.dart:117-136` counts only `logType == 'slip'`; `streak_service.dart:182-191` supports eliminate/reduceToTarget/awarenessOnly; contract tests cover eliminate, reduceToTarget, and awarenessOnly at `streak_service_contract_test.dart:411-495`. |
+| Routine completion streaks compute | PASS | `streak_service.dart:382-415` groups same-day tasks by `parentRoutine`; `streak_service.dart:422-437` requires all non-excluded tasks completed; `streak_service.dart:439-515` writes routine streak docs using `routine_<routineKey>`; tests at `streak_service_contract_test.dart:594-664` cover extend, break, and valid skipped tasks. |
+| Milestones are 3, 7, 14, 30, 60, 90, 180, 365 | PASS | Constant is exactly `kStreakMilestones = [3, 7, 14, 30, 60, 90, 180, 365]` at `streak_service.dart:34-35`; milestone event checks are at `streak_service.dart:328-340` and `streak_service.dart:481-494`; contract test iterates the same list at `streak_service_contract_test.dart:348-387`. |
+| Forgiving mode | PASS | Enum/default parsing exists at `streak_model.dart:25-45`; user mode is read from `/users/{uid}.accountabilityMode` at `streak_service.dart:196-204`; forgiving mode spends one ISO-week skip at `streak_service.dart:541-556`; tests cover first and second miss at `streak_service_contract_test.dart:518-563`. |
+| Strict mode | PASS | `AccountabilityMode.strict` is the default at `streak_model.dart:35-44` and `_resolveUserMode()` fallback at `streak_service.dart:196-204`; missed targets break at `streak_service.dart:558-565`; strict test is at `streak_service_contract_test.dart:500-516`. |
+| Ruthless mode | PASS | Bad-habit slips override the bad-habit goal type at `streak_service.dart:170-175`; ruthless test confirms a slip breaks even under target at `streak_service_contract_test.dart:565-589`. |
+| Per-habit override + 8+ day reset (Task 8.3) | GAP | `HabitModel` has a persisted `accountability` field (`habit_model.dart:92`, `habit_model.dart:154`, `habit_model.dart:217`), but `StreakService` only passes the resolved user mode into each habit rollup (`streak_service.dart:220-234`) and never resolves a per-habit override. Ghost/comeback code passes `gapDays` into pause/resume events (`routine_service.dart:167-179`, `streak_service.dart:572-608`, `streak_service.dart:621-660`), but there is no 8+ day reset branch; comeback thresholds are `[30, 14, 7, 3]` at `routine_service.dart:910-912`. Owned by Task 8.3. |
+
+### Firestore paths
+
+| Path | Status | Evidence |
+|---|---|---|
+| `/users/{uid}/streaks/{streakId}` | PASS | Service ref at `streak_service.dart:87-88`; model documents habit/routine streak ids at `streak_model.dart:3-10`; habit writes at `streak_service.dart:286-307`; routine writes at `streak_service.dart:445-458`; reads at `streak_service.dart:673-692`. |
+| `/users/{uid}/habit_logs/{logId}` | PASS | Canonical collection ref at `streak_service.dart:83-85`; good-log query at `streak_service.dart:100-105`; slip query at `streak_service.dart:122-127`; test helper writes the same path at `streak_service_contract_test.dart:124-146`. |
+| `/users/{uid}/dailySummaries/{date}` | INDIRECT PASS | `StreakService` does not write this path directly. `RoutineService._closeDate()` calls `runDayCloseRollup()` at `routine_service.dart:347-349`, then writes `dailySummaries/{date}` at `routine_service.dart:331-356` with streak metrics in the summary payload at `routine_service.dart:368-383`. |
+
+### Events
+
+Existing event system is present: `EventService.emit()` writes `/users/{uid}/events` and `/users/{uid}/events_recent` at `event_service.dart:37-42` and `event_service.dart:43-123`; streak event names are canonical constants at `event_names.dart:52-57`; payload validation accepts the five streak names at `event_payload_validator.dart:138-142`.
+
+| Event | Status | Evidence |
+|---|---|---|
+| `streak_extended` | PASS | Constant at `event_names.dart:53`; emitted for habit streaks at `streak_service.dart:314-326` and routine streaks at `streak_service.dart:466-479`; contract test at `streak_service_contract_test.dart:302-315`. |
+| `streak_broken` | PASS | Constant at `event_names.dart:54`; emitted for habit streaks at `streak_service.dart:341-353` and routine streaks at `streak_service.dart:495-508`; tests at `streak_service_contract_test.dart:317-336` and `streak_service_contract_test.dart:625-646`. |
+| `streak_milestone_reached` | PASS | Constant at `event_names.dart:55`; emitted for habit milestones at `streak_service.dart:328-340` and routine milestones at `streak_service.dart:481-494`; test at `streak_service_contract_test.dart:348-387`. |
+| `streak_paused` | PASS | Constant at `event_names.dart:56`; emitted by `pauseAllActiveStreaks()` at `streak_service.dart:596-608`; test at `streak_service_contract_test.dart:669-700`. |
+| `streak_resumed` | PASS | Constant at `event_names.dart:57`; emitted by `resumeAllPausedStreaks()` at `streak_service.dart:647-660`; test at `streak_service_contract_test.dart:724-749`. |
+
+### Gaps and follow-ups
+
+| Gap | Severity | Owner |
+|---|---|---|
+| Per-habit accountability override is not applied by `StreakService`; only user-level `accountabilityMode` is used. | MEDIUM | Task 8.3 |
+| 8+ day reset behavior is not implemented; current ghost/comeback handling pauses and resumes streaks using `gapDays` only as event/prompt metadata. | MEDIUM | Task 8.3 |
+
+### Verification
+
+- Every Task 8.1 requirement above is cited to file:line.
+- No production Dart or JS file was modified.
+- This audit doc gained a new Task 8.1 section; existing sections were not rewritten.
+- `flutter analyze` passed with no issues on 2026-05-07.
