@@ -4278,7 +4278,7 @@ Do not depend on Strava or any external fitness app for the core experience.
 ## Scope
 
 - Add a Fitness section/entry point inside `TrackerTab`.
-- Add Fitness dashboard UI inside Track.
+- Add Fitness dashboard UI inside Fitness Tracking section.
 - Add Activity Selection UI.
 - Add Activity Pre-Start UI.
 - Create/extend models only if similar models do not already exist.

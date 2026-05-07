@@ -223,6 +223,9 @@ class EventPayloadValidator {
         'insight_id': (v) => v is String,
       },
     ),
+    EventNames.fitnessActivityStarted: _fitnessActivityRule,
+    EventNames.fitnessActivityCancelled: _fitnessActivityRule,
+    EventNames.fitnessActivityDiscarded: _fitnessActivityRule,
   };
 
   static final _taskRule = _EventRule.any([
@@ -264,6 +267,11 @@ class EventPayloadValidator {
 
   static final _identityRule = _EventRule.any([
     ['goalId', 'goal_id', 'identityId', 'identity_id'],
+  ]);
+
+  static final _fitnessActivityRule = _EventRule.any([
+    ['activityId', 'activity_id'],
+    ['activityType', 'activity_type'],
   ]);
 }
 

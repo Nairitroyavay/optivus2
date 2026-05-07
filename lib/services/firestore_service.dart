@@ -37,6 +37,11 @@ class FirestoreService {
   static const String kDeletionRequests = 'deletion_requests';
   static const String kUsage = 'usage';
 
+  // ── Fitness engine ─────────────────────────────────────────────────────────
+  static const String kFitnessActivities = 'fitnessActivities';
+  static const String kFitnessStats = 'fitnessStats';
+  static const String kFitnessGoals = 'fitnessGoals';
+
   // ── All user-owned top-level collection IDs ────────────────────────────────
   // Keep in sync with the documented schema paths and with Firestore Rules.
   static const List<String> userOwnedCollectionIds = [
@@ -64,6 +69,9 @@ class FirestoreService {
     kDataExports,
     kDeletionRequests,
     kUsage,
+    kFitnessActivities,
+    kFitnessStats,
+    kFitnessGoals,
   ];
 
   static const int _deleteBatchSize = 400;

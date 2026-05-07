@@ -24,6 +24,12 @@ import 'package:optivus2/services/screen_time_importer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'package:optivus2/models/fitness_activity_model.dart';
+import 'package:optivus2/models/fitness_stats_model.dart';
+import 'package:optivus2/models/fitness_goal_model.dart';
+import 'package:optivus2/models/fitness_permission_state_model.dart';
+import 'package:optivus2/repositories/fitness_activity_repository.dart';
+
 export 'providers/bootstrap_provider.dart';
 
 /// Active Remote Config wrapper. Overridden from `main.dart` after Firebase
@@ -311,3 +317,72 @@ final trackerSuggestionsProvider =
       .map((snap) =>
           snap.docs.map((d) => <String, dynamic>{'id': d.id, ...d.data()}).toList());
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fitness providers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Repository for fitness activity CRUD + event emission.
+final fitnessActivityRepositoryProvider =
+    Provider<FitnessActivityRepository>((ref) {
+  return FitnessActivityRepository(
+    ref.read(firestoreServiceProvider),
+    eventService: ref.read(eventServiceProvider),
+  );
+});
+
+/// Real-time stream of the user's fitness activity history (most recent first).
+final activityHistoryProvider =
+    StreamProvider<List<FitnessActivityModel>>((ref) {
+  return ref.watch(fitnessActivityRepositoryProvider).watchActivityHistory();
+});
+
+/// Real-time stream of a single fitness activity by ID.
+final activityDetailProvider =
+    StreamProvider.family<FitnessActivityModel?, String>((ref, activityId) {
+  return ref
+      .watch(fitnessActivityRepositoryProvider)
+      .watchActivity(activityId);
+});
+
+/// Real-time stream of aggregated fitness stats for a given period key.
+final fitnessStatsProvider =
+    StreamProvider.family<FitnessStatsModel?, String>((ref, periodKey) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(null);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection(FirestoreService.kFitnessStats)
+      .doc(periodKey)
+      .snapshots()
+      .map((snap) => snap.exists
+          ? FitnessStatsModel.fromMap(snap.data()!, fallbackId: snap.id)
+          : null);
+});
+
+/// Real-time stream of active fitness goals.
+final fitnessGoalsProvider = StreamProvider<List<FitnessGoalModel>>((ref) {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return Stream.value(const []);
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection(FirestoreService.kFitnessGoals)
+      .where('status', isEqualTo: 'active')
+      .snapshots()
+      .map((snap) => snap.docs
+          .map((d) =>
+              FitnessGoalModel.fromMap(d.data(), fallbackId: d.id))
+          .toList());
+});
+
+/// In-memory permission state for fitness pre-start flow.
+/// Phase 1: stub values. Phase 2: wired to platform permission APIs.
+final fitnessPermissionProvider =
+    StateProvider<FitnessPermissionStateModel>(
+  (_) => FitnessPermissionStateModel.stub(),
+);
+

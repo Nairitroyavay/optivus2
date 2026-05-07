@@ -17,6 +17,9 @@ import '../../views/routine/skin_care_setup_screen.dart';
 import '../../views/routine/eating_setup_screen.dart';
 import '../../views/routine/class_setup_screen.dart';
 import '../../views/routine/supplement_setup_screen.dart';
+import '../../views/fitness/fitness_dashboard_screen.dart';
+import '../../views/fitness/activity_selection_screen.dart';
+import '../../views/fitness/activity_pre_start_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
 import '../../providers/routine_provider.dart';
@@ -146,6 +149,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/supplements',
         builder: (context, __) => SupplementSetupScreen(
           onComplete: () => context.pop(),
+        ),
+      ),
+      GoRoute(
+        path: '/fitness',
+        builder: (_, __) => const FitnessDashboardScreen(),
+      ),
+      GoRoute(
+        path: '/fitness/select',
+        builder: (_, __) => const ActivitySelectionScreen(),
+      ),
+      GoRoute(
+        path: '/fitness/pre-start',
+        builder: (_, state) => ActivityPreStartScreen(
+          activityType:
+              state.uri.queryParameters['type'] ?? 'running',
         ),
       ),
     ],

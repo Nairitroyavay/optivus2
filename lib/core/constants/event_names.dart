@@ -100,4 +100,9 @@ abstract final class EventNames {
   static const ghostDayDetected = 'ghost_day_detected';
   static const comebackInitiated = 'comeback_initiated';
   static const comebackPathChosen = 'comeback_path_chosen';
+
+  // ── Fitness ─────────────────────────────────────────────────────────────
+  static const fitnessActivityStarted = 'fitness_activity_started';
+  static const fitnessActivityCancelled = 'fitness_activity_cancelled';
+  static const fitnessActivityDiscarded = 'fitness_activity_discarded';
 }

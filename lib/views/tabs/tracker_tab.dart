@@ -17,6 +17,7 @@ import 'package:optivus2/models/streak_model.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/views/habits/log_habit_sheet.dart';
 import 'package:optivus2/views/habits/variants/mindful_eating_tracker_view.dart';
+import 'package:optivus2/models/fitness_activity_model.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Range & Filter enums for the tracker header
@@ -292,6 +293,9 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
                 // ── Screen Time Card (Android only) ──
                 if (Platform.isAndroid && showPhone)
                   const SliverToBoxAdapter(child: _ScreenTimeSection()),
+
+                // ── Fitness Section ──
+                const SliverToBoxAdapter(child: _FitnessSection()),
 
                 // ── Weekly Trend Strip ──
                 SliverToBoxAdapter(
@@ -1996,6 +2000,207 @@ class _AppUsageRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// FITNESS SECTION — entry point for the Fitness Engine inside Tracker tab
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _FitnessSection extends ConsumerWidget {
+  const _FitnessSection();
+
+  static const _quickTypes = [
+    FitnessActivityType.running,
+    FitnessActivityType.walking,
+    FitnessActivityType.cycling,
+    FitnessActivityType.hiking,
+    FitnessActivityType.gymWorkout,
+    FitnessActivityType.swimming,
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final historyAsync = ref.watch(activityHistoryProvider);
+    final lastActivity = historyAsync.valueOrNull?.isNotEmpty == true
+        ? historyAsync.valueOrNull!.first
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+      child: LiquidCard(
+        frosted: true,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Title row ──
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: kMint.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.directions_run_rounded,
+                    color: kMint,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Fitness Tracking',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: kInk,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    context.push('/fitness');
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: kMint.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'Dashboard',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: kMint,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // ── Last activity summary or empty state ──
+            if (lastActivity != null) ...[
+              _FitnessLastActivityRow(activity: lastActivity),
+              const SizedBox(height: 14),
+            ] else
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Text(
+                  'No activities yet. Start your first workout!',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: kSub.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+
+            // ── Quick start grid ──
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final type in _quickTypes)
+                  _FitnessQuickStartChip(type: type),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FitnessQuickStartChip extends StatelessWidget {
+  final FitnessActivityType type;
+
+  const _FitnessQuickStartChip({required this.type});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        context.push('/fitness/pre-start?type=${type.toJson()}');
+      },
+      child: Container(
+        width: 94,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: kMint.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kMint.withValues(alpha: 0.18)),
+        ),
+        child: Center(
+          child: Text(
+            '${type.emoji} ${type.displayName}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: kInk,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FitnessLastActivityRow extends StatelessWidget {
+  final FitnessActivityModel activity;
+  const _FitnessLastActivityRow({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = activity.activeDuration;
+    final m = duration.inMinutes;
+    final s = duration.inSeconds % 60;
+    final durationStr = m > 0 ? '${m}m' : '${s}s';
+
+    return Row(
+      children: [
+        Text(
+          activity.activityType.emoji,
+          style: const TextStyle(fontSize: 18),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Last: ${activity.title.isNotEmpty ? activity.title : activity.activityType.displayName}',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: kInk,
+                ),
+              ),
+              Text(
+                durationStr,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: kSub.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
