@@ -233,27 +233,35 @@ class _HomeTabState extends ConsumerState<HomeTab>
               ),
             ),
             // 3D glass notification orb
-            _GlassOrb(
-              size: 46,
-              colors: [const Color(0xFFD0D8E8), const Color(0xFFB8C4D8)],
-              child: Stack(
-                children: [
-                  const Center(
-                      child: Icon(Icons.notifications_outlined,
-                          size: 20, color: _kInk)),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: _kAmber,
-                        shape: BoxShape.circle,
+            Semantics(
+              button: true,
+              label: 'Open notifications',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => context.push('/notifications'),
+                child: _GlassOrb(
+                  size: 46,
+                  colors: [const Color(0xFFD0D8E8), const Color(0xFFB8C4D8)],
+                  child: Stack(
+                    children: [
+                      const Center(
+                          child: Icon(Icons.notifications_outlined,
+                              size: 20, color: _kInk)),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: _kAmber,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ],
@@ -290,7 +298,8 @@ class _HomeTabState extends ConsumerState<HomeTab>
           .map((tag) => tag.trim().toLowerCase())
           .any(identities.contains);
       final weight = aligned ? 1.0 : 0.5;
-      maxValue += 1.0; // denominator = full task count; weight only penalises numerator
+      maxValue +=
+          1.0; // denominator = full task count; weight only penalises numerator
       if (task.state == TaskState.completed) completedValue += weight;
     }
     final progress = maxValue > 0 ? completedValue / maxValue : 0.0;
