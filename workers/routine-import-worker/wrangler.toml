@@ -2,6 +2,10 @@ name = "optivus-routine-import"
 main = "src/index.js"
 compatibility_date = "2026-05-08"
 
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_VISION_MODEL = "gemini-2.5-flash"
+
 # Store all runtime secrets with Wrangler:
 # wrangler secret put GEMINI_API_KEY
 # wrangler secret put FIREBASE_PROJECT_ID

@@ -1,10 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/routine_provider.dart';
+import 'package:optivus2/services/image_upload_service.dart';
 import 'package:optivus2/views/routine/widgets/routine_review_screen.dart';
 
 class SkinCareStep {
@@ -81,8 +83,11 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
   ];
   int _colorIndex = 0;
   Map<String, dynamic>? _pendingImportMetadata;
+  final ImageUploadService _imageUploadService = ImageUploadService();
   String _setupMode = 'Manual';
   final TextEditingController _textImportCtrl = TextEditingController();
+  Map<String, dynamic>? _photoImportMetadata;
+  bool _isUploadingPhoto = false;
   bool _isGenerating = false;
   String? _generationError;
 
@@ -877,7 +882,7 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
   }
 
   Future<List<Map<String, dynamic>>> _previewGeneratedSkinTemplates(
-    String sourceText, {
+    String? sourceText, {
     required String source,
     Map<String, dynamic>? imageMetadata,
   }) async {
@@ -888,9 +893,13 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
               sourceText: sourceText,
               imageMetadata: imageMetadata,
             );
-    return generated.isNotEmpty
-        ? generated.map(_normalizeSkinTemplate).toList()
-        : _fallbackSkinTemplatesFromText(sourceText);
+    if (generated.isNotEmpty) {
+      return generated.map(_normalizeSkinTemplate).toList();
+    }
+    if (source == 'skin_care_photo') {
+      throw StateError('No skin care products were detected in the photo.');
+    }
+    return _fallbackSkinTemplatesFromText(sourceText ?? '');
   }
 
   Future<void> _generateTextSkinCareReview() async {
@@ -901,18 +910,23 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
 
   Future<void> _generatePhotoSkinCareReview() async {
     if (_isGenerating) return;
+    final imageMetadata = _photoImportMetadata;
+    if (imageMetadata == null) {
+      setState(() {
+        _generationError =
+            'Add a clear product photo first, then generate the routine.';
+      });
+      return;
+    }
     await _openGeneratedSkinReview(
-      'Imported from photo upload',
+      null,
       source: 'skin_care_photo',
-      imageMetadata: {
-        'source': 'skin_care_photo_upload',
-        'createdAt': DateTime.now().toIso8601String(),
-      },
+      imageMetadata: _skinCarePhotoMetadata(imageMetadata),
     );
   }
 
   Future<void> _openGeneratedSkinReview(
-    String sourceText, {
+    String? sourceText, {
     required String source,
     Map<String, dynamic>? imageMetadata,
   }) async {
@@ -922,12 +936,14 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
     });
     final importMetadata = {
       'mode': source,
-      'sourceText': sourceText,
+      if (sourceText != null && sourceText.trim().isNotEmpty)
+        'sourceText': sourceText.trim(),
+      if (imageMetadata?['path'] != null) 'photoPath': imageMetadata?['path'],
       if (imageMetadata != null) 'imageMetadata': imageMetadata,
       'createdAt': DateTime.now().toIso8601String(),
     };
 
-    List<Map<String, dynamic>> templates;
+    List<Map<String, dynamic>> templates = const [];
     try {
       templates = await _previewGeneratedSkinTemplates(
         sourceText,
@@ -936,11 +952,22 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
       );
     } catch (e) {
       debugPrint('[SkinCareSetup] routineImport preview failed: $e');
-      templates = _fallbackSkinTemplatesFromText(sourceText);
-      importMetadata['fallbackReason'] = e.toString();
-      if (mounted) {
-        setState(() => _generationError =
-            'AI endpoint failed. Showing a local draft you can still edit.');
+      if (source == 'skin_care_photo') {
+        await _clearPhotoAfterFailedImport(imageMetadata);
+        if (mounted) {
+          setState(() {
+            _generationError =
+                'We could not read skin care products from that photo. Try a clearer image with labels visible.';
+          });
+        }
+        return;
+      } else {
+        templates = _fallbackSkinTemplatesFromText(sourceText ?? '');
+        importMetadata['fallbackReason'] = e.toString();
+        if (mounted) {
+          setState(() => _generationError =
+              'AI endpoint failed. Showing a local draft you can still edit.');
+        }
       }
     } finally {
       if (mounted) setState(() => _isGenerating = false);
@@ -976,6 +1003,117 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
     if (accepted == true && mounted) {
       Navigator.pop(context);
     }
+  }
+
+  Map<String, dynamic> _skinCarePhotoMetadata(Map<String, dynamic> metadata) {
+    return {
+      ...metadata,
+      'source': 'skin_care_photo_upload',
+      'routineType': 'skin_care',
+      'uploadedAt': metadata['uploadedAt'] ?? DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<void> _pickSkinCarePhoto() async {
+    if (_isUploadingPhoto || _isGenerating) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Camera'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    final previousMetadata = _photoImportMetadata;
+    setState(() {
+      _isUploadingPhoto = true;
+      _generationError = null;
+    });
+    try {
+      final metadata = await _imageUploadService.pickCompressAndUpload(
+        source: source,
+        routineType: 'skin_care',
+      );
+      if (!mounted || metadata == null) return;
+      setState(() {
+        _photoImportMetadata = metadata;
+      });
+      await _deletePhotoMetadataQuietly(previousMetadata);
+    } catch (e) {
+      debugPrint('[SkinCareSetup] photo upload failed: $e');
+      if (mounted) {
+        setState(() {
+          _generationError =
+              'We could not use that photo. Try a clear JPG or PNG with product labels visible.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
+  }
+
+  Future<void> _removeSkinCarePhoto() async {
+    if (_isUploadingPhoto || _isGenerating) return;
+    final metadata = _photoImportMetadata;
+    setState(() {
+      _isUploadingPhoto = true;
+      _generationError = null;
+    });
+    try {
+      await _deletePhotoMetadataQuietly(metadata);
+      if (mounted) setState(() => _photoImportMetadata = null);
+    } finally {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+    }
+  }
+
+  Future<void> _clearPhotoAfterFailedImport(
+    Map<String, dynamic>? imageMetadata,
+  ) async {
+    final currentPath = _photoImportMetadata?['path']?.toString();
+    final failedPath = imageMetadata?['path']?.toString();
+    if (currentPath != null &&
+        failedPath != null &&
+        currentPath == failedPath &&
+        mounted) {
+      setState(() => _photoImportMetadata = null);
+    }
+    await _deletePhotoMetadataQuietly(imageMetadata);
+  }
+
+  Future<void> _deletePhotoMetadataQuietly(
+    Map<String, dynamic>? metadata,
+  ) async {
+    if (metadata == null) return;
+    try {
+      await _imageUploadService.deleteUploadedMetadata(metadata);
+    } catch (_) {
+      // Best-effort cleanup for draft photo uploads.
+    }
+  }
+
+  String _photoUploadLabel(Map<String, dynamic> metadata) {
+    final sizeBytes = metadata['sizeBytes'];
+    if (sizeBytes is num) {
+      final kb = (sizeBytes / 1000).ceil();
+      return 'Photo attached ($kb KB)';
+    }
+    return 'Photo attached';
   }
 
   List<Map<String, dynamic>> _fallbackSkinTemplatesFromText(String sourceText) {
@@ -1409,14 +1547,86 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                 if (_setupMode == 'Photo AI')
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                    child: SizedBox(
+                    child: Container(
                       width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed:
-                            _isGenerating ? null : _generatePhotoSkinCareReview,
-                        icon: const Icon(Icons.photo_camera_rounded),
-                        label: const Text('Generate from photo'),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.85)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _isUploadingPhoto || _isGenerating
+                                      ? null
+                                      : _pickSkinCarePhoto,
+                                  icon: _isUploadingPhoto
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Icon(_photoImportMetadata == null
+                                          ? Icons.add_a_photo_rounded
+                                          : Icons.check_circle_rounded),
+                                  label: Text(_photoImportMetadata == null
+                                      ? 'Add product photo'
+                                      : _photoUploadLabel(
+                                          _photoImportMetadata!)),
+                                ),
+                              ),
+                              if (_photoImportMetadata != null) ...[
+                                const SizedBox(width: 8),
+                                Tooltip(
+                                  message: 'Remove photo',
+                                  child: IconButton.filledTonal(
+                                    onPressed:
+                                        _isUploadingPhoto || _isGenerating
+                                            ? null
+                                            : _removeSkinCarePhoto,
+                                    icon: const Icon(Icons.close_rounded),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (_generationError != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              _generationError!,
+                              style: const TextStyle(
+                                color: Color(0xFFB91C1C),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
+                          FilledButton.icon(
+                            onPressed: _isGenerating ||
+                                    _isUploadingPhoto ||
+                                    _photoImportMetadata == null
+                                ? null
+                                : _generatePhotoSkinCareReview,
+                            icon: _isGenerating
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.auto_awesome_rounded),
+                            label: const Text('Generate'),
+                          ),
+                        ],
                       ),
                     ),
                   ),

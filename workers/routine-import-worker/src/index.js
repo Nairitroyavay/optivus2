@@ -86,6 +86,13 @@ class AiOutputValidationError extends Error {
   }
 }
 
+class BadImageError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "BadImageError";
+  }
+}
+
 export default {
   async fetch(request, env) {
     const corsHeaders = {
@@ -250,6 +257,16 @@ export default {
         );
       }
 
+      if (error instanceof BadImageError) {
+        return json(
+          {
+            error: "We could not read that photo. Try a clearer image with product labels visible."
+          },
+          422,
+          corsHeaders
+        );
+      }
+
       return json(
         {
           error: "Routine import failed",
@@ -343,8 +360,17 @@ function validateInput(contract, sourceText, imageMetadata, context) {
     return "Provide sourceText for this mode";
   }
 
-  if (contract.input === "photo" && !imageMetadata && !sourceText) {
-    return "Provide imageMetadata or extracted sourceText for this photo mode";
+  if (contract.input === "photo") {
+    const hasImageUrl = !!stringField(imageMetadata?.downloadUrl || imageMetadata?.url);
+    const hasTextHint = !!stringField(
+      sourceText || imageMetadata?.ocrText || imageMetadata?.text || imageMetadata?.description
+    );
+    if (!imageMetadata && !sourceText) {
+      return "Provide imageMetadata or extracted sourceText for this photo mode";
+    }
+    if (!hasImageUrl && !hasTextHint) {
+      return "Provide an uploaded image URL or OCR text for this photo mode";
+    }
   }
 
   return null;
@@ -531,9 +557,13 @@ async function generatePreview({
     context,
     safetyFlags
   });
+  const imagePart = contract.input === "photo"
+    ? await imagePartFromMetadata(imageMetadata)
+    : null;
   const data = await callGemini({
     env,
     prompt,
+    imagePart,
     maxOutputTokens: contract.outputKey === "suggestions" ? 700 : 1000,
     temperature: 0.2
   });
@@ -590,6 +620,10 @@ function validateAiOutput(parsed, mode, contract) {
     validateTemplateForMode(template, mode, index);
     return template;
   });
+
+  if (templates.length === 0 && contract.input === "photo") {
+    throw new BadImageError("No templates returned for photo");
+  }
 
   if (templates.length === 0) {
     throw new AiOutputValidationError("No valid templates returned");
@@ -1016,8 +1050,10 @@ Rules:
 - Use 24-hour HH:MM times.
 - Keep titles concise.
 - Do not invent medical claims.
+- For skin care photos, identify visible product names from labels and place AM-safe products like cleanser, vitamin C, moisturizer, and SPF in morning timing; place retinoids, exfoliating acids, and night creams in evening timing unless the label clearly says otherwise.
+- If a photo is unreadable or contains no skin care products, return {"templates":[]} instead of guessing.
 - For eating modes, do not include calories, macros, weight-loss framing, or restrictive dieting language when eatingDisorderHistory is true.
-- Return at least 1 and at most ${maxItemsPerMode} items.`;
+- Return at least 1 and at most ${maxItemsPerMode} items unless an unreadable photo rule requires an empty templates array.`;
 }
 
 function schemaInstructionFor(mode) {
@@ -1026,7 +1062,7 @@ function schemaInstructionFor(mode) {
     case "skin_care_photo":
       return `JSON schema:
 {"templates":[{"templateId":"stable_id","title":"Morning skin care","time":"07:30","startTime":"07:30","endTime":"07:45","timingRule":"morning","weekdayRule":"daily","repeatRule":"daily","steps":[{"name":"Cleanser","notes":""}],"notes":"","confidence":0.85,"warnings":[],"reminderEnabled":false}]}
-For skin care text, split AM-safe products such as Vitamin C and SPF into a morning block, and PM products such as retinol into a night block when both are present.`;
+For skin care text, split AM-safe products such as Vitamin C and SPF into a morning block, and PM products such as retinol into a night block when both are present. For skin care photos, use visible product names as step names and suggest morning/night timing from common label usage.`;
     case "supplement_text":
       return `JSON schema:
 {"templates":[{"templateId":"stable_id","title":"Vitamin D","dosage":"1000 IU","startTime":"08:00","endTime":"08:05","repeatRule":"daily","notes":"","reminderEnabled":false}]}`;
@@ -1045,10 +1081,14 @@ For skin care text, split AM-safe products such as Vitamin C and SPF into a morn
   }
 }
 
-async function callGemini({ env, prompt, maxOutputTokens, temperature }) {
-  const model = env.GEMINI_MODEL || "gemini-1.5-flash";
+async function callGemini({ env, prompt, imagePart, maxOutputTokens, temperature }) {
+  const model = imagePart
+    ? env.GEMINI_VISION_MODEL || env.GEMINI_MODEL || "gemini-2.5-flash"
+    : env.GEMINI_MODEL || "gemini-2.5-flash";
   const geminiUrl =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const parts = [{ text: prompt }];
+  if (imagePart) parts.push(imagePart);
 
   const response = await fetch(geminiUrl, {
     method: "POST",
@@ -1059,7 +1099,7 @@ async function callGemini({ env, prompt, maxOutputTokens, temperature }) {
       contents: [
         {
           role: "user",
-          parts: [{ text: prompt }]
+          parts
         }
       ],
       generationConfig: {
@@ -1076,6 +1116,60 @@ async function callGemini({ env, prompt, maxOutputTokens, temperature }) {
   }
 
   return data;
+}
+
+async function imagePartFromMetadata(imageMetadata) {
+  const downloadUrl = stringField(imageMetadata?.downloadUrl || imageMetadata?.url);
+  if (!downloadUrl) return null;
+
+  let response;
+  try {
+    response = await fetch(downloadUrl);
+  } catch (_) {
+    throw new BadImageError("Image fetch failed");
+  }
+
+  if (!response.ok) {
+    throw new BadImageError(`Image fetch failed with ${response.status}`);
+  }
+
+  const fallbackMime = stringField(imageMetadata?.mimeType) || "image/jpeg";
+  const mimeType = normalizeImageMimeType(
+    response.headers.get("content-type") || fallbackMime
+  );
+  if (!mimeType) {
+    throw new BadImageError("Unsupported image content type");
+  }
+
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > 5 * 1000 * 1000) {
+    throw new BadImageError("Invalid image size");
+  }
+
+  return {
+    inline_data: {
+      mime_type: mimeType,
+      data: arrayBufferToBase64(bytes)
+    }
+  };
+}
+
+function normalizeImageMimeType(value) {
+  const mimeType = stringField(value).split(";")[0].toLowerCase();
+  if (["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+    return mimeType;
+  }
+  return "";
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
 }
 
 function extractGeminiText(data) {
