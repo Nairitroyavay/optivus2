@@ -142,10 +142,22 @@ class RoutineRepository {
     final data = Map<String, dynamic>.from(decoded);
     final raw = data['templates'] ?? data['items'] ?? data['blocks'];
     if (raw is! List) return const [];
-    return raw
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
+    final suggestionIds = data['suggestionIds'] is List
+        ? (data['suggestionIds'] as List)
+            .map((item) => item.toString())
+            .toList()
+        : const <String>[];
+    final templates = <Map<String, dynamic>>[];
+    for (var i = 0; i < raw.length; i++) {
+      final item = raw[i];
+      if (item is! Map) continue;
+      final template = Map<String, dynamic>.from(item);
+      if (i < suggestionIds.length && suggestionIds[i].trim().isNotEmpty) {
+        template['_suggestionId'] = suggestionIds[i].trim();
+      }
+      templates.add(template);
+    }
+    return templates;
   }
 
   Future<void> saveScheduledNotification(

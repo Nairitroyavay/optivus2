@@ -1,9 +1,11 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/routine_provider.dart';
+import 'package:optivus2/views/routine/widgets/routine_review_screen.dart';
 
 class SkinCareStep {
   String name;
@@ -79,6 +81,10 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
   ];
   int _colorIndex = 0;
   Map<String, dynamic>? _pendingImportMetadata;
+  String _setupMode = 'Manual';
+  final TextEditingController _textImportCtrl = TextEditingController();
+  bool _isGenerating = false;
+  String? _generationError;
 
   @override
   void initState() {
@@ -145,6 +151,12 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
         ),
       ];
     }
+  }
+
+  @override
+  void dispose() {
+    _textImportCtrl.dispose();
+    super.dispose();
   }
 
   List<SkinCareRoutineBlock> get items => weeklyRoutines[_day]!;
@@ -864,250 +876,377 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
     widget.onComplete();
   }
 
-  Future<void> _showImportOptions() async {
-    final inputCtrl = TextEditingController();
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('Skin Care Import',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: inputCtrl,
-              minLines: 3,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Text Input with AI',
-                hintText: 'Cleanser, serum, moisturizer at 7:30 AM',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _loadGeneratedSkinItems(
-                  inputCtrl.text.trim().isEmpty
-                      ? 'Cleanse, Serum, Moisturizer'
-                      : inputCtrl.text.trim(),
-                  source: 'text_ai',
-                );
-              },
-              icon: const Icon(Icons.auto_awesome_rounded),
-              label: const Text('Generate Review Items'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _loadGeneratedSkinItems(
-                  'Imported from photo upload',
-                  source: 'photo_ai',
-                  imageMetadata: {
-                    'source': 'skin_care_photo_upload',
-                    'createdAt': DateTime.now().toIso8601String(),
-                  },
-                );
-              },
-              icon: const Icon(Icons.photo_camera_rounded),
-              label: const Text('Photo Upload with AI'),
-            ),
-          ],
-        ),
-      ),
-    );
-    inputCtrl.dispose();
-  }
-
-  Future<void> _loadGeneratedSkinItems(
+  Future<List<Map<String, dynamic>>> _previewGeneratedSkinTemplates(
     String sourceText, {
     required String source,
     Map<String, dynamic>? imageMetadata,
   }) async {
-    var generated = <Map<String, dynamic>>[];
-    try {
-      generated =
-          await ref.read(routineRepositoryProvider).previewRoutineImport(
-                routineType: 'skin_care',
-                mode: source,
-                sourceText: sourceText,
-                imageMetadata: imageMetadata,
-              );
-    } catch (e) {
-      debugPrint('[SkinCareSetup] routineImport preview failed: $e');
-    }
+    final generated =
+        await ref.read(routineRepositoryProvider).previewRoutineImport(
+              routineType: 'skin_care',
+              mode: source,
+              sourceText: sourceText,
+              imageMetadata: imageMetadata,
+            );
+    return generated.isNotEmpty
+        ? generated.map(_normalizeSkinTemplate).toList()
+        : _fallbackSkinTemplatesFromText(sourceText);
+  }
 
-    final blocks = generated.isNotEmpty
-        ? generated.map(_skinBlockFromTemplate).toList()
-        : [_skinBlockFromText(sourceText, source: source)];
-    _showSkinReview(blocks, {
+  Future<void> _generateTextSkinCareReview() async {
+    final sourceText = _textImportCtrl.text.trim();
+    if (sourceText.isEmpty || _isGenerating) return;
+    await _openGeneratedSkinReview(sourceText, source: 'skin_care_text');
+  }
+
+  Future<void> _generatePhotoSkinCareReview() async {
+    if (_isGenerating) return;
+    await _openGeneratedSkinReview(
+      'Imported from photo upload',
+      source: 'skin_care_photo',
+      imageMetadata: {
+        'source': 'skin_care_photo_upload',
+        'createdAt': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
+  Future<void> _openGeneratedSkinReview(
+    String sourceText, {
+    required String source,
+    Map<String, dynamic>? imageMetadata,
+  }) async {
+    setState(() {
+      _isGenerating = true;
+      _generationError = null;
+    });
+    final importMetadata = {
       'mode': source,
       'sourceText': sourceText,
       if (imageMetadata != null) 'imageMetadata': imageMetadata,
       'createdAt': DateTime.now().toIso8601String(),
-    });
-  }
+    };
 
-  SkinCareRoutineBlock _skinBlockFromText(String sourceText,
-      {required String source}) {
-    final names = sourceText
-        .split(RegExp(r'[,\\n]'))
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
+    List<Map<String, dynamic>> templates;
+    try {
+      templates = await _previewGeneratedSkinTemplates(
+        sourceText,
+        source: source,
+        imageMetadata: imageMetadata,
+      );
+    } catch (e) {
+      debugPrint('[SkinCareSetup] routineImport preview failed: $e');
+      templates = _fallbackSkinTemplatesFromText(sourceText);
+      importMetadata['fallbackReason'] = e.toString();
+      if (mounted) {
+        setState(() => _generationError =
+            'AI endpoint failed. Showing a local draft you can still edit.');
+      }
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+
+    final suggestionIds = templates
+        .map((template) => template['_suggestionId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
         .toList();
-    return SkinCareRoutineBlock(
-      id: 'generated_${DateTime.now().microsecondsSinceEpoch}',
-      title: source == 'photo_ai' ? 'Photo Import Routine' : 'AI Routine',
-      start: 1.5,
-      duration: 0.5,
-      icon: Icons.auto_awesome_rounded,
-      color: const Color(0xFF10B981),
-      hasTopTape: true,
-      hasBottomTape: true,
-      steps: names.map(SkinCareStep.new).toList(),
+    if (suggestionIds.isNotEmpty) {
+      importMetadata['suggestionIds'] = suggestionIds;
+    }
+
+    if (!mounted) return;
+    final accepted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoutineReviewScreen(
+          title: 'Review skin care routine',
+          routineType: 'skin_care',
+          templates: templates,
+          onRegenerate: () => _previewGeneratedSkinTemplates(
+            sourceText,
+            source: source,
+            imageMetadata: imageMetadata,
+          ),
+          onAcceptAll: (reviewed) async {
+            await _acceptGeneratedSkinTemplates(reviewed, importMetadata);
+          },
+        ),
+      ),
     );
+    if (accepted == true && mounted) {
+      Navigator.pop(context);
+    }
   }
 
-  SkinCareRoutineBlock _skinBlockFromTemplate(Map<String, dynamic> template) {
-    final notes = template['notes']?.toString() ?? '';
-    final rawSteps = template['steps'];
-    final steps = rawSteps is List
-        ? rawSteps
-            .map((step) => step is Map ? step['name'] : step)
-            .map((step) => step?.toString().trim() ?? '')
-            .where((step) => step.isNotEmpty)
-            .map(SkinCareStep.new)
-            .toList()
-        : notes
-            .split(RegExp(r'[,\\n]'))
-            .map((step) => step.trim())
-            .where((step) => step.isNotEmpty)
-            .map(SkinCareStep.new)
-            .toList();
-    final start =
-        _parseHoursFrom6AM(template['startTime']?.toString() ?? '7:30 AM');
-    final end =
-        _parseHoursFrom6AM(template['endTime']?.toString() ?? '8:00 AM');
-    return SkinCareRoutineBlock(
-      id: template['templateId']?.toString() ??
-          'generated_${DateTime.now().microsecondsSinceEpoch}',
-      title: template['title']?.toString() ?? 'AI Routine',
-      start: start,
-      duration: (end > start ? end - start : 0.5).clamp(0.5, 3.0).toDouble(),
-      icon: Icons.auto_awesome_rounded,
-      color: const Color(0xFF10B981),
-      hasTopTape: true,
-      hasBottomTape: true,
-      steps: steps,
-      reminderEnabled: template['reminderEnabled'] == true,
-    );
+  List<Map<String, dynamic>> _fallbackSkinTemplatesFromText(String sourceText) {
+    final text = sourceText.toLowerCase();
+    final morningSteps = <String>[];
+    final nightSteps = <String>[];
+    if (text.contains('vitamin c')) morningSteps.add('Vitamin C');
+    if (text.contains('spf') || text.contains('sunscreen')) {
+      morningSteps.add('SPF');
+    }
+    if (text.contains('retinol')) nightSteps.add('Retinol');
+    if (text.contains('moistur')) {
+      morningSteps.add('Moisturiser');
+      nightSteps.add('Moisturiser');
+    }
+    if (morningSteps.isEmpty && nightSteps.isEmpty) {
+      final steps = sourceText
+          .split(RegExp(r',|\n'))
+          .map((step) => step.trim())
+          .where((step) => step.isNotEmpty)
+          .toList();
+      morningSteps.addAll(steps.isEmpty ? ['Cleanse', 'Moisturiser'] : steps);
+    }
+
+    final templates = <Map<String, dynamic>>[];
+    if (morningSteps.isNotEmpty) {
+      templates.add(_normalizeSkinTemplate({
+        'templateId':
+            'skin_ai_morning_${DateTime.now().microsecondsSinceEpoch}',
+        'title': 'Morning skin care',
+        'startTime': '07:30',
+        'endTime': '07:45',
+        'repeatRule': 'daily',
+        'timingRule': 'morning',
+        'weekdayRule': 'daily',
+        'steps': morningSteps.map((name) => {'name': name}).toList(),
+        'notes': 'Generated from text import',
+        'confidence': 0.55,
+        'warnings': ['Local fallback draft'],
+      }));
+    }
+    if (nightSteps.isNotEmpty) {
+      templates.add(_normalizeSkinTemplate({
+        'templateId': 'skin_ai_night_${DateTime.now().microsecondsSinceEpoch}',
+        'title': 'Night skin care',
+        'startTime': '21:30',
+        'endTime': '21:45',
+        'repeatRule': 'daily',
+        'timingRule': 'night',
+        'weekdayRule': 'daily',
+        'steps': nightSteps.map((name) => {'name': name}).toList(),
+        'notes': 'Generated from text import',
+        'confidence': 0.55,
+        'warnings': ['Local fallback draft'],
+      }));
+    }
+    return templates;
   }
 
-  Future<void> _showSkinReview(
-    List<SkinCareRoutineBlock> blocks,
+  Map<String, dynamic> _normalizeSkinTemplate(Map<String, dynamic> template) {
+    final next = Map<String, dynamic>.from(template);
+    final startTime = _normalize24h(
+        next['startTime']?.toString() ?? next['time']?.toString() ?? '07:30');
+    next['routineType'] = 'skin_care';
+    next['startTime'] = startTime;
+    next['time'] = startTime;
+    next['endTime'] = _normalize24h(
+      next['endTime']?.toString() ?? _endTimeFrom24h(startTime, 15),
+    );
+    next['repeatRule'] =
+        next['repeatRule']?.toString().trim().isNotEmpty == true
+            ? next['repeatRule'].toString().trim()
+            : 'daily';
+    next['weekdayRule'] =
+        next['weekdayRule']?.toString().trim().isNotEmpty == true
+            ? next['weekdayRule'].toString().trim()
+            : next['repeatRule'];
+    next['timingRule'] =
+        next['timingRule']?.toString().trim().isNotEmpty == true
+            ? next['timingRule'].toString().trim()
+            : _timingRuleFor24h(startTime);
+    next['steps'] = _templateSteps(next);
+    next['notes'] = next['notes']?.toString() ?? '';
+    next['confidence'] = _templateConfidence(next['confidence']);
+    next['warnings'] = _templateWarnings(next['warnings']);
+    next['reminderEnabled'] = next['reminderEnabled'] == true;
+    next['isActive'] = next['isActive'] ?? true;
+    next['createdAt'] = next['createdAt'] ?? DateTime.now().toIso8601String();
+    next['updatedAt'] = DateTime.now().toIso8601String();
+    next['templateId'] =
+        next['templateId']?.toString().trim().isNotEmpty == true
+            ? next['templateId'].toString().trim()
+            : 'skin_${DateTime.now().microsecondsSinceEpoch}';
+    return next;
+  }
+
+  Map<String, dynamic> _skinTemplateForSave(Map<String, dynamic> template) {
+    final next = _normalizeSkinTemplate(template);
+    next.remove('_suggestionId');
+    return next;
+  }
+
+  List<Map<String, dynamic>> _templateSteps(Map<String, dynamic> template) {
+    final raw = template['steps'];
+    final steps = <String>[];
+    if (raw is List) {
+      for (final step in raw) {
+        if (step is Map) {
+          final name = step['name']?.toString().trim() ??
+              step['title']?.toString().trim() ??
+              '';
+          if (name.isNotEmpty) steps.add(name);
+        } else {
+          final name = step.toString().trim();
+          if (name.isNotEmpty) steps.add(name);
+        }
+      }
+    }
+    if (steps.isEmpty) {
+      steps.addAll((template['notes']?.toString() ?? '')
+          .split(RegExp(r',|\n'))
+          .map((step) => step.trim())
+          .where((step) => step.isNotEmpty));
+    }
+    return steps.map((name) => {'name': name}).toList();
+  }
+
+  List<String> _templateWarnings(Object? raw) {
+    if (raw is List) {
+      return raw
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+    }
+    final value = raw?.toString().trim() ?? '';
+    return value.isEmpty ? const [] : [value];
+  }
+
+  double _templateConfidence(Object? raw) {
+    final value = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 0.75;
+    return value.clamp(0.0, 1.0).toDouble();
+  }
+
+  String _normalize24h(String raw) {
+    final parsed = _parseHoursFrom6AM(raw);
+    final totalMinutes = ((parsed + 6) * 60).round();
+    final h = (totalMinutes ~/ 60) % 24;
+    final m = totalMinutes % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  String _endTimeFrom24h(String startTime, int durationMinutes) {
+    final parts = startTime.split(':');
+    final hour = int.tryParse(parts.first) ?? 7;
+    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    final start = DateTime(2026, 1, 1, hour, minute);
+    final end = start.add(Duration(minutes: durationMinutes));
+    return '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _timingRuleFor24h(String time) {
+    final hour = int.tryParse(time.split(':').first) ?? 7;
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'night';
+  }
+
+  Future<void> _acceptGeneratedSkinTemplates(
+    List<Map<String, dynamic>> reviewed,
     Map<String, dynamic> importMetadata,
   ) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final review = List<SkinCareRoutineBlock>.from(blocks);
-        return StatefulBuilder(builder: (context, setSheetState) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              MediaQuery.of(ctx).viewInsets.bottom + 20,
-            ),
-            child: SizedBox(
-              height: MediaQuery.of(ctx).size.height * 0.72,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('Review generated skin care',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: review.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final item = review[index];
-                        return TextFormField(
-                          initialValue:
-                              '${item.title}: ${item.steps.map((e) => e.name).join(', ')}',
-                          decoration: const InputDecoration(
-                            labelText: 'Routine and products',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (value) {
-                            final parts = value.split(':');
-                            item.title = parts.first.trim().isEmpty
-                                ? item.title
-                                : parts.first.trim();
-                            final stepText = parts.length > 1
-                                ? parts.sublist(1).join(':')
-                                : value;
-                            item.steps = stepText
-                                .split(RegExp(r'[,\\n]'))
-                                .map((step) => step.trim())
-                                .where((step) => step.isNotEmpty)
-                                .map(SkinCareStep.new)
-                                .toList();
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      TextButton.icon(
-                        onPressed: () => setSheetState(() {
-                          if (review.isNotEmpty) review.removeLast();
-                        }),
-                        icon: const Icon(Icons.remove_circle_outline_rounded),
-                        label: const Text('Remove'),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _showImportOptions();
-                        },
-                        child: const Text('Regenerate'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: () {
-                          setState(() {
-                            weeklyRoutines[_day]!.insertAll(0, review);
-                            _pendingImportMetadata = importMetadata;
-                          });
-                          Navigator.pop(ctx);
-                        },
-                        child: const Text('Accept all'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+    final templates = reviewed.map(_skinTemplateForSave).toList();
+    _applySkinCarePlansFromTemplates(templates);
+    ref.read(routineProvider.notifier).markSkinCareSetUp();
+    await ref.read(routineProvider.notifier).setRoutineTemplates(
+          'skin_care',
+          templates,
+          importMetadata: importMetadata,
+        );
+    await _markSuggestionsAccepted(reviewed);
+    widget.onComplete();
+  }
+
+  void _applySkinCarePlansFromTemplates(List<Map<String, dynamic>> templates) {
+    final plans = List.generate(
+      7,
+      (_) => (
+        morning: <SkinStep>[],
+        afternoon: <SkinStep>[],
+        night: <SkinStep>[],
+      ),
+    );
+
+    for (final template in templates) {
+      final days = _daysForRepeatRule(template['repeatRule']?.toString() ?? '');
+      final title = template['title']?.toString() ?? 'Skin care';
+      final startTime = template['startTime']?.toString() ?? '07:30';
+      final hour = int.tryParse(startTime.split(':').first) ?? 7;
+      final steps = _templateSteps(template)
+          .map((step) => SkinStep(
+                emoji: '✨',
+                name: step['name']?.toString() ?? '',
+                tag: title,
+              ))
+          .where((step) => step.name.trim().isNotEmpty)
+          .toList();
+      for (final day in days) {
+        if (hour < 12) {
+          plans[day].morning.addAll(steps);
+        } else if (hour < 17) {
+          plans[day].afternoon.addAll(steps);
+        } else {
+          plans[day].night.addAll(steps);
+        }
+      }
+    }
+
+    for (var i = 0; i < 7; i++) {
+      ref.read(routineProvider.notifier).setSkinCarePlan(
+            i,
+            DaySkinPlan(
+              morning: plans[i].morning,
+              afternoon: plans[i].afternoon,
+              night: plans[i].night,
             ),
           );
-        });
-      },
-    );
+    }
+  }
+
+  List<int> _daysForRepeatRule(String repeatRule) {
+    final clean = repeatRule.trim().toLowerCase();
+    if (clean.isEmpty || clean == 'daily' || clean == 'everyday') {
+      return const [0, 1, 2, 3, 4, 5, 6];
+    }
+    if (clean.startsWith('weekly:')) {
+      final days = clean
+          .substring('weekly:'.length)
+          .split(',')
+          .map((item) => int.tryParse(item.trim()))
+          .whereType<int>()
+          .map((day) => (day - 1).clamp(0, 6))
+          .toSet()
+          .toList();
+      return days.isEmpty ? const [0, 1, 2, 3, 4, 5, 6] : days;
+    }
+    if (clean == 'weekdays') return const [0, 1, 2, 3, 4];
+    if (clean == 'weekends') return const [5, 6];
+    return const [0, 1, 2, 3, 4, 5, 6];
+  }
+
+  Future<void> _markSuggestionsAccepted(
+    List<Map<String, dynamic>> templates,
+  ) async {
+    final ids = templates
+        .map((template) => template['_suggestionId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final suggestionId in ids) {
+      await ref.read(firestoreServiceProvider).saveSuggestion(
+        suggestionId,
+        {
+          'status': 'accepted',
+          'acceptedAt': DateTime.now().toIso8601String(),
+        },
+      );
+      await ref.read(eventServiceProvider).emit(
+        eventName: EventNames.suggestionAccepted,
+        source: 'skin_care_setup',
+        payload: {'suggestionId': suggestionId},
+      );
+    }
   }
 
   @override
@@ -1121,11 +1260,6 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showImportOptions,
-        icon: const Icon(Icons.auto_awesome_rounded),
-        label: const Text('AI / Photo'),
-      ),
       body: LiquidBg(
         child: Stack(children: [
           SafeArea(
@@ -1194,6 +1328,99 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                   }),
                 ),
                 const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'Manual',
+                        icon: Icon(Icons.tune_rounded),
+                        label: Text('Manual'),
+                      ),
+                      ButtonSegment(
+                        value: 'Text AI',
+                        icon: Icon(Icons.text_fields_rounded),
+                        label: Text('Text AI'),
+                      ),
+                      ButtonSegment(
+                        value: 'Photo AI',
+                        icon: Icon(Icons.photo_camera_rounded),
+                        label: Text('Photo AI'),
+                      ),
+                    ],
+                    selected: {_setupMode},
+                    onSelectionChanged: (value) =>
+                        setState(() => _setupMode = value.first),
+                  ),
+                ),
+                if (_setupMode == 'Text AI')
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.85)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: _textImportCtrl,
+                            minLines: 3,
+                            maxLines: 5,
+                            decoration: const InputDecoration(
+                              hintText: 'Vitamin C, retinol, SPF, moisturiser',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                          if (_generationError != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              _generationError!,
+                              style: const TextStyle(
+                                color: Color(0xFFB91C1C),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 10),
+                          FilledButton.icon(
+                            onPressed: _isGenerating
+                                ? null
+                                : _generateTextSkinCareReview,
+                            icon: _isGenerating
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.auto_awesome_rounded),
+                            label: const Text('Generate'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_setupMode == 'Photo AI')
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            _isGenerating ? null : _generatePhotoSkinCareReview,
+                        icon: const Icon(Icons.photo_camera_rounded),
+                        label: const Text('Generate from photo'),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
 
                 // ── "Set Your Fixed Skincare Routine" Glass Header ──
                 Padding(

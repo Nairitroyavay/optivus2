@@ -611,7 +611,7 @@ function validateRawTemplateForMode(item, mode, index) {
     throw new AiOutputValidationError(`Missing or invalid startTime at index ${index}`);
   }
 
-  if (!isInputRoutineTime(item.endTime)) {
+  if (item.endTime !== undefined && !isInputRoutineTime(item.endTime)) {
     throw new AiOutputValidationError(`Missing or invalid endTime at index ${index}`);
   }
 
@@ -698,13 +698,27 @@ function normalizeTemplate(item, routineType, index) {
   }
 
   const title = stringField(item.title || item.name);
+  const startTime = normalizeRoutineTime(
+    item.startTime || item.time || defaultStartTime(routineType, index),
+    defaultStartTime(routineType, index)
+  );
   const template = {
     templateId: stringField(item.templateId || item.id) || `${routineType}_${index}_${slug(title || "template")}`,
     title,
-    startTime: normalizeRoutineTime(item.startTime || item.time || defaultStartTime(routineType, index), ""),
-    endTime: normalizeRoutineTime(item.endTime || defaultEndTime(routineType, index), ""),
-    repeatRule: stringField(item.repeatRule) || "daily",
+    time: startTime,
+    startTime,
+    endTime: normalizeRoutineTime(
+      item.endTime || addMinutesToTime(startTime, routineType === "skin_care" ? 15 : 30),
+      defaultEndTime(routineType, index)
+    ),
+    repeatRule: stringField(item.repeatRule || item.weekdayRule) || "daily",
+    timingRule: stringField(item.timingRule) || timingRuleFor(startTime),
+    weekdayRule: stringField(item.weekdayRule || item.repeatRule) || "daily",
     notes: stringField(item.notes || item.reason),
+    confidence: clampNumber(item.confidence, 0, 1, 0.75),
+    warnings: Array.isArray(item.warnings)
+      ? item.warnings.map((warning) => stringField(warning)).filter(Boolean)
+      : [],
     reminderEnabled: item.reminderEnabled === true
   };
 
@@ -813,8 +827,14 @@ async function writeSuggestionGeneratedEvents({
       index,
       item
     });
+    const eventId = await deterministicId("event", {
+      uid,
+      eventName: "suggestion_generated",
+      suggestionId
+    });
     suggestions.push({
       suggestionId,
+      eventId,
       uid,
       type: contract.outputKey === "suggestions" ? "routine_goal_suggestion" : "routine_import_preview",
       title: item.title || item.taskTitle,
@@ -835,22 +855,42 @@ async function writeSuggestionGeneratedEvents({
 
   if (suggestions.length === 0) return [];
 
-  const writes = suggestions.map((suggestion) => ({
-    update: {
-      name: firestoreDocumentName(projectId, `users/${uid}/suggestions/${suggestion.suggestionId}`),
-      fields: toFirestoreValue(suggestion).mapValue.fields
-    },
-    updateTransforms: [
-      {
-        fieldPath: "createdAt",
-        setToServerValue: "REQUEST_TIME"
+  const writes = suggestions.flatMap((suggestion) => {
+    const event = {
+      eventId: suggestion.eventId,
+      eventName: "suggestion_generated",
+      uid,
+      source: "routine-import-worker",
+      schemaVersion: 1,
+      payloadVersion: 1,
+      payload: {
+        suggestionId: suggestion.suggestionId
       },
+      deviceId: "server",
+      appVersion: "worker"
+    };
+
+    return [
       {
-        fieldPath: "updatedAt",
-        setToServerValue: "REQUEST_TIME"
-      }
-    ]
-  }));
+        update: {
+          name: firestoreDocumentName(projectId, `users/${uid}/suggestions/${suggestion.suggestionId}`),
+          fields: toFirestoreValue(suggestion).mapValue.fields
+        },
+        updateTransforms: [
+          {
+            fieldPath: "createdAt",
+            setToServerValue: "REQUEST_TIME"
+          },
+          {
+            fieldPath: "updatedAt",
+            setToServerValue: "REQUEST_TIME"
+          }
+        ]
+      },
+      eventWrite(projectId, uid, "events", event),
+      eventWrite(projectId, uid, "events_recent", event)
+    ];
+  });
 
   const response = await fetch(firestoreCommitUrl(projectId), {
     method: "POST",
@@ -863,6 +903,21 @@ async function writeSuggestionGeneratedEvents({
   }
 
   return suggestions;
+}
+
+function eventWrite(projectId, uid, collectionId, event) {
+  return {
+    update: {
+      name: firestoreDocumentName(projectId, `users/${uid}/${collectionId}/${event.eventId}`),
+      fields: toFirestoreValue(event).mapValue.fields
+    },
+    updateTransforms: [
+      {
+        fieldPath: "timestamp",
+        setToServerValue: "REQUEST_TIME"
+      }
+    ]
+  };
 }
 
 async function getFirestoreDocument({ projectId, path, accessToken }) {
@@ -970,7 +1025,8 @@ function schemaInstructionFor(mode) {
     case "skin_care_text":
     case "skin_care_photo":
       return `JSON schema:
-{"templates":[{"templateId":"stable_id","title":"Morning skin care","startTime":"07:30","endTime":"07:45","repeatRule":"daily","notes":"","reminderEnabled":false,"steps":[{"name":"Cleanser","notes":""}]}]}`;
+{"templates":[{"templateId":"stable_id","title":"Morning skin care","time":"07:30","startTime":"07:30","endTime":"07:45","timingRule":"morning","weekdayRule":"daily","repeatRule":"daily","steps":[{"name":"Cleanser","notes":""}],"notes":"","confidence":0.85,"warnings":[],"reminderEnabled":false}]}
+For skin care text, split AM-safe products such as Vitamin C and SPF into a morning block, and PM products such as retinol into a night block when both are present.`;
     case "supplement_text":
       return `JSON schema:
 {"templates":[{"templateId":"stable_id","title":"Vitamin D","dosage":"1000 IU","startTime":"08:00","endTime":"08:05","repeatRule":"daily","notes":"","reminderEnabled":false}]}`;
@@ -1191,6 +1247,21 @@ function defaultEndTime(routineType, index) {
   if (routineType === "eating") return ["08:30", "13:00", "17:30", "20:30"][index] || "20:30";
   if (routineType === "skin_care") return index === 0 ? "07:45" : "21:45";
   return "08:05";
+}
+
+function addMinutesToTime(time, minutes) {
+  const normalized = normalizeRoutineTime(time, "");
+  if (!normalized) return "";
+  const [hour, minute] = normalized.split(":").map(Number);
+  const total = (hour * 60 + minute + minutes) % (24 * 60);
+  return formatTime(Math.floor(total / 60), total % 60);
+}
+
+function timingRuleFor(time) {
+  const hour = Number(String(time || "07:30").split(":")[0]);
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "night";
 }
 
 function inferMealType(index) {
