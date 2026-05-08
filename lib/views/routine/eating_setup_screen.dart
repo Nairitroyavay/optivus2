@@ -1,9 +1,18 @@
+import 'dart:convert';
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/routine_provider.dart';
+import 'package:optivus2/services/image_upload_service.dart';
+import 'package:image_picker/image_picker.dart';
+
+const String _eatingRoutineImportEndpoint =
+    String.fromEnvironment('ROUTINE_IMPORT_ENDPOINT');
 
 String _formatTimeFromStart(double hoursFrom6AM) {
   int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
@@ -29,6 +38,8 @@ class EatingRoutineBlock {
   bool hasTopTape;
   bool hasBottomTape;
   bool reminderEnabled;
+  String? suggestionId;
+  int? weekday;
 
   String get displayStartTime => _formatTimeFromStart(start);
   String get displayEndTime => _formatTimeFromStart(start + duration);
@@ -46,6 +57,8 @@ class EatingRoutineBlock {
     this.hasTopTape = false,
     this.hasBottomTape = false,
     this.reminderEnabled = false,
+    this.suggestionId,
+    this.weekday,
   });
 }
 
@@ -73,6 +86,9 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
   ];
   int _colorIndex = 0;
   Map<String, dynamic>? _pendingImportMetadata;
+  final ImageUploadService _imageUploadService = ImageUploadService();
+  bool _isImportingPhoto = false;
+  String? _importError;
 
   @override
   void initState() {
@@ -774,130 +790,197 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
   }
 
   Future<void> _showImportOptions() async {
-    final inputCtrl = TextEditingController();
-    await showModalBottomSheet(
+    if (_isImportingPhoto) return;
+    final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
+      builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Eating Import',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: inputCtrl,
-              minLines: 3,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Generate with AI',
-                hintText: 'Breakfast oats 08:00, Lunch rice bowl 13:00',
-                border: OutlineInputBorder(),
-              ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Mess Photo from Camera'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
             ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _loadGeneratedMeals(
-                  inputCtrl.text.trim().isEmpty
-                      ? 'Breakfast oats, Lunch rice bowl, Dinner protein plate'
-                      : inputCtrl.text.trim(),
-                  source: 'text_ai',
-                );
-              },
-              icon: const Icon(Icons.auto_awesome_rounded),
-              label: const Text('Generate Review Items'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _loadGeneratedMeals(
-                  'Mess menu photo import',
-                  source: 'mess_menu_photo',
-                  imageMetadata: {
-                    'source': 'mess_menu_photo_upload',
-                    'createdAt': DateTime.now().toIso8601String(),
-                  },
-                );
-              },
-              icon: const Icon(Icons.photo_camera_rounded),
-              label: const Text('Upload Mess Menu Photo'),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Mess Photo from Gallery'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
             ),
           ],
         ),
       ),
     );
-    inputCtrl.dispose();
+    if (source == null) return;
+    await _pickUploadAndImportMessPhoto(source);
   }
 
-  Future<void> _loadGeneratedMeals(
-    String sourceText, {
-    required String source,
-    Map<String, dynamic>? imageMetadata,
-  }) async {
-    var generated = <Map<String, dynamic>>[];
+  Future<void> _pickUploadAndImportMessPhoto(ImageSource source) async {
+    setState(() {
+      _isImportingPhoto = true;
+      _importError = null;
+    });
+
+    Map<String, dynamic>? imageMetadata;
     try {
-      generated =
-          await ref.read(routineRepositoryProvider).previewRoutineImport(
-                routineType: 'eating',
-                mode: source,
-                sourceText: sourceText,
-                imageMetadata: imageMetadata,
-              );
+      final uploaded = await _imageUploadService.pickCompressAndUpload(
+        source: source,
+        routineType: 'eating',
+      );
+      if (!mounted || uploaded == null) return;
+
+      final storagePath = uploaded['path']?.toString() ?? '';
+      imageMetadata = {
+        ...uploaded,
+        'storagePath': storagePath,
+        'source': 'eating_mess_photo',
+        'routineType': 'eating',
+        'uploadedAt': DateTime.now().toIso8601String(),
+      };
+
+      final generated = await _previewMessPhotoImport(
+        storagePath: storagePath,
+        imageMetadata: imageMetadata,
+      );
+      if (!mounted) return;
+
+      final grid = _weeklyBlocksFromTemplates(generated);
+      final totalMeals = grid.values.fold<int>(
+        0,
+        (sum, dayBlocks) => sum + dayBlocks.length,
+      );
+      if (totalMeals == 0) {
+        await _deleteUploadedImageQuietly(imageMetadata);
+        if (!mounted) return;
+        setState(() {
+          _importError =
+              'No mess menu meals were detected. Try a clearer weekly menu photo.';
+        });
+        return;
+      }
+
+      final suggestionIds = generated
+          .map((template) => template['_suggestionId']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      final accepted = await _showMessMenuReview(grid, {
+        'mode': 'eating_mess_photo',
+        'storagePath': storagePath,
+        'imageMetadata': imageMetadata,
+        if (suggestionIds.isNotEmpty) 'suggestionIds': suggestionIds,
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      if (accepted != true) {
+        await _deleteUploadedImageQuietly(imageMetadata);
+      }
     } catch (e) {
-      debugPrint('[EatingSetup] routineImport preview failed: $e');
+      debugPrint('[EatingSetup] mess photo import failed: $e');
+      await _deleteUploadedImageQuietly(imageMetadata);
+      if (mounted) {
+        setState(() {
+          _importError =
+              'Mess photo import failed. Check the image and endpoint configuration.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isImportingPhoto = false);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _previewMessPhotoImport({
+    required String storagePath,
+    required Map<String, dynamic> imageMetadata,
+  }) async {
+    if (_eatingRoutineImportEndpoint.isEmpty) {
+      throw Exception('ROUTINE_IMPORT_ENDPOINT is not configured.');
     }
 
-    final blocks = generated.isNotEmpty
-        ? generated.map(_mealBlockFromTemplate).toList()
-        : _mealBlocksFromText(sourceText);
-    _showMealReview(blocks, {
-      'mode': source,
-      'sourceText': sourceText,
-      if (imageMetadata != null) 'imageMetadata': imageMetadata,
-      'createdAt': DateTime.now().toIso8601String(),
-    });
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Cannot call routine import endpoint without auth token');
+    }
+    final idToken = await user.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Cannot call routine import endpoint without auth token');
+    }
+
+    final response = await http.post(
+      Uri.parse(_eatingRoutineImportEndpoint),
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'userId': user.uid,
+        'routineType': 'eating',
+        'mode': 'eating_mess_photo',
+        'commit': false,
+        'storagePath': storagePath,
+        'imageMetadata': imageMetadata,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Routine import endpoint failed: '
+        '${response.statusCode} ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception('Routine import endpoint returned invalid JSON');
+    }
+
+    final data = Map<String, dynamic>.from(decoded);
+    final raw = data['weeklyGrid'] ?? data['templates'] ?? data['items'];
+    if (raw is! List) return const [];
+    final suggestionIds = data['suggestionIds'] is List
+        ? (data['suggestionIds'] as List)
+            .map((item) => item.toString())
+            .toList()
+        : const <String>[];
+    final templates = <Map<String, dynamic>>[];
+    for (var i = 0; i < raw.length; i++) {
+      final item = raw[i];
+      if (item is! Map) continue;
+      final template = Map<String, dynamic>.from(item);
+      if (i < suggestionIds.length && suggestionIds[i].trim().isNotEmpty) {
+        template['_suggestionId'] = suggestionIds[i].trim();
+      }
+      templates.add(template);
+    }
+    return templates;
   }
 
-  List<EatingRoutineBlock> _mealBlocksFromText(String sourceText) {
-    final names = sourceText
-        .split(RegExp(r'[,\\n]'))
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
-    return names.take(4).toList().asMap().entries.map((entry) {
-      return EatingRoutineBlock(
-        id: 'generated_${DateTime.now().microsecondsSinceEpoch}_${entry.key}',
-        mealName: entry.value.split(' ').first,
-        foodName: entry.value,
-        start: 2.0 + entry.key * 4.0,
-        duration: 0.5,
-        emoji: '🍽️',
-        color: const Color(0xFFFF9560),
-        hasTopTape: true,
-        hasBottomTape: true,
-      );
-    }).toList();
+  Future<void> _deleteUploadedImageQuietly(
+    Map<String, dynamic>? imageMetadata,
+  ) async {
+    try {
+      await _imageUploadService.deleteUploadedMetadata(imageMetadata);
+    } catch (e) {
+      debugPrint('[EatingSetup] upload cleanup failed: $e');
+    }
   }
 
   EatingRoutineBlock _mealBlockFromTemplate(Map<String, dynamic> template) {
     final start =
         _parseHoursFrom6AM(template['startTime']?.toString() ?? '8:00 AM');
-    final end =
-        _parseHoursFrom6AM(template['endTime']?.toString() ?? '8:30 AM');
+    var end = _parseHoursFrom6AM(template['endTime']?.toString() ?? '8:30 AM');
+    if (end <= start) end += 24;
+    final mealTime = template['mealTime']?.toString().trim().isNotEmpty == true
+        ? template['mealTime'].toString().trim()
+        : template['mealType']?.toString().trim().isNotEmpty == true
+            ? template['mealType'].toString().trim()
+            : template['title']?.toString().trim().isNotEmpty == true
+                ? template['title'].toString().trim()
+                : 'Meal';
     return EatingRoutineBlock(
       id: template['templateId']?.toString() ??
           'generated_${DateTime.now().microsecondsSinceEpoch}',
-      mealName: template['mealType']?.toString() ?? 'Meal',
-      foodName: template['title']?.toString() ?? '',
+      mealName: mealTime,
+      foodName: _menuItemsText(template),
       start: start,
       duration: (end > start ? end - start : 0.5).clamp(0.5, 3.0).toDouble(),
       emoji: template['emoji']?.toString() ?? '🍽️',
@@ -905,97 +988,369 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       hasTopTape: true,
       hasBottomTape: true,
       reminderEnabled: template['reminderEnabled'] == true,
+      suggestionId: template['_suggestionId']?.toString(),
+      weekday: _weekdayFromTemplate(template),
     );
   }
 
-  Future<void> _showMealReview(
-    List<EatingRoutineBlock> blocks,
+  String _menuItemsText(Map<String, dynamic> template) {
+    final items = template['items'];
+    if (items is List) {
+      final text = items
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .join(', ');
+      if (text.isNotEmpty) return text;
+    }
+    final notes = template['notes']?.toString().trim() ?? '';
+    if (notes.isNotEmpty) return notes;
+    final mealName = template['mealName']?.toString().trim() ?? '';
+    if (mealName.isNotEmpty) return mealName;
+    return template['title']?.toString().trim() ?? '';
+  }
+
+  Map<int, List<EatingRoutineBlock>> _weeklyBlocksFromTemplates(
+    List<Map<String, dynamic>> templates,
+  ) {
+    final grid = <int, List<EatingRoutineBlock>>{
+      for (var day = 0; day < 7; day++) day: <EatingRoutineBlock>[],
+    };
+    for (var i = 0; i < templates.length; i++) {
+      final template = templates[i];
+      final weekday = _weekdayFromTemplate(template);
+      final block = _mealBlockFromTemplate(template);
+      block.color = _cycleColors[(_colorIndex + i) % _cycleColors.length];
+      grid[weekday - 1]!.add(block);
+    }
+    for (final blocks in grid.values) {
+      blocks.sort((a, b) => a.start.compareTo(b.start));
+    }
+    return grid;
+  }
+
+  int _weekdayFromTemplate(Map<String, dynamic> template) {
+    final direct = _weekdayFromValue(template['weekday']);
+    if (direct != null) return direct;
+    final repeatRule = template['repeatRule']?.toString() ?? '';
+    final match = RegExp(r'mess_menu_weekday:(\d)').firstMatch(repeatRule);
+    if (match != null) return _clampWeekday(int.parse(match.group(1)!));
+    return _day + 1;
+  }
+
+  int? _weekdayFromValue(Object? value) {
+    if (value is int) return _clampWeekday(value);
+    if (value is num) return _clampWeekday(value.round());
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    if (text.isEmpty) return null;
+    final numeric = int.tryParse(text);
+    if (numeric != null) return _clampWeekday(numeric);
+    const aliases = {
+      'mon': 1,
+      'monday': 1,
+      'tue': 2,
+      'tues': 2,
+      'tuesday': 2,
+      'wed': 3,
+      'wednesday': 3,
+      'thu': 4,
+      'thur': 4,
+      'thurs': 4,
+      'thursday': 4,
+      'fri': 5,
+      'friday': 5,
+      'sat': 6,
+      'saturday': 6,
+      'sun': 7,
+      'sunday': 7,
+    };
+    return aliases[text];
+  }
+
+  int _clampWeekday(int value) => value.clamp(1, 7).toInt();
+
+  String _weekdayLabel(int weekday) {
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return labels[_clampWeekday(weekday) - 1];
+  }
+
+  String _format24h(double hoursFrom6AM) {
+    final totalMinutes = ((hoursFrom6AM + 6) * 60).round();
+    final h = (totalMinutes ~/ 60) % 24;
+    final m = totalMinutes % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  Future<bool> _showMessMenuReview(
+    Map<int, List<EatingRoutineBlock>> grid,
     Map<String, dynamic> importMetadata,
   ) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final review = List<EatingRoutineBlock>.from(blocks);
-        return StatefulBuilder(builder: (context, setSheetState) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              MediaQuery.of(ctx).viewInsets.bottom + 20,
-            ),
-            child: SizedBox(
-              height: MediaQuery.of(ctx).size.height * 0.72,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('Review generated meals',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: review.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final item = review[index];
-                        return TextFormField(
-                          initialValue: '${item.mealName}: ${item.foodName}',
-                          decoration: const InputDecoration(
-                            labelText: 'Meal and food',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (value) {
-                            final parts = value.split(':');
-                            item.mealName = parts.first.trim().isEmpty
-                                ? item.mealName
-                                : parts.first.trim();
-                            item.foodName = parts.length > 1
-                                ? parts.sublist(1).join(':').trim()
-                                : value.trim();
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  Row(
+    return await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          builder: (ctx) {
+            final review = grid.values
+                .expand((blocks) => blocks)
+                .where((block) => !block.isAdd)
+                .toList();
+            var isAccepting = false;
+            return StatefulBuilder(builder: (context, setSheetState) {
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  MediaQuery.of(ctx).viewInsets.bottom + 20,
+                ),
+                child: SizedBox(
+                  height: MediaQuery.of(ctx).size.height * 0.78,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextButton.icon(
-                        onPressed: () => setSheetState(() {
-                          if (review.isNotEmpty) review.removeLast();
-                        }),
-                        icon: const Icon(Icons.remove_circle_outline_rounded),
-                        label: const Text('Remove'),
+                      const Text('Review mess menu',
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: review.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final item = review[index];
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: const Color(0xFFE2E8F0), width: 1),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: DropdownButtonFormField<int>(
+                                          initialValue: _clampWeekday(
+                                              item.weekday ?? _day + 1),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Day',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          items: List.generate(
+                                            7,
+                                            (dayIndex) => DropdownMenuItem(
+                                              value: dayIndex + 1,
+                                              child: Text(
+                                                  _weekdayLabel(dayIndex + 1)),
+                                            ),
+                                          ),
+                                          onChanged: (value) {
+                                            if (value != null) {
+                                              item.weekday = value;
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        flex: 2,
+                                        child: TextFormField(
+                                          initialValue: item.mealName,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Meal',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) {
+                                            final next = value.trim();
+                                            if (next.isNotEmpty) {
+                                              item.mealName = next;
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    initialValue: item.foodName,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Items',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    onChanged: (value) =>
+                                        item.foodName = value.trim(),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: _format24h(item.start),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Start',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) {
+                                            final parsed =
+                                                _parseHoursFrom6AM(value);
+                                            final currentEnd =
+                                                item.start + item.duration;
+                                            item.start = parsed;
+                                            item.duration =
+                                                (currentEnd - parsed)
+                                                    .clamp(0.5, 3.0)
+                                                    .toDouble();
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: _format24h(
+                                              item.start + item.duration),
+                                          decoration: const InputDecoration(
+                                            labelText: 'End',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) {
+                                            var parsed =
+                                                _parseHoursFrom6AM(value);
+                                            if (parsed <= item.start) {
+                                              parsed += 24;
+                                            }
+                                            item.duration =
+                                                (parsed - item.start)
+                                                    .clamp(0.5, 3.0)
+                                                    .toDouble();
+                                          },
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Remove',
+                                        onPressed: () => setSheetState(
+                                            () => review.removeAt(index)),
+                                        icon: const Icon(Icons
+                                            .remove_circle_outline_rounded),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _showImportOptions();
-                        },
-                        child: const Text('Regenerate'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: () {
-                          setState(() {
-                            weeklyRoutines[_day]!.insertAll(0, review);
-                            _pendingImportMetadata = importMetadata;
-                          });
-                          Navigator.pop(ctx);
-                        },
-                        child: const Text('Accept all'),
+                      Row(
+                        children: [
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx, false);
+                              _showImportOptions();
+                            },
+                            child: const Text('Regenerate'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: isAccepting
+                                ? null
+                                : () async {
+                                    setSheetState(() => isAccepting = true);
+                                    final accepted = review
+                                        .where((item) =>
+                                            item.mealName.trim().isNotEmpty)
+                                        .toList();
+                                    await _markSuggestionsAccepted(accepted);
+                                    if (!mounted) return;
+                                    setState(() {
+                                      _applyReviewedMessMenu(accepted);
+                                      _pendingImportMetadata = importMetadata;
+                                      _colorIndex += accepted.length;
+                                    });
+                                    if (!ctx.mounted) return;
+                                    Navigator.pop(ctx, true);
+                                  },
+                            child: Text(
+                                isAccepting ? 'Accepting...' : 'Accept all'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-          );
-        });
-      },
-    );
+                ),
+              );
+            });
+          },
+        ) ??
+        false;
+  }
+
+  void _applyReviewedMessMenu(List<EatingRoutineBlock> accepted) {
+    final next = <int, List<EatingRoutineBlock>>{
+      for (var day = 0; day < 7; day++) day: <EatingRoutineBlock>[],
+    };
+    for (final item in accepted) {
+      final day = _clampWeekday(item.weekday ?? _day + 1) - 1;
+      item.isAdd = false;
+      item.hasTopTape = true;
+      item.hasBottomTape = true;
+      item.color ??= _cycleColors[_colorIndex % _cycleColors.length];
+      next[day]!.add(item);
+    }
+    for (var day = 0; day < 7; day++) {
+      next[day]!.sort((a, b) => a.start.compareTo(b.start));
+      weeklyRoutines[day] = _withAddButtons(next[day]!, day);
+    }
+  }
+
+  List<EatingRoutineBlock> _withAddButtons(
+    List<EatingRoutineBlock> blocks,
+    int day,
+  ) {
+    final result = <EatingRoutineBlock>[];
+    for (var index = 0; index < blocks.length; index++) {
+      final block = blocks[index];
+      result.add(block);
+      result.add(EatingRoutineBlock(
+        id: 'add_${day}_${index}_${DateTime.now().microsecondsSinceEpoch}',
+        mealName: '',
+        start: (block.start + block.duration + 0.5).clamp(0.0, 23.5).toDouble(),
+        isAdd: true,
+      ));
+    }
+    if (result.isEmpty) {
+      result.add(EatingRoutineBlock(
+        id: 'add_${day}_${DateTime.now().microsecondsSinceEpoch}',
+        mealName: '',
+        start: 2.0,
+        isAdd: true,
+      ));
+    }
+    return result;
+  }
+
+  Future<void> _markSuggestionsAccepted(
+    List<EatingRoutineBlock> blocks,
+  ) async {
+    final ids = blocks
+        .map((block) => block.suggestionId ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final suggestionId in ids) {
+      await ref.read(firestoreServiceProvider).saveSuggestion(
+        suggestionId,
+        {
+          'status': 'accepted',
+          'acceptedAt': DateTime.now().toIso8601String(),
+        },
+      );
+      await ref.read(eventServiceProvider).emit(
+        eventName: EventNames.suggestionAccepted,
+        source: 'eating_setup',
+        payload: {'suggestionId': suggestionId},
+      );
+    }
   }
 
   @override
@@ -1137,6 +1492,49 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (_isImportingPhoto || _importError != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.9)),
+                      ),
+                      child: Row(
+                        children: [
+                          if (_isImportingPhoto)
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            const Icon(Icons.error_outline_rounded,
+                                size: 18, color: Color(0xFFEF4444)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _isImportingPhoto
+                                  ? 'Reading mess menu photo...'
+                                  : _importError!,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF475569),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_isImportingPhoto || _importError != null)
+                  const SizedBox(height: 12),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),

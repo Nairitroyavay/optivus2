@@ -4,7 +4,10 @@ const firebaseJwks = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
 );
 
-const firestoreScope = "https://www.googleapis.com/auth/datastore";
+const firestoreScope = [
+  "https://www.googleapis.com/auth/datastore",
+  "https://www.googleapis.com/auth/devstorage.read_only"
+].join(" ");
 const maxItemsPerMode = 12;
 
 const modeContracts = {
@@ -155,7 +158,17 @@ export default {
     const mode = modeResult.mode;
     const contract = modeContracts[mode];
     const sourceText = stringField(body.sourceText || body.text || body.prompt);
-    const imageMetadata = objectField(body.imageMetadata);
+    let imageMetadata = objectField(body.imageMetadata);
+    const storagePath = stringField(
+      body.storagePath || body.imagePath || imageMetadata?.storagePath || imageMetadata?.path
+    );
+    if (storagePath) {
+      imageMetadata = {
+        ...(imageMetadata || {}),
+        storagePath,
+        path: imageMetadata?.path || storagePath
+      };
+    }
     const context = objectField(body.context) || objectField(body.contextPayload) || {};
 
     const inputError = validateInput(contract, sourceText, imageMetadata, context);
@@ -199,6 +212,7 @@ export default {
         sourceText,
         imageMetadata,
         context,
+        accessToken,
         safetyFlags
       });
       const safePreview = applySafetyPolicy(preview, contract, safetyFlags);
@@ -226,6 +240,10 @@ export default {
 
       if (mode === "class_timetable_photo") {
         output.classes = safePreview.map(classOutputItem);
+      }
+
+      if (mode === "eating_mess_photo") {
+        output.weeklyGrid = safePreview.map(eatingGridOutputItem);
       }
 
       if (contract.outputKey === "suggestions") {
@@ -366,14 +384,15 @@ function validateInput(contract, sourceText, imageMetadata, context) {
 
   if (contract.input === "photo") {
     const hasImageUrl = !!stringField(imageMetadata?.downloadUrl || imageMetadata?.url);
+    const hasStoragePath = !!stringField(imageMetadata?.storagePath || imageMetadata?.path);
     const hasTextHint = !!stringField(
       sourceText || imageMetadata?.ocrText || imageMetadata?.text || imageMetadata?.description
     );
     if (!imageMetadata && !sourceText) {
       return "Provide imageMetadata or extracted sourceText for this photo mode";
     }
-    if (!hasImageUrl && !hasTextHint) {
-      return "Provide an uploaded image URL or OCR text for this photo mode";
+    if (!hasImageUrl && !hasStoragePath && !hasTextHint) {
+      return "Provide an uploaded image URL, Storage path, or OCR text for this photo mode";
     }
   }
 
@@ -550,6 +569,7 @@ async function generatePreview({
   sourceText,
   imageMetadata,
   context,
+  accessToken,
   safetyFlags
 }) {
   const prompt = buildRoutineImportPrompt({
@@ -562,13 +582,17 @@ async function generatePreview({
     safetyFlags
   });
   const imagePart = contract.input === "photo"
-    ? await imagePartFromMetadata(imageMetadata)
+    ? await imagePartFromMetadata(imageMetadata, env, accessToken, uid)
     : null;
   const data = await callGemini({
     env,
     prompt,
     imagePart,
-    maxOutputTokens: contract.outputKey === "suggestions" ? 700 : 1000,
+    maxOutputTokens: mode === "eating_mess_photo"
+      ? 2500
+      : contract.outputKey === "suggestions"
+        ? 700
+        : 1000,
     temperature: 0.2
   });
   const text = extractGeminiText(data).trim();
@@ -593,7 +617,7 @@ function validateAiOutput(parsed, mode, contract) {
       throw new AiOutputValidationError("Missing suggestions array");
     }
 
-    const suggestions = rawSuggestions.slice(0, maxItemsPerMode).map((item, index) => {
+    const suggestions = rawSuggestions.slice(0, maxItemsForMode(mode)).map((item, index) => {
       validateRawSuggestionForMode(item, index);
       const suggestion = normalizeSuggestion(item, index);
       return suggestion;
@@ -614,15 +638,17 @@ function validateAiOutput(parsed, mode, contract) {
         ? parsed.blocks
         : mode === "class_timetable_photo" && Array.isArray(parsed.classes)
           ? parsed.classes
-          : null;
+          : mode === "eating_mess_photo" && Array.isArray(parsed.weeklyGrid)
+            ? parsed.weeklyGrid
+            : null;
 
   if (!rawTemplates) {
     throw new AiOutputValidationError("Missing templates array");
   }
 
-  const templates = rawTemplates.slice(0, maxItemsPerMode).map((item, index) => {
+  const templates = rawTemplates.slice(0, maxItemsForMode(mode)).map((item, index) => {
     validateRawTemplateForMode(item, mode, index);
-    const template = normalizeTemplate(item, contract.routineType, index);
+    const template = normalizeTemplate(item, contract.routineType, index, mode);
     validateTemplateForMode(template, mode, index);
     return template;
   });
@@ -655,6 +681,28 @@ function validateRawTemplateForMode(item, mode, index) {
     }
     if (!isInputRoutineTime(item.end || item.endTime)) {
       throw new AiOutputValidationError(`Missing or invalid class end at index ${index}`);
+    }
+    return;
+  }
+
+  if (mode === "eating_mess_photo") {
+    if (_eatingWeekdayFromItem(item) === 0) {
+      throw new AiOutputValidationError(`Missing or invalid eating weekday at index ${index}`);
+    }
+    if (!stringField(item.mealTime || item.mealType || item.type || item.title || item.name)) {
+      throw new AiOutputValidationError(`Missing eating mealTime at index ${index}`);
+    }
+    const hasItems = Array.isArray(item.items)
+      ? item.items.some((entry) => stringField(entry))
+      : !!stringField(item.items || item.mealName || item.title || item.notes);
+    if (!hasItems) {
+      throw new AiOutputValidationError(`Missing eating menu items at index ${index}`);
+    }
+    if (item.startTime !== undefined && !isInputRoutineTime(item.startTime || item.time)) {
+      throw new AiOutputValidationError(`Invalid eating startTime at index ${index}`);
+    }
+    if (item.endTime !== undefined && !isInputRoutineTime(item.endTime)) {
+      throw new AiOutputValidationError(`Invalid eating endTime at index ${index}`);
     }
     return;
   }
@@ -746,6 +794,15 @@ function validateTemplateForMode(template, mode, index) {
     throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
   }
 
+  if (mode === "eating_mess_photo") {
+    if (!template.weekday || !/^mess_menu_weekday:[1-7]$/.test(template.repeatRule)) {
+      throw new AiOutputValidationError(`Missing eating mess weekday at index ${index}`);
+    }
+    if (!Array.isArray(template.items) || template.items.length === 0) {
+      throw new AiOutputValidationError(`Missing eating mess items at index ${index}`);
+    }
+  }
+
   if (mode === "class_timetable_photo" && (!template.weekday || !template.subject)) {
     throw new AiOutputValidationError(`Missing class weekday or subject at index ${index}`);
   }
@@ -762,17 +819,38 @@ function hasValidSteps(value) {
     });
 }
 
-function normalizeTemplate(item, routineType, index) {
+function normalizeTemplate(item, routineType, index, mode = "") {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
     throw new AiOutputValidationError(`Template at index ${index} must be an object`);
   }
 
-  const title = stringField(item.title || item.name || item.subject);
-  const startTime = normalizeRoutineTime(
-    item.startTime || item.start || item.time || defaultStartTime(routineType, index),
-    defaultStartTime(routineType, index)
+  const title = stringField(
+    item.title
+    || item.name
+    || item.subject
+    || item.mealName
+    || item.mealTime
+    || item.mealType
+    || item.type
   );
-  const weekday = routineType === "classes" ? _classWeekdayFromItem(item) : 0;
+  const eatingMealType = stringField(item.mealTime || item.mealType || item.type || title);
+  const defaultStart = routineType === "eating"
+    ? defaultEatingStartTime(eatingMealType, index)
+    : defaultStartTime(routineType, index);
+  const startTime = normalizeRoutineTime(
+    item.startTime || item.start || item.time || defaultStart,
+    defaultStart
+  );
+  const weekday = routineType === "classes"
+    ? _classWeekdayFromItem(item)
+    : routineType === "eating"
+      ? _eatingWeekdayFromItem(item)
+      : 0;
+  const repeatRule = mode === "eating_mess_photo" && weekday > 0
+    ? `mess_menu_weekday:${weekday}`
+    : routineType === "classes" && weekday > 0
+      ? `weekly:${weekday}`
+      : stringField(item.repeatRule || item.weekdayRule) || "daily";
   const template = {
     templateId: stringField(item.templateId || item.id) || `${routineType}_${index}_${slug(title || "template")}`,
     title,
@@ -782,11 +860,9 @@ function normalizeTemplate(item, routineType, index) {
       item.endTime || item.end || addMinutesToTime(startTime, defaultDurationMinutes(routineType)),
       defaultEndTime(routineType, index)
     ),
-    repeatRule: routineType === "classes" && weekday > 0
-      ? `weekly:${weekday}`
-      : stringField(item.repeatRule || item.weekdayRule) || "daily",
+    repeatRule,
     timingRule: stringField(item.timingRule) || timingRuleFor(startTime),
-    weekdayRule: stringField(item.weekdayRule || item.repeatRule) || "daily",
+    weekdayRule: stringField(item.weekdayRule || item.repeatRule) || repeatRule,
     notes: stringField(item.notes || item.reason),
     confidence: clampNumber(item.confidence, 0, 1, 0.75),
     warnings: Array.isArray(item.warnings)
@@ -828,7 +904,14 @@ function normalizeTemplate(item, routineType, index) {
   }
 
   if (routineType === "eating") {
-    template.mealType = stringField(item.mealType || item.type) || inferMealType(index);
+    template.weekday = weekday || 0;
+    template.mealTime = eatingMealType || inferMealType(index);
+    template.mealName = stringField(item.mealName || item.title || item.name);
+    template.mealType = stringField(item.mealType || item.type || item.mealTime) || inferMealType(index);
+    template.items = normalizeEatingItems(item);
+    if (!template.notes && template.items.length > 0) {
+      template.notes = template.items.join(", ");
+    }
   }
 
   return template;
@@ -851,6 +934,22 @@ function normalizeSuggestion(item, index) {
     targetSurface: stringField(item.targetSurface) || "routine",
     priorityScore: clampNumber(item.priorityScore ?? item.priority, 0, 1, 0.5)
   };
+}
+
+function normalizeEatingItems(item) {
+  if (Array.isArray(item.items)) {
+    return item.items
+      .map((entry) => stringField(entry))
+      .filter(Boolean);
+  }
+
+  const raw = stringField(item.items || item.mealName || item.title || item.notes);
+  if (!raw) return [];
+  return raw
+    .split(/,|\n|\+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 function _classWeekday(value) {
@@ -897,6 +996,18 @@ function _classWeekdayFromItem(item) {
   return 0;
 }
 
+function _eatingWeekdayFromItem(item) {
+  const direct = _classWeekday(item?.weekday || item?.day);
+  if (direct > 0) return direct;
+
+  const repeatRule = stringField(item?.repeatRule || item?.weekdayRule).toLowerCase();
+  const messMatch = repeatRule.match(/^mess_menu_weekday:(\d)$/);
+  if (messMatch) return _classWeekday(messMatch[1]);
+  const weeklyMatch = repeatRule.match(/^weekly:(\d)$/);
+  if (weeklyMatch) return _classWeekday(weeklyMatch[1]);
+  return 0;
+}
+
 function classOutputItem(item) {
   return {
     weekday: item.weekday,
@@ -905,6 +1016,22 @@ function classOutputItem(item) {
     professor: item.professor || "",
     start: item.start || item.startTime,
     end: item.end || item.endTime
+  };
+}
+
+function eatingGridOutputItem(item) {
+  return {
+    weekday: item.weekday,
+    mealTime: item.mealTime || item.mealType || inferMealType(0),
+    mealName: item.mealName || item.title || "",
+    items: Array.isArray(item.items) ? item.items : [],
+    title: item.title,
+    mealType: item.mealType,
+    startTime: item.startTime,
+    endTime: item.endTime,
+    repeatRule: item.repeatRule,
+    notes: item.notes || "",
+    reminderEnabled: item.reminderEnabled === true
   };
 }
 
@@ -1152,7 +1279,7 @@ Rules:
 - For skin care photos, identify visible product names from labels and place AM-safe products like cleanser, vitamin C, moisturizer, and SPF in morning timing; place retinoids, exfoliating acids, and night creams in evening timing unless the label clearly says otherwise.
 - If a photo is unreadable or contains no skin care products, return {"templates":[]} instead of guessing.
 - For eating modes, do not include calories, macros, weight-loss framing, or restrictive dieting language when eatingDisorderHistory is true.
-- Return at least 1 and at most ${maxItemsPerMode} items unless an unreadable photo rule requires an empty templates array.`;
+- Return at least 1 and at most ${maxItemsForMode(mode)} items unless an unreadable photo rule requires an empty templates array.`;
 }
 
 function schemaInstructionFor(mode) {
@@ -1171,6 +1298,9 @@ For supplements, create one template per named supplement. Use only these timing
 {"classes":[{"weekday":1,"subject":"Physics","room":"A-101","professor":"Dr Rao","start":"09:00","end":"10:00"}]}
 For class timetable photos, use weekday 1=Monday through 7=Sunday. Return one item per recurring weekly class period, including blank strings for unknown room or professor.`;
     case "eating_mess_photo":
+      return `JSON schema:
+{"weeklyGrid":[{"weekday":1,"mealTime":"Breakfast","mealName":"Breakfast","items":["Idli","Sambar"],"startTime":"08:00","endTime":"08:30","repeatRule":"mess_menu_weekday:1","notes":"","reminderEnabled":false}]}
+For mess menu photos, OCR the weekly sheet into one item per weekday and meal slot. Use weekday 1=Monday through 7=Sunday. Put the visible meal slot in mealTime, the visible menu label in mealName when present, and each visible dish in items. Use repeatRule "mess_menu_weekday:N" for each item. If the photo is unreadable or is not a mess menu, return {"weeklyGrid":[]}.`;
     case "eating_goal_text":
       return `JSON schema:
 {"templates":[{"templateId":"stable_id","title":"Breakfast","mealType":"Breakfast","startTime":"08:00","endTime":"08:30","repeatRule":"daily","notes":"","reminderEnabled":false}]}`;
@@ -1219,13 +1349,26 @@ async function callGemini({ env, prompt, imagePart, maxOutputTokens, temperature
   return data;
 }
 
-async function imagePartFromMetadata(imageMetadata) {
+async function imagePartFromMetadata(imageMetadata, env, accessToken, uid) {
   const downloadUrl = stringField(imageMetadata?.downloadUrl || imageMetadata?.url);
-  if (!downloadUrl) return null;
+  const storagePath = stringField(imageMetadata?.storagePath || imageMetadata?.path);
+  if (!downloadUrl && !storagePath) return null;
 
   let response;
   try {
-    response = await fetch(downloadUrl);
+    if (storagePath) {
+      response = await fetchStorageObject({
+        env,
+        accessToken,
+        uid,
+        storagePath
+      });
+      if (!response.ok && downloadUrl) {
+        response = await fetch(downloadUrl);
+      }
+    } else {
+      response = await fetch(downloadUrl);
+    }
   } catch (_) {
     throw new BadImageError("Image fetch failed");
   }
@@ -1253,6 +1396,22 @@ async function imagePartFromMetadata(imageMetadata) {
       data: arrayBufferToBase64(bytes)
     }
   };
+}
+
+async function fetchStorageObject({ env, accessToken, uid, storagePath }) {
+  const expectedPrefix = `users/${uid}/uploads/`;
+  if (!storagePath.startsWith(expectedPrefix)) {
+    throw new BadImageError("Image path is not owned by this user");
+  }
+
+  const bucket = stringField(env.FIREBASE_STORAGE_BUCKET)
+    || `${env.FIREBASE_PROJECT_ID}.appspot.com`;
+  const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(storagePath)}?alt=media`;
+  return fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${accessToken}`
+    }
+  });
 }
 
 function normalizeImageMimeType(value) {
@@ -1387,6 +1546,10 @@ function currentMonthKey(date = new Date()) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function maxItemsForMode(mode) {
+  return mode === "eating_mess_photo" ? 42 : maxItemsPerMode;
+}
+
 function normalizeRoutineTime(value, fallback) {
   const raw = String(value || "").trim();
   const amPm = raw.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
@@ -1436,6 +1599,15 @@ function defaultStartTime(routineType, index) {
   if (routineType === "skin_care") return index === 0 ? "07:30" : "21:30";
   if (routineType === "supplements") return ["08:30", "18:30", "13:30", "22:00"][index] || "08:30";
   return "08:00";
+}
+
+function defaultEatingStartTime(mealTime, index) {
+  const text = stringField(mealTime).toLowerCase();
+  if (text.includes("breakfast") || text.includes("morning")) return "08:00";
+  if (text.includes("lunch") || text.includes("noon")) return "12:30";
+  if (text.includes("snack") || text.includes("tea")) return "17:00";
+  if (text.includes("dinner") || text.includes("night")) return "20:00";
+  return defaultStartTime("eating", index);
 }
 
 function defaultEndTime(routineType, index) {
