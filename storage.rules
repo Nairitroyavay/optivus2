@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isJpegUpload() {
+      return request.resource.contentType == 'image/jpeg';
+    }
+
+    function isUnderOneMb() {
+      return request.resource.size < 1000 * 1000;
+    }
+
+    match /users/{userId}/uploads/{routineType}/{fileName} {
+      allow read, delete: if isOwner(userId)
+        && routineType.matches('^[a-z0-9_-]+$')
+        && fileName.matches('^[0-9]+\\.jpg$');
+
+      allow create, update: if isOwner(userId)
+        && routineType.matches('^[a-z0-9_-]+$')
+        && fileName.matches('^[0-9]+\\.jpg$')
+        && isJpegUpload()
+        && isUnderOneMb();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
