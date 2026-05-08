@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/models/context_snapshot.dart';
 import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/streak_service.dart';
@@ -10,9 +11,98 @@ import 'package:optivus2/models/coach_rule.dart';
 import 'package:optivus2/models/habit_model.dart';
 import 'package:optivus2/models/event_model.dart';
 import 'package:optivus2/repositories/user_repository.dart';
+import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/services/gemini_service.dart';
 
+enum CoachTopicMode {
+  recovery(
+      'recovery', 'Recovery', 'Setbacks, urges, and getting back on track'),
+  study('study', 'Study', 'Focus, planning, and deep work'),
+  calm('calm', 'Calm', 'Stress, overwhelm, and grounding'),
+  askAnything('ask_anything', 'Ask Anything', 'Open coaching and questions');
+
+  final String key;
+  final String label;
+  final String description;
+
+  const CoachTopicMode(this.key, this.label, this.description);
+
+  static CoachTopicMode fromKey(String? key) {
+    for (final mode in values) {
+      if (mode.key == key) return mode;
+    }
+    return CoachTopicMode.askAnything;
+  }
+}
+
+class CoachChatMessage {
+  final String id;
+  final String text;
+  final bool isUser;
+  final DateTime? createdAt;
+  final CoachTopicMode mode;
+  final String? safetyBranch;
+  final String? messageType;
+
+  const CoachChatMessage({
+    required this.id,
+    required this.text,
+    required this.isUser,
+    required this.createdAt,
+    required this.mode,
+    this.safetyBranch,
+    this.messageType,
+  });
+
+  bool get isCrisis =>
+      safetyBranch == 'crisis' || messageType == 'safety_crisis';
+
+  factory CoachChatMessage.fromDoc(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data();
+    return CoachChatMessage.fromMap(data, fallbackId: doc.id);
+  }
+
+  factory CoachChatMessage.fromMap(
+    Map<String, dynamic> data, {
+    required String fallbackId,
+  }) {
+    final rawText = data['text'] as String? ??
+        data['message'] as String? ??
+        data['body'] as String? ??
+        '';
+    final role = (data['role'] as String?)?.toLowerCase();
+    final source = (data['source'] as String?)?.toLowerCase();
+    final isUser = data['isUser'] == true || role == 'user' || source == 'user';
+    return CoachChatMessage(
+      id: data['messageId'] as String? ?? data['id'] as String? ?? fallbackId,
+      text: rawText.trim(),
+      isUser: isUser,
+      createdAt: _parseMessageDate(data['createdAt']) ??
+          _parseMessageDate(data['timestamp']),
+      mode: CoachTopicMode.fromKey(data['mode'] as String?),
+      safetyBranch: data['safetyBranch'] as String?,
+      messageType: data['messageType'] as String?,
+    );
+  }
+}
+
+class CoachMessagePage {
+  final List<CoachChatMessage> messages;
+  final DocumentSnapshot<Map<String, dynamic>>? oldestDocument;
+  final bool hasMore;
+
+  const CoachMessagePage({
+    required this.messages,
+    required this.oldestDocument,
+    required this.hasMore,
+  });
+}
+
 class CoachService {
+  static const String mainThreadId = 'main_thread';
+
   final TaskService _taskService;
   final StreakService _streakService;
   final HabitService _habitService;
@@ -27,6 +117,196 @@ class CoachService {
         _streakService = streakService,
         _habitService = habitService,
         _userRepo = userRepo;
+
+  String get _uid {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Cannot use coach chat without authentication');
+    }
+    return user.uid;
+  }
+
+  CollectionReference<Map<String, dynamic>> _messagesRef(String uid) =>
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('coach_messages');
+
+  Future<String> loadCoachName() async {
+    final onboardingSnapshot = await _userRepo.getOnboardingData();
+    final onboarding = onboardingSnapshot?.onboarding;
+    final name = (onboarding?['coachName'] as String?)?.trim();
+    return name == null || name.isEmpty ? 'AI Coach' : name;
+  }
+
+  Future<CoachMessagePage> loadMessagesPage({
+    int limit = 30,
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+  }) async {
+    final uid = _uid;
+    Query<Map<String, dynamic>> query =
+        _messagesRef(uid).orderBy('createdAt', descending: true).limit(limit);
+
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+
+    final snap = await query.get();
+    final messages = snap.docs
+        .map(CoachChatMessage.fromDoc)
+        .where((message) => message.text.isNotEmpty)
+        .toList(growable: false)
+        .reversed
+        .toList(growable: false);
+
+    return CoachMessagePage(
+      messages: messages,
+      oldestDocument: snap.docs.isEmpty ? startAfter : snap.docs.last,
+      hasMore: snap.docs.length == limit,
+    );
+  }
+
+  Stream<List<CoachChatMessage>> watchLatestMessages({int limit = 40}) {
+    final uid = _uid;
+    return _messagesRef(uid)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(CoachChatMessage.fromDoc)
+              .where((message) => message.text.isNotEmpty)
+              .toList(growable: false)
+              .reversed
+              .toList(growable: false),
+        );
+  }
+
+  Future<CoachChatMessage> saveUserMessage({
+    required String text,
+    required CoachTopicMode mode,
+    String threadId = mainThreadId,
+  }) async {
+    final uid = _uid;
+    final now = DateTime.now();
+    final messageId = generateId();
+    final trimmed = text.trim();
+    final data = <String, dynamic>{
+      'id': messageId,
+      'messageId': messageId,
+      'uid': uid,
+      'userId': uid,
+      'threadId': threadId,
+      'sessionId': threadId,
+      'role': 'user',
+      'isUser': true,
+      'text': trimmed,
+      'message': trimmed,
+      'body': trimmed,
+      'mode': mode.key,
+      'source': 'user',
+      'deliveryType': 'interactive_https',
+      'timestamp': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'schemaVersion': 1,
+    };
+
+    await _messagesRef(uid).doc(messageId).set(data);
+    await _emitCoachEvent(
+      EventNames.coachMessageSent,
+      {'turnId': messageId},
+    );
+
+    return CoachChatMessage(
+      id: messageId,
+      text: trimmed,
+      isUser: true,
+      createdAt: now,
+      mode: mode,
+    );
+  }
+
+  Future<CoachChatMessage> generateAndSaveAssistantReply({
+    required String userText,
+    required CoachTopicMode mode,
+    String threadId = mainThreadId,
+  }) async {
+    final uid = _uid;
+    final result = await GeminiService().coachReply(
+      userId: uid,
+      threadId: threadId,
+      text: userText,
+      mode: mode.key,
+    );
+    final now = DateTime.now();
+    final messageId = (result.messageId?.trim().isNotEmpty ?? false)
+        ? result.messageId!.trim()
+        : generateId();
+    final safetyBranch = result.safetyBranch ?? 'normal';
+    final isCrisis = safetyBranch == 'crisis';
+
+    final data = <String, dynamic>{
+      'id': messageId,
+      'messageId': messageId,
+      'uid': uid,
+      'userId': uid,
+      'threadId': threadId,
+      'sessionId': threadId,
+      'role': 'coach',
+      'isUser': false,
+      'text': result.text,
+      'message': result.text,
+      'body': result.text,
+      'messageType': isCrisis ? 'safety_crisis' : 'coach_reply',
+      'mode': mode.key,
+      'source': 'cloudflare_coach_reply',
+      'deliveryType': 'interactive_https',
+      'timestamp': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'aiGenerated': !isCrisis,
+      'suggestedActions': result.suggestedActions,
+      'safetyBranch': safetyBranch,
+      'schemaVersion': 1,
+    };
+
+    // TODO(server-trust): move this assistant write and coach_replied event
+    // into the Cloudflare Worker once it has a trusted Firebase Admin path.
+    await _messagesRef(uid).doc(messageId).set(data);
+    await _emitCoachEvent(
+      EventNames.coachReplied,
+      {'turnId': messageId},
+      priority: isCrisis ? 'high' : 'normal',
+      source: 'cloudflare_client',
+    );
+
+    return CoachChatMessage(
+      id: messageId,
+      text: result.text,
+      isUser: false,
+      createdAt: now,
+      mode: mode,
+      safetyBranch: safetyBranch,
+      messageType: isCrisis ? 'safety_crisis' : 'coach_reply',
+    );
+  }
+
+  Future<void> _emitCoachEvent(
+    String eventName,
+    Map<String, dynamic> payload, {
+    String priority = 'normal',
+    String source = 'ui',
+  }) async {
+    try {
+      await EventService().emit(
+        eventName: eventName,
+        payload: payload,
+        priority: priority,
+        source: source,
+      );
+    } catch (e) {
+      debugPrint('[CoachService] $eventName event failed: $e');
+    }
+  }
 
   Future<String> generateSystemPrompt(String coachName, String tone) async {
     final context = await _loadCoachGroundingContext();
@@ -56,10 +336,16 @@ Return only the final coach message text, with no JSON or markdown.''';
     String coachName,
     String tone, {
     List<Map<String, dynamic>>? initialHistory,
+    String threadId = 'main_thread',
+    String mode = 'chat',
   }) async {
     final systemPrompt = await generateSystemPrompt(coachName, tone);
-    return GeminiService()
-        .startChat(systemPrompt, initialHistory: initialHistory);
+    return GeminiService().startChat(
+      systemPrompt,
+      initialHistory: initialHistory,
+      threadId: threadId,
+      mode: mode,
+    );
   }
 
   /// Builds a structured context payload for the Cloud Function.
@@ -392,4 +678,11 @@ Return only the final coach message text, with no JSON or markdown.''';
     final minute = time.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
   }
+}
+
+DateTime? _parseMessageDate(Object? value) {
+  if (value is Timestamp) return value.toDate();
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value);
+  return null;
 }

@@ -2,14 +2,10 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:optivus2/services/firestore_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:optivus2/providers/onboarding_provider.dart';
-import 'package:optivus2/services/gemini_service.dart';
-import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/services/coach_service.dart';
 import 'dart:async';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,9 +13,38 @@ import 'dart:async';
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CoachMessage {
+  final String id;
   final String text;
   final bool isUser;
-  _CoachMessage({required this.text, required this.isUser});
+  final DateTime? createdAt;
+  final CoachTopicMode mode;
+  final String? safetyBranch;
+  final String? messageType;
+
+  const _CoachMessage({
+    required this.id,
+    required this.text,
+    required this.isUser,
+    required this.createdAt,
+    required this.mode,
+    this.safetyBranch,
+    this.messageType,
+  });
+
+  bool get isCrisis =>
+      !isUser && (safetyBranch == 'crisis' || messageType == 'safety_crisis');
+
+  factory _CoachMessage.fromDomain(CoachChatMessage message) {
+    return _CoachMessage(
+      id: message.id,
+      text: message.text,
+      isUser: message.isUser,
+      createdAt: message.createdAt,
+      mode: message.mode,
+      safetyBranch: message.safetyBranch,
+      messageType: message.messageType,
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -270,6 +295,10 @@ class _SpeechBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (message.isCrisis) {
+      return _CrisisCard(message: message);
+    }
+
     final isUser = message.isUser;
     const contentPad = EdgeInsets.fromLTRB(22, 16, 22, 16 + _kTailH);
 
@@ -304,6 +333,116 @@ class _SpeechBubble extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CrisisCard extends StatelessWidget {
+  final _CoachMessage message;
+  const _CrisisCard({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.9),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF1F2).withValues(alpha: 0.92),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFFB7185), width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF881337).withValues(alpha: 0.12),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.health_and_safety_rounded,
+                      color: Color(0xFFBE123C), size: 22),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Crisis support',
+                      style: TextStyle(
+                        color: Color(0xFF881337),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message.text,
+                style: const TextStyle(
+                  color: Color(0xFF4C0519),
+                  fontSize: 15,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: const [
+                  _CrisisChip(icon: Icons.call_rounded, label: 'Call 988'),
+                  _CrisisChip(icon: Icons.sms_rounded, label: 'Text 988'),
+                  _CrisisChip(
+                      icon: Icons.person_add_alt_1_rounded,
+                      label: 'Contact someone trusted'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CrisisChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _CrisisChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFFDA4AF)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFFBE123C)),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF881337),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -845,6 +984,189 @@ class _InnerCavityPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
+class _ModeTile extends StatelessWidget {
+  final CoachTopicMode mode;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeTile({
+    required this.mode,
+    required this.selected,
+    required this.onTap,
+  });
+
+  IconData get _icon {
+    return switch (mode) {
+      CoachTopicMode.recovery => Icons.replay_circle_filled_rounded,
+      CoachTopicMode.study => Icons.menu_book_rounded,
+      CoachTopicMode.calm => Icons.self_improvement_rounded,
+      CoachTopicMode.askAnything => Icons.auto_awesome_rounded,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: selected
+                ? const Color(0xFFF3E8FF)
+                : Colors.white.withValues(alpha: 0.0),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(_icon,
+                  color: selected
+                      ? const Color(0xFF7E22CE)
+                      : const Color(0xFF64748B)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mode.label,
+                      style: const TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      mode.description,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (selected)
+                const Icon(Icons.check_circle_rounded,
+                    color: Color(0xFF7E22CE)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RetryReplyBanner extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _RetryReplyBanner({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.9)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.wifi_off_rounded,
+                  size: 20, color: Color(0xFFB45309)),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Reply failed. Your message is saved.',
+                  style: TextStyle(
+                    color: Color(0xFF78350F),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF7E22CE),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OlderMessagesLoader extends StatelessWidget {
+  const _OlderMessagesLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.5,
+            color: Color(0xFF9333EA),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HistoryErrorRow extends StatelessWidget {
+  final String text;
+  final VoidCallback onRetry;
+
+  const _HistoryErrorRow({
+    required this.text,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Center(
+        child: TextButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded),
+          label: Text(text),
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF7E22CE),
+            textStyle: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Coach Tab Screen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -862,131 +1184,81 @@ class _CoachTabState extends ConsumerState<CoachTab> {
   final _focus = FocusNode();
   bool _hasText = false;
   bool _isTyping = false;
+  bool _isLoadingInitial = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
   String _coachName = 'AI Coach';
-  GeminiChatSession? _chatSession;
+  String? _loadError;
+  String? _failedReplyText;
+  CoachTopicMode? _failedReplyMode;
+  CoachTopicMode _mode = CoachTopicMode.askAnything;
+  DocumentSnapshot<Map<String, dynamic>>? _oldestDocument;
 
   final List<_CoachMessage> _messages = [];
-  final List<Map<String, dynamic>> _geminiHistory = [];
 
-  /// IDs of messages already displayed — prevents proactive stream duplicates.
+  /// IDs of messages already displayed — prevents stream/page duplicates.
   final Set<String> _seenMessageIds = {};
 
-  /// Firestore listener for proactive rule-triggered coach messages.
-  StreamSubscription? _proactiveSub;
+  StreamSubscription<List<CoachChatMessage>>? _latestSub;
 
   @override
   void initState() {
     super.initState();
     _fetchCoachName();
-    _loadHistory();
-    _listenForProactiveMessages();
+    _loadInitialHistory();
+    _listenForLatestMessages();
+    _scroll.addListener(_maybeLoadMore);
     _ctrl.addListener(() {
       final has = _ctrl.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
     });
   }
 
-  /// Subscribes to `/users/{uid}/coach_messages` ordered by timestamp.
-  /// When the rule engine sends a proactive message, it appears here
-  /// in real time alongside interactive chat turns.
-  void _listenForProactiveMessages() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+  CoachService get _coachService => ref.read(coachServiceProvider);
 
-    _proactiveSub = FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('coach_messages')
-        .orderBy('timestamp')
-        .snapshots()
-        .listen((snapshot) {
-      for (final change in snapshot.docChanges) {
-        if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data();
-          if (data == null) continue;
-          final messageId = data['messageId'] as String? ?? change.doc.id;
-          // Skip if already displayed (loaded from coach_chats history)
-          if (_seenMessageIds.contains(messageId)) continue;
-          _seenMessageIds.add(messageId);
-
-          final text = data['text'] as String? ??
-              data['message'] as String? ??
-              data['body'] as String? ??
-              '';
-          if (text.isEmpty) continue;
-
-          if (mounted) {
-            setState(() {
-              _messages.add(_CoachMessage(text: text, isUser: false));
-              _geminiHistory.add({
-                'role': 'model',
-                'parts': [
-                  {'text': text},
-                ],
-              });
-            });
-            _chatSession?.appendModelMessage(text);
-            debugPrint(
-                '[CoachTab] Proactive coach message displayed: $messageId');
-            _scrollToBottom();
-          }
-        }
-      }
+  void _listenForLatestMessages() {
+    _latestSub = _coachService.watchLatestMessages().listen((messages) {
+      if (!mounted) return;
+      final hadNew = _mergeMessages(messages);
+      if (hadNew) _scrollToBottom();
     }, onError: (e) {
       debugPrint('[CoachTab] Error listening to coach_messages: $e');
     });
   }
 
-  Future<void> _loadHistory() async {
+  Future<void> _loadInitialHistory() async {
     try {
-      final turns = await FirestoreService().getCoachChatTurns('main_thread');
-      if (turns.isNotEmpty && mounted) {
-        setState(() {
-          _messages.clear();
-          _geminiHistory.clear();
-          for (final turn in turns) {
-            final isUser = turn['isUser'] as bool;
-            final text = turn['text'] as String;
-            final id = turn['id'] as String? ?? '';
-            if (id.isNotEmpty) _seenMessageIds.add(id);
-            _messages.add(_CoachMessage(text: text, isUser: isUser));
-            _geminiHistory.add({
-              'role': isUser ? 'user' : 'model',
-              'parts': [
-                {'text': text}
-              ],
-            });
-          }
-        });
-        _scrollToBottom();
-      } else if (mounted) {
-        setState(() {
-          _messages.add(_CoachMessage(
-            text:
-                "Hello! I'm $_coachName, your personal AI coach. How can I support you today?",
-            isUser: false,
-          ));
-        });
-      }
+      final page = await _coachService.loadMessagesPage();
+      if (!mounted) return;
+      setState(() {
+        _messages.clear();
+        _seenMessageIds.clear();
+        _oldestDocument = page.oldestDocument;
+        _hasMore = page.hasMore;
+        _loadError = null;
+        _isLoadingInitial = false;
+        if (page.messages.isEmpty) {
+          _addWelcomeMessage();
+        } else {
+          _appendDomainMessages(page.messages);
+        }
+      });
+      _scrollToBottom();
     } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not load coach history.';
+        _isLoadingInitial = false;
+      });
       debugPrint('Error loading coach chat history: $e');
     }
   }
 
   Future<void> _fetchCoachName() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final data = await FirestoreService().getUserProfile();
-        if (data != null && mounted) {
-          if (data.containsKey('onboarding')) {
-            final ob = data['onboarding'] as Map<String, dynamic>;
-            if (ob.containsKey('coachName') &&
-                ob['coachName'].toString().isNotEmpty) {
-              setState(() => _coachName = ob['coachName'].toString());
-            }
-          }
-        }
+      final name = await _coachService.loadCoachName();
+      if (mounted) {
+        setState(() => _coachName = name);
       }
     } catch (e) {
       debugPrint('Error fetching coach name: $e');
@@ -995,7 +1267,8 @@ class _CoachTabState extends ConsumerState<CoachTab> {
 
   @override
   void dispose() {
-    _proactiveSub?.cancel();
+    _latestSub?.cancel();
+    _scroll.removeListener(_maybeLoadMore);
     _ctrl.dispose();
     _scroll.dispose();
     _focus.dispose();
@@ -1011,64 +1284,199 @@ class _CoachTabState extends ConsumerState<CoachTab> {
     });
   }
 
+  void _maybeLoadMore() {
+    if (!_scroll.hasClients || !_hasMore || _isLoadingMore) return;
+    final position = _scroll.position;
+    if (position.pixels >= position.maxScrollExtent - 220) {
+      _loadMoreHistory();
+    }
+  }
+
+  Future<void> _loadMoreHistory() async {
+    final cursor = _oldestDocument;
+    if (cursor == null || _isLoadingMore || !_hasMore) return;
+    setState(() => _isLoadingMore = true);
+    try {
+      final page = await _coachService.loadMessagesPage(startAfter: cursor);
+      if (!mounted) return;
+      setState(() {
+        _oldestDocument = page.oldestDocument;
+        _hasMore = page.hasMore;
+        _prependDomainMessages(page.messages);
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingMore = false);
+      debugPrint('Error loading older coach history: $e');
+    }
+  }
+
+  void _addWelcomeMessage() {
+    const id = 'local_welcome';
+    _seenMessageIds.add(id);
+    _messages.add(_CoachMessage(
+      id: id,
+      text:
+          "Hello! I'm $_coachName, your personal AI coach. How can I support you today?",
+      isUser: false,
+      createdAt: null,
+      mode: CoachTopicMode.askAnything,
+    ));
+  }
+
+  bool _mergeMessages(List<CoachChatMessage> incoming) {
+    var changed = false;
+    setState(() {
+      for (final message in incoming) {
+        if (_seenMessageIds.contains(message.id)) continue;
+        _seenMessageIds.add(message.id);
+        _messages.add(_CoachMessage.fromDomain(message));
+        changed = true;
+      }
+      if (changed) _sortMessages();
+    });
+    return changed;
+  }
+
+  void _appendDomainMessages(List<CoachChatMessage> messages) {
+    for (final message in messages) {
+      if (_seenMessageIds.contains(message.id)) continue;
+      _seenMessageIds.add(message.id);
+      _messages.add(_CoachMessage.fromDomain(message));
+    }
+    _sortMessages();
+  }
+
+  void _prependDomainMessages(List<CoachChatMessage> messages) {
+    final older = <_CoachMessage>[];
+    for (final message in messages) {
+      if (_seenMessageIds.contains(message.id)) continue;
+      _seenMessageIds.add(message.id);
+      older.add(_CoachMessage.fromDomain(message));
+    }
+    _messages.insertAll(0, older);
+    _sortMessages();
+  }
+
+  void _sortMessages() {
+    _messages.sort((a, b) {
+      final aTime = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bTime = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return aTime.compareTo(bTime);
+    });
+  }
+
   Future<void> _sendMessage() async {
     final text = _ctrl.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _isTyping) return;
     HapticFeedback.lightImpact();
-    setState(() {
-      _messages.add(_CoachMessage(text: text, isUser: true));
-      _isTyping = true;
-    });
     _ctrl.clear();
-    _scrollToBottom();
+    final sendMode = _mode;
 
     try {
-      final userTurnId = const Uuid().v4();
-      await FirestoreService().saveCoachChatTurn('main_thread', userTurnId, {
-        'id': userTurnId,
-        'text': text,
-        'isUser': true,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      if (_chatSession == null) {
-        final ob = ref.read(onboardingProvider);
-        final tone =
-            ob.coachStyle.isEmpty ? 'Empathetic and motivating' : ob.coachStyle;
-        final coachService = ref.read(coachServiceProvider);
-
-        _chatSession = await coachService.startChat(_coachName, tone,
-            initialHistory: List.from(_geminiHistory));
-      }
-
-      final reply = await _chatSession!.sendMessage(text);
-
-      final coachTurnId = const Uuid().v4();
-      await FirestoreService().saveCoachChatTurn('main_thread', coachTurnId, {
-        'id': coachTurnId,
-        'text': reply,
-        'isUser': false,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
+      final userMessage = await _coachService.saveUserMessage(
+        text: text,
+        mode: sendMode,
+      );
       if (!mounted) return;
-
+      setState(() {
+        _failedReplyText = null;
+        _failedReplyMode = null;
+        _isTyping = true;
+        _appendDomainMessages([userMessage]);
+      });
+      _scrollToBottom();
+      await _requestReply(text, sendMode);
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isTyping = false;
-        _messages.add(_CoachMessage(text: reply, isUser: false));
+        _failedReplyText = text;
+        _failedReplyMode = sendMode;
+      });
+      _scrollToBottom();
+    }
+  }
+
+  Future<void> _requestReply(String text, CoachTopicMode mode) async {
+    try {
+      final reply = await _coachService.generateAndSaveAssistantReply(
+        userText: text,
+        mode: mode,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isTyping = false;
+        _failedReplyText = null;
+        _failedReplyMode = null;
+        _appendDomainMessages([reply]);
       });
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isTyping = false;
-        _messages.add(_CoachMessage(
-            text:
-                "I'm having trouble connecting right now, but remember: Every setback is data, not defeat. Keep moving forward! 🌟",
-            isUser: false));
+        _failedReplyText = text;
+        _failedReplyMode = mode;
       });
+      debugPrint('[CoachTab] Coach reply failed: $e');
       _scrollToBottom();
     }
+  }
+
+  Future<void> _retryLastReply() async {
+    final text = _failedReplyText;
+    final mode = _failedReplyMode ?? _mode;
+    if (text == null || _isTyping) return;
+    HapticFeedback.lightImpact();
+    setState(() {
+      _failedReplyText = null;
+      _failedReplyMode = null;
+      _isTyping = true;
+    });
+    await _requestReply(text, mode);
+  }
+
+  void _showModePicker() {
+    HapticFeedback.mediumImpact();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white.withValues(alpha: 0.96),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                for (final mode in CoachTopicMode.values)
+                  _ModeTile(
+                    mode: mode,
+                    selected: mode == _mode,
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      setState(() => _mode = mode);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -1097,47 +1505,66 @@ class _CoachTabState extends ConsumerState<CoachTab> {
                 SizedBox(height: mq.padding.top),
                 _buildHeader(),
                 Expanded(
-                  child: ShaderMask(
-                    shaderCallback: (Rect bounds) {
-                      return const LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.white,
-                          Colors.white
-                        ],
-                        stops: [0.0, 0.05, 1.0],
-                      ).createShader(bounds);
-                    },
-                    blendMode: BlendMode.dstIn,
-                    child: ListView.builder(
-                      controller: _scroll,
-                      padding: EdgeInsets.fromLTRB(
-                        16, 12, 16,
-                        // bottom padding keeps last bubble above input bar + tab bar
-                        inputBottom + inputBarHeight + 16,
-                      ),
-                      reverse: true,
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: _messages.length + (_isTyping ? 1 : 0),
-                      itemBuilder: (context, i) {
-                        if (_isTyping && i == 0) {
-                          return const Padding(
-                              padding: EdgeInsets.only(bottom: 16),
-                              child: _TypingBubble());
-                        }
-                        final offset = _isTyping ? 1 : 0;
-                        final msg =
-                            _messages[_messages.length - 1 - (i - offset)];
-                        return Padding(
-                          key: ValueKey(_messages.length - 1 - (i - offset)),
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: _SpeechBubble(message: msg),
-                        );
-                      },
-                    ),
-                  ),
+                  child: _isLoadingInitial
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF9333EA),
+                          ),
+                        )
+                      : ShaderMask(
+                          shaderCallback: (Rect bounds) {
+                            return const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.white,
+                                Colors.white
+                              ],
+                              stops: [0.0, 0.05, 1.0],
+                            ).createShader(bounds);
+                          },
+                          blendMode: BlendMode.dstIn,
+                          child: ListView.builder(
+                            controller: _scroll,
+                            padding: EdgeInsets.fromLTRB(
+                              16, 12, 16,
+                              // bottom padding keeps last bubble above input bar + tab bar
+                              inputBottom + inputBarHeight + 16,
+                            ),
+                            reverse: true,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: _messages.length +
+                                (_isTyping ? 1 : 0) +
+                                (_isLoadingMore ? 1 : 0) +
+                                (_loadError != null ? 1 : 0),
+                            itemBuilder: (context, i) {
+                              if (_isTyping && i == 0) {
+                                return const Padding(
+                                    padding: EdgeInsets.only(bottom: 16),
+                                    child: _TypingBubble());
+                              }
+                              final offset = _isTyping ? 1 : 0;
+                              final messageIndex = i - offset;
+                              if (messageIndex >= _messages.length) {
+                                if (_loadError != null) {
+                                  return _HistoryErrorRow(
+                                    text: _loadError!,
+                                    onRetry: _loadInitialHistory,
+                                  );
+                                }
+                                return const _OlderMessagesLoader();
+                              }
+                              final msg = _messages[
+                                  _messages.length - 1 - messageIndex];
+                              return Padding(
+                                key: ValueKey(msg.id),
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: _SpeechBubble(message: msg),
+                              );
+                            },
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -1157,6 +1584,15 @@ class _CoachTabState extends ConsumerState<CoachTab> {
               onSend: _sendMessage,
             ),
           ),
+          if (_failedReplyText != null)
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              left: 16,
+              right: 16,
+              bottom: inputBottom + inputBarHeight + 8,
+              child: _RetryReplyBanner(onRetry: _retryLastReply),
+            ),
         ],
       ),
     );
@@ -1168,15 +1604,18 @@ class _CoachTabState extends ConsumerState<CoachTab> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFFC084FC).withValues(alpha: 0.25),
+          GestureDetector(
+            onLongPress: _showModePicker,
+            child: Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFC084FC).withValues(alpha: 0.25),
+              ),
+              child: const Icon(Icons.smart_toy_rounded,
+                  color: Color(0xFF9333EA), size: 30),
             ),
-            child: const Icon(Icons.smart_toy_rounded,
-                color: Color(0xFF9333EA), size: 30),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1209,28 +1648,36 @@ class _CoachTabState extends ConsumerState<CoachTab> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text('Online · Here for you',
+                    Flexible(
+                      child: Text(
+                        'Online · ${_mode.label}',
                         style: TextStyle(
                             fontSize: 14,
                             color:
                                 const Color(0xFF64748B).withValues(alpha: 0.9),
-                            fontWeight: FontWeight.w600)),
+                            fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.35),
-              border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+          GestureDetector(
+            onTap: _showModePicker,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.35),
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+              ),
+              child: const Icon(Icons.more_horiz_rounded,
+                  color: Color(0xFF64748B), size: 24),
             ),
-            child: const Icon(Icons.more_horiz_rounded,
-                color: Color(0xFF64748B), size: 24),
           ),
         ],
       ),

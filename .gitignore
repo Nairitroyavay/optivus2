@@ -48,3 +48,8 @@ app.*.map.json
 # Firebase config
 lib/config/firebase_options.dart
 firebase_options.dart
+
+# Cloudflare Worker local secrets
+workers/coach-reply-worker/.dev.vars
+workers/coach-reply-worker/.env
+workers/coach-reply-worker/node_modules/

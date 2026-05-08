@@ -5,6 +5,8 @@ const admin = require("firebase-admin");
 
 admin.initializeApp();
 
+const { coachReply } = require("./ai/coachReply");
+
 // Define the secret parameter for the Gemini API key
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
@@ -136,6 +138,8 @@ exports.aiGenerate = onCall(
     }
   }
 );
+
+exports.coachReply = coachReply;
 
 // ── Scheduled server safety-net jobs ────────────────────────────────────────
 const { scheduledDayClose } = require("./jobs/dayClose");

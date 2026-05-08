@@ -10,26 +10,59 @@
 
 ## 1. Short Summary (read this first)
 
-1. Optivus already has a working Flutter shell, six tabs, onboarding pages 0–10, routine setup screens (fixed/skin/eating/class/supplement), Routine timeline with Add + AI buttons, Tracker with 10 variant scaffolds, habit/streak/comeback flows, EventService with idempotency, Firestore rules, and Cloud Functions stubs.
+1. Optivus already has a working Flutter shell, six tabs, onboarding pages 0–10, routine setup screens (fixed/skin/eating/class/supplement), Routine timeline with Add + AI buttons, Tracker with 10 variant scaffolds, habit/streak/comeback flows, EventService with idempotency, Firestore rules, legacy Firebase Functions stubs, and a Cloudflare Worker for coach replies.
 2. Pre-phase through Phase 5 of the previous TODO are marked **Done** (Apr 30 → May 03 commits). Most are real, but several leave un-checked Done Criteria, weak verification, or only scaffold-level UI.
 3. The biggest correctness gap is **goal/identity glue**: GoalRepository emits `identity_*` events for goal docs (not identity profile) and the StateAggregator does not yet ingest goals into the AI context — special task §G1 below repairs this.
-4. The biggest UX gap is the **routine setup AI/photo modes**: skin care text/photo AI, supplement text AI, class timetable photo, eating mess photo and AI-generated routine all need UI review-before-save plus a Cloud Function backend (`routineImport`) that does not exist yet.
-5. The biggest backend gap is **Cloud Functions**: only 4 stub jobs exist (`morningBrief`, `middayPulse`, `dayClose`, `inactivityCheck`). Notification dispatcher, AI planner, AI rule engine, safety routing, routine import, export/delete, cleanup, backfill, and weekly summary are all missing.
+4. The biggest UX gap is the **routine setup AI/photo modes**: skin care text/photo AI, supplement text AI, class timetable photo, eating mess photo and AI-generated routine all need UI review-before-save plus a Cloudflare Worker backend (`routineImport`) that does not exist yet.
+5. The biggest backend gap is now the **Cloudflare migration**: Firebase Blaze-dependent Cloud Functions are not the target for new work. Keep `functions/` as legacy/reference code only unless a task explicitly says to delete or migrate it. Notification dispatcher, AI planner, AI rule engine, safety routing, routine import, export/delete, cleanup, backfill, and weekly summary must be implemented as Cloudflare Workers / Cron Triggers / HTTP endpoints.
 6. Tracker variants for smoking, screen time, mindful eating, procrastination, hydration, meditation, money saving, reading, exercise, and routine completion exist as **41-line stubs** that all extend a base — they need real per-variant fields, log paths, AI insights, and verification.
-7. Notifications: NotificationService exists but lifecycle (sent/tapped/dismissed/suppressed/missed), notification center UI, settings, custom alarm UX, and FCM dispatcher are all missing.
-8. AI Coach: chat UI exists, but real Gemini calls must move to Cloud Functions, rule engine + speak budget + safety routing are not implemented end-to-end, and the AI is not yet event-driven from `ai_context_snapshots`.
+7. Notifications: local lifecycle, notification center, settings, custom alarm editor/ringing, snooze reasons, and re-registration are implemented through Task 10.4. The remaining backend gap is the Cloudflare notification dispatcher for offline/cross-device delivery and server-side caps.
+8. AI Coach: chat UI and the interactive coach reply Worker exist, but remaining Gemini calls (`aiGenerate`, future `routineImport`, `routineSuggest`, scheduled AI jobs) must move off Firebase callables and onto Cloudflare Workers. Rule engine + speak budget + safety routing are not implemented end-to-end, and the AI is not yet event-driven from `ai_context_snapshots`.
 9. Subscription, privacy export/delete, remote config kill switches, analytics summaries, weekly insights, and production QA tests are all not yet implemented.
 10. Fixed schedule **already supports unlimited templates** at `/users/{uid}/routine/current.templates.fixed_schedule` and materialises daily — but the onboarding UI and Settings UI are **separate components**; this TODO requires shared widgets and explicit verification that data flows onboarding → Settings → Routine timeline.
 11. Routine tab already has a clear **Add button** (`add_task_sheet.dart`) and an **AI button** (`ai_routine_panel.dart`) — but AI suggestions are local; backend AI generation, save-as-template option, and `suggestion_*` events round-trip need polish.
-12. Skin/Eating/Class setup screens already render manual flows; **AI text mode and photo upload mode need to be wired** through `routineImport` Cloud Function with review-before-save.
+12. Skin/Eating/Class setup screens already render manual flows; **AI text mode and photo upload mode need to be wired** through the Cloudflare `ROUTINE_IMPORT_ENDPOINT` with review-before-save.
 13. Eating routine **AI-generated mode + mess menu photo upload** are not yet implemented.
 14. Class routine **timetable image OCR upload** is not yet implemented.
 15. Smoking, running, meditation, sleep, water, screen time, junk food, procrastination, money-saving, reading, exercise, and routine-completion **trackers must each have real per-variant detail screens, log flows, AI insights, and verification** — generic habit tracking is not enough.
 16. The event spine is solid (validator + idempotency + transaction) but missing: `bad_day_detected`, `slip_log_dismissed`, `screen_time_synced` payload contracts, `weekly_insight_ready`, `account_deleted` final emission, and `comeback_path_chosen`.
 17. Firestore rules already enforce per-user ownership and append-only events; new collections (`coach_messages`, `coach_speak_log`, `suggestions`, `ai_context_snapshots`, `weeklySummaries`, `usage`, `devices`) need rules carve-outs and indexes when introduced.
-18. Cloud Functions must be the **only** place AI keys live. Flutter never holds Gemini keys. `routineImport`, `aiPlanner`, `notificationDispatcher`, `safetyRouter`, `exportUserData`, `deleteUserData`, `eventMaintenance`, `schemaBackfill`, `weeklySummary` are all required.
-19. Production readiness: emulator tests, rules tests, function tests, integration smoke, migration checklist, seed data, kill switches, monitoring dashboards, crashlytics enrichment, and final completeness audit gate the launch.
+18. Cloudflare Workers must be the **only** place AI keys live. Flutter never holds Gemini keys and must call Workers with Firebase ID tokens over HTTPS. `routineImport`, `routineSuggest`, `aiGenerate`, `aiPlanner`, `notificationDispatcher`, `safetyRouter`, `exportUserData`, `deleteUserData`, `eventMaintenance`, `schemaBackfill`, `weeklySummary` are all required as Workers or Cron Triggers.
+19. Production readiness: emulator tests, rules tests, Worker tests, integration smoke, migration checklist, seed data, kill switches, monitoring dashboards, crashlytics enrichment, and final completeness audit gate the launch.
 20. **A feature is complete only when** UI, state/provider, Firestore path, backend (if needed), event, AI rule (if applicable), notification (if applicable), verification, and a user-visible entry point all exist and are exercised end-to-end.
+
+---
+
+## 1.1 Backend Decision Update — Cloudflare, Not Firebase Cloud Functions
+
+This roadmap was originally written for Firebase Cloud Functions. Because Firebase Cloud Functions require the Blaze plan, the V1 backend target is now **Cloudflare Workers**.
+
+### What changes
+
+- Firebase remains the app platform for Auth, Firestore, Storage, Remote Config, Crashlytics, App Check, FCM tokens, and client SDK reads/writes.
+- Cloudflare Workers are the server runtime for AI calls, server-only secrets, routine import, routine suggestions, safety routing, export/delete, notification dispatch, scheduled maintenance, and weekly summaries.
+- Cloudflare Cron Triggers replace scheduled Firebase Functions.
+- Flutter calls Workers using HTTPS with `Authorization: Bearer <Firebase ID token>`, following the existing `COACH_REPLY_ENDPOINT` pattern in `lib/services/gemini_service.dart`.
+- Workers verify Firebase ID tokens with Google JWKS and `FIREBASE_PROJECT_ID`, following `workers/coach-reply-worker/src/index.js`.
+- Workers that need Firestore writes must use a trusted server path: Firestore REST API with service-account credentials stored as Wrangler secrets, or a narrow backend helper owned by the Worker. Do not let Flutter write server-trusted records such as AI usage counters, crisis handoffs, or server-generated suggestions.
+
+### Current code status, verified May 8 2026
+
+- `workers/coach-reply-worker/` exists and calls Gemini server-side.
+- `lib/services/gemini_service.dart` uses `COACH_REPLY_ENDPOINT` for interactive coach replies.
+- `lib/services/gemini_service.dart` still uses `FirebaseFunctions.instance.httpsCallable('aiGenerate')` for generic generation and rule-triggered generation. This must be migrated before any future task depends on generic AI generation.
+- `lib/repositories/routine_repository.dart` still calls `FirebaseFunctions.instance.httpsCallable('routineImport')`. This must become a Worker endpoint before Tasks 12.2–12.7 / 13.3 can ship.
+- `functions/` still contains Firebase Functions code. Treat it as legacy/reference until a specific migration task removes or ports it.
+
+### Naming convention for new backend work
+
+- New Worker folders live under `workers/<feature>-worker/`.
+- New Flutter endpoint config uses `--dart-define`, for example:
+  - `COACH_REPLY_ENDPOINT`
+  - `AI_GENERATE_ENDPOINT`
+  - `ROUTINE_IMPORT_ENDPOINT`
+  - `ROUTINE_SUGGEST_ENDPOINT`
+- Task prompts must say **Cloudflare Worker endpoint** or **Cloudflare Cron Trigger**, not "callable Cloud Function", for all new backend work.
 
 ---
 
@@ -67,7 +100,7 @@
 - "Coach exists, but it must become backend-controlled" (codebase analysis) — no migration steps.
 - "Disabled states are graceful" (10.4) — no UX reference.
 - "Empty/loading states for new users" (3.5) — no per-screen list.
-- "Cloud Functions exist but need event-triggered jobs" — no per-event mapping.
+- "Cloud Functions exist but need event-triggered jobs" — stale after Cloudflare migration; remaining prompts must map backend work to Worker HTTP endpoints, Cron Triggers, or Firestore polling where triggers are unavailable.
 
 ### 2.5 Missing Verification
 
@@ -96,7 +129,7 @@
 - Task 4.4 ("build tracker-specific variants") = 10 variant screens. Split into a base task + per-variant tasks.
 - Task 8.4 ("AI routine import and generation endpoints") = 7 modes. Split per mode.
 - Task 8.5 ("strategic AI scheduled jobs") = 5 jobs + rule engine + safety. Split per job.
-- Task 11.1 ("full test suite") = unit + widget + integration + rules + function tests. Split per surface.
+- Task 18.1 ("full test suite") = unit + widget + integration + rules + Worker tests. Split per surface.
 
 ### 2.8 Executed Phase Gap Analysis (Pre-Phase → Phase 5)
 
@@ -131,7 +164,7 @@
 - **Supposed:** TaskService contract, routine materialisation, Add+AI buttons, setup screens, day start/close.
 - **Actual:** Task state machine in `task_service.dart`; `RoutineNotifier.materializeForDate` is idempotent and deterministic; `add_task_sheet.dart` + `ai_routine_panel.dart` exist; setup screens for fixed/skin/eating/class/supplement exist; `routine_service.dart` runs day close with summaries.
 - **Gap:**
-  - Setup screens render but **AI text mode + photo upload mode** for skin/eating/class are stubbed UIs only — `routineImport` callable is wired in `RoutineRepository.previewRoutineImport` but the Cloud Function does not exist.
+  - Setup screens render but **AI text mode + photo upload mode** for skin/eating/class are stubbed UIs only — `RoutineRepository.previewRoutineImport` still calls a Firebase `routineImport` callable. Migrate it to `ROUTINE_IMPORT_ENDPOINT` in Task 11.1A / 13.3.
   - Eating "Generate with AI" mode (text goal → routine) not implemented.
   - Class "timetable image upload" not implemented (no image picker, no OCR call).
   - Supplement "text AI" mode not implemented.
@@ -188,7 +221,8 @@
 - **AI scaffolding:** `gemini_service.dart`, `coach_service.dart`, `rule_engine_service.dart`, `state_aggregator_service.dart`, `context_snapshot.dart`, `coach_rule.dart`.
 - **Goals/Identity:** `goal_model.dart`, `identity_profile_model.dart`, `goal_repository.dart`, `goal_provider.dart`, `identity_provider.dart`.
 - **Comeback:** `comeback_modal.dart`.
-- **Cloud Functions:** `functions/index.js`, `functions/jobs/{morningBrief,middayPulse,dayClose,inactivityCheck,utils}.js`.
+- **Legacy Firebase Functions:** `functions/index.js`, `functions/jobs/{morningBrief,middayPulse,dayClose,inactivityCheck,utils}.js` (reference only after Cloudflare migration).
+- **Cloudflare Workers:** `workers/coach-reply-worker/src/index.js`.
 - **Rules + Indexes:** `firestore.rules`, `firestore.indexes.json`.
 - **Remote config:** `remote_config_service.dart`.
 - **Screen time:** `screen_time_bridge.dart`, `screen_time_importer.dart`, `screen_time_log_model.dart`.
@@ -199,27 +233,26 @@
 - **StateAggregator:** Builds context snapshot but only `buildSnapshot` and `updateIdentityProfile` exist; needs goal/habit/task ingestion + safety flags + speak-budget input.
 - **Routine setup screens:** Manual modes work; AI text/photo modes call `previewRoutineImport` but the backend isn't deployed.
 - **Tracker variants:** 10 files extend a shared base; per-variant fields and writes missing.
-- **NotificationService:** Local scheduling exists; lifecycle records (`recordSent/Tapped/Dismissed/Suppressed/Missed`) and re-registration on app start need contract tests.
-- **Cloud Functions:** Stubs only; no AI calls, no notification dispatcher, no export/delete.
+- **NotificationService:** Local scheduling, lifecycle records (`recordSent/Tapped/Dismissed/Suppressed/Missed`), custom alarms, notification center/settings, and re-registration on app start exist. Server-side dispatch remains a Cloudflare Worker task.
+- **Legacy Firebase Functions:** Stubs only; do not add new backend work here unless explicitly porting/removing legacy code.
+- **Cloudflare Workers:** coach reply Worker exists; routine import, generic AI generation, notification dispatcher, export/delete, maintenance, and summaries still need Workers.
 - **Coach tab:** Chat UI renders but is not yet event-driven from `coach_messages` and the Gemini call still happens client-side.
 - **Page 10:** `onboarding_page_10.dart` exists but its emission of `task_scheduled` / `notification_scheduled` for the first plan should be re-verified.
 
 ### 3.3 Not Implemented
 
-- Routine import Cloud Function (`functions/ai/routineImport.js`).
-- AI planner Cloud Function (`functions/jobs/aiPlanner.js`).
-- Rule engine Cloud Function (`functions/jobs/ruleEngine.js`).
-- Safety routing (`functions/jobs/safety.js`).
-- Server notification dispatcher (`functions/jobs/notificationDispatcher.js`).
-- Weekly summary job (`functions/jobs/weeklySummary.js`).
+- Routine import Worker (`workers/routine-import-worker/`).
+- AI gateway Worker (`workers/ai-gateway-worker/`).
+- AI planner / scheduled jobs Worker (`workers/scheduler-worker/`).
+- Rule engine Worker support where server-side decisions are needed.
+- Safety routing Worker (`workers/safety-router-worker/`).
+- Server notification dispatcher Worker (`workers/notification-dispatcher-worker/`).
+- Weekly summary Worker (`workers/weekly-summary-worker/`).
 - Export user data job + lifecycle UI.
 - Delete user data job + recovery window.
 - Event maintenance / archival job.
 - Schema backfill job.
 - Subscription / usage limits.
-- Notification center screen.
-- Notification settings screen.
-- Custom alarm editor + ringing screen + snooze-reason sheet.
 - Goal editor / detail / milestone editor screens.
 - Identity hero on Profile / Home.
 - Smoking trigger picker + money-saved card + health milestones.
@@ -241,21 +274,21 @@
 
 - `goal_repository.dart` emits `identity_*` events for goal docs — semantically wrong; AI rules listening for identity events will mis-fire. Repair is non-destructive (rename or split events; preserve back-compat for analytics).
 - `state_aggregator_service.dart` `buildSnapshot` does not gracefully no-op on users with no goals/no habits — verify (the SPECIAL REQUIRED TASK §G1 makes this safe).
-- ~~AI key risk: `gemini_service.dart` may be reading a key from Flutter~~ **Verified safe 2026-05-03**: `gemini_service.dart` only calls `httpsCallable('aiGenerate')`; `functions/index.js` holds `geminiApiKey` via `secrets: [...]`. No client-side key. (Task 11.1 reclassified to Done.)
+- ~~AI key risk: `gemini_service.dart` may be reading a key from Flutter~~ **Verified safe for interactive coach replies May 8 2026**: `gemini_service.dart` calls `COACH_REPLY_ENDPOINT`; `workers/coach-reply-worker` holds the Gemini key as a Wrangler secret. Remaining generic `aiGenerate` callable migration is Task 11.1A.
 - `screen_time_bridge.dart` Android-only (`UsageStatsManager`). No iOS target — no guard needed.
 
 ### 3.5 Needs Refactor (touch only via the listed task)
 
 - `event_payload_validator.dart`: extend with new events listed in §6 Phase 2.
 - `notification_service.dart`: split into scheduling + lifecycle + dispatcher-bridge.
-- `coach_service.dart`: route Gemini calls through Cloud Functions.
+- `coach_service.dart`: route Gemini calls through Cloudflare Workers.
 - `rule_engine_service.dart`: connect to context snapshot + speak budget + Firestore-backed coach_speak_log.
 - `state_aggregator_service.dart`: ingest goals, habits, slips, recent events; expose safe defaults.
 - Routine setup screens: extract shared review-before-save widget.
 
 ### 3.6 Do Not Touch
 
-- Flutter framework / Firebase / Cloud Functions choice.
+- Flutter framework / Firebase client platform choice. Backend runtime is Cloudflare Workers for new server work.
 - Existing onboarding pages 0–9 layout (only extract widgets where Problem 9 demands).
 - The 6-tab nav.
 - `event_names.dart` existing constants.
@@ -283,17 +316,17 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 | 7 | Settings → Fixed schedule | Problem 9 / UF §3.4 | ✓ | ✓ | same as above | – | template events | – | – | ◐ | P4.T4.3 (shared widget) |
 | 8 | Daily fixed-schedule repeat | Problem 2 / UF §3 | ✓ via materializer | ✓ | `/tasks/{taskId}` | – | `task_scheduled` | – | reminders | ✓ | P5.T5.1 (idempotency proof) |
 | 9 | Routine tab Add button | Problem 3 / UF §3 | ✓ | ✓ | `/tasks` or `/routine/current.templates.custom` | – | task + template events | – | reminders | ✓ | P5.T5.2 (review) |
-| 10 | Routine tab AI button | Problem 4 / UF §5.3 | ✓ skeleton | ◐ | `/suggestions/{id}` | callable `routineSuggest` | `suggestion_*` | yes | – | ◐ | P11.T11.3 |
+| 10 | Routine tab AI button | Problem 4 / UF §5.3 | ✓ skeleton | ◐ | `/suggestions/{id}` | Worker `ROUTINE_SUGGEST_ENDPOINT` | `suggestion_*` | yes | – | ◐ | P11.T11.3 |
 | 11 | Skin care manual | Problem 5 / UF §3.1 | ✓ | ✓ | `/routine/current.templates.skin_care` | – | template events | – | – | ✓ | P6.T6.1 |
-| 12 | Skin care text AI | Problem 5 | ✗ wired | – | same | callable `routineImport` mode `skin_care_text` | `suggestion_generated/accepted` | yes | – | ◐ | P12.T12.2 |
-| 13 | Skin care photo AI | Problem 5 | ✗ wired | – | same | callable `routineImport` mode `skin_care_photo` + Storage | `suggestion_*` | yes | – | ◐ | P12.T12.3 |
+| 12 | Skin care text AI | Problem 5 | ✗ wired | – | same | Worker `ROUTINE_IMPORT_ENDPOINT` mode `skin_care_text` | `suggestion_generated/accepted` | yes | – | ◐ | P12.T12.2 |
+| 13 | Skin care photo AI | Problem 5 | ✗ wired | – | same | Worker `ROUTINE_IMPORT_ENDPOINT` mode `skin_care_photo` + Storage | `suggestion_*` | yes | – | ◐ | P12.T12.3 |
 | 14 | Supplement manual | Problem 6 / PRD §4.1 | ✓ | ✓ | `/routine/current.templates.supplements` | – | template events | – | – | ✓ | P6.T6.2 |
-| 15 | Supplement text AI | Problem 6 | ✗ | – | same | callable `routineImport` mode `supplement_text` | `suggestion_*` | yes | – | ✗ | P12.T12.4 |
+| 15 | Supplement text AI | Problem 6 | ✗ | – | same | Worker `ROUTINE_IMPORT_ENDPOINT` mode `supplement_text` | `suggestion_*` | yes | – | ✗ | P12.T12.4 |
 | 16 | Class manual | Problem 7 / UF §3.3 | ✓ | ✓ | `/routine/current.templates.classes` | – | template events | – | – | ✓ | P6.T6.3 |
-| 17 | Class timetable photo | Problem 7 | ✗ | – | same | callable `routineImport` mode `class_timetable_photo` + Storage | `suggestion_*` | yes (OCR) | – | ✗ | P12.T12.5 |
+| 17 | Class timetable photo | Problem 7 | ✗ | – | same | Worker `ROUTINE_IMPORT_ENDPOINT` mode `class_timetable_photo` + Storage | `suggestion_*` | yes (OCR) | – | ✗ | P12.T12.5 |
 | 18 | Eating manual | Problem 8 / UF §3.2 | ✓ | ✓ | `/routine/current.templates.eating` | – | template events | – | – | ✓ | P6.T6.4 |
-| 19 | Eating mess menu photo | Problem 8 | ✗ | – | same | callable `routineImport` mode `eating_mess_photo` | `suggestion_*` | yes | – | ✗ | P12.T12.6 |
-| 20 | Eating AI-generated routine | Problem 8 | ✗ | – | same | callable `routineImport` mode `eating_goal_text` | `suggestion_*` | yes | – | ✗ | P12.T12.7 |
+| 19 | Eating mess menu photo | Problem 8 | ✗ | – | same | Worker `ROUTINE_IMPORT_ENDPOINT` mode `eating_mess_photo` | `suggestion_*` | yes | – | ✗ | P12.T12.6 |
+| 20 | Eating AI-generated routine | Problem 8 | ✗ | – | same | Worker `ROUTINE_IMPORT_ENDPOINT` mode `eating_goal_text` | `suggestion_*` | yes | – | ✗ | P12.T12.7 |
 | 21 | Task lifecycle (start/pause/resume/complete/skip/abandon) | UF §6 / EventSys §5 | ✓ | ✓ | `/tasks` + `/task_outcomes` | – | task events | learning loop | active alerts | ✓ | P5.T5.4 |
 | 22 | Subtasks | EventSys §5.4 | ✓ | ✓ | task subtasks | – | `subtask_checked/unchecked` | – | – | ✓ | P5.T5.4 |
 | 23 | Habit good log | UF §4.1 | ✓ | ✓ | `/habit_logs/{logId}` | – | `good_habit_logged` | – | – | ✓ | P7.T7.1 |
@@ -315,7 +348,7 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 | 39 | Milestone marking | UF §9.6 | ◐ model only | ✗ UI | same | – | `milestone_completed` | – | P6 | ◐ | P9.T9.4 |
 | 40 | Pause / archive identity | UF §9.5 | ✗ | ✗ | same | – | `identity_paused/archived` | – | – | ✗ | P9.T9.5 |
 | 41 | Identity statement editor | UF §10.2 | ✗ | ✗ | `/profile/main.identityStatement` | – | `identity_statement_updated` | – | – | ✗ | P14.T14.1 |
-| 42 | Coach chat | UF §5 / PRD §6 | ✓ shell | ◐ | `/coach_messages` | callable `coachReply` | `coach_message_sent/replied` | yes | – | ◐ | P11.T11.1 |
+| 42 | Coach chat | UF §5 / PRD §6 | ✓ shell | ◐ | `/coach_messages` | Cloudflare `COACH_REPLY_ENDPOINT` | `coach_message_sent/replied` | yes | – | ◐ | P11.T11.1 |
 | 43 | Coach topic modes | UF §5.4 | ◐ | ◐ | same | same | – | system-prompt swap | – | ◐ | P11.T11.2 |
 | 44 | Routine AI suggestions | UF §5.3 / Problem 4 | ✓ panel | ◐ | `/suggestions` | `routineSuggest` | `suggestion_*` | yes | – | ◐ | P11.T11.3 |
 | 45 | AI rule engine + speak budget | EventSys §12 / AIM doc | ◐ scaffold | ◐ | `/coach_speak_log`, `/ai_context_snapshots` | `ruleEngine` | suppression events | yes | yes | ✗ | P11.T11.4 |
@@ -327,20 +360,20 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 | 51 | Streak detail + heatmap | UF §4.3 | ✓ | ✓ | `/streaks` | – | – | – | – | ✓ | (no rework) |
 | 52 | Ghost day detection + comeback | UF §14 | ◐ | ◐ | `/streaks`, `/suggestions` | inactivityCheck.js | `ghost_day_detected`, `comeback_initiated`, `comeback_path_chosen` | force-supportive | retention pushes | ◐ | P8.T8.2 |
 | 53 | Notification 6-tier scheduler | UF §11 / EventSys §13 | ◐ | ◐ | `/scheduled_notifications`, `/notificationLog` | dispatcher | full lifecycle | yes | yes | ◐ | P10.T10.1 |
-| 54 | Notification center | UF §10.5 | ✗ | ✗ | `/notificationLog` | – | `notification_tapped/dismissed` | – | – | ✗ | P10.T10.2 |
-| 55 | Notification settings | UF §10.5 | ✗ | ✗ | `/profile/main.notificationSettings` | – | `notification_settings_changed` | – | – | ✗ | P10.T10.3 |
-| 56 | Custom alarm editor + ringing | UF §6 / PRD §4.5 | ✗ | ✗ | `/scheduled_notifications` (P1) | AlarmManager | – | yes (voice) | P1 | ✗ | P10.T10.4 |
+| 54 | Notification center | UF §10.5 | ✓ | ✓ | `/notificationLog` | – | `notification_tapped/dismissed` | – | – | ✓ | P10.T10.2 |
+| 55 | Notification settings | UF §10.5 | ✓ | ✓ | `/profile/main.notificationSettings` | – | `notification_settings_changed` | – | – | ✓ | P10.T10.3 |
+| 56 | Custom alarm editor + ringing | UF §6 / PRD §4.5 | ✓ | ✓ | `/scheduled_notifications` (P1) | AlarmManager | – | yes (voice) | P1 | ✓ | P10.T10.4 |
 | 57 | Money saved (passive + active) | EventSys §14 | ◐ | ✗ | derived | dayClose.js | – | relapse pause | – | ◐ | P7.T7.10 |
 | 58 | Daily / weekly summaries | UF §7.2 / PRD §4.6 | ✗ | ✗ | `/dailySummaries`, `/weeklySummaries` | dayClose + weekly job | `routine_day_summarized`, `weekly_insight_ready` | EoD coach copy | EoD push | ◐ | P15.T15.1 |
 | 59 | Strengths / Areas to improve | UF §10 | ✗ | ✗ | `/profile/main.strengths/areas` (cached) | weekly job | – | yes | – | ✗ | P15.T15.2 |
 | 60 | Privacy / export / delete | UF §10.7 | ✗ | ✗ | `/data_exports`, `/deletion_requests` | export/delete jobs | `account_deleted` | – | – | ✗ | P14.T14.5 |
-| 61 | Subscription + AI usage caps | UF §10.8 / PRD §10 | ✗ | ✗ | `/profile/main.subscription`, `/usage/{monthKey}` | usage gate in callables | – | – | – | ✗ | P14.T14.6 |
+| 61 | Subscription + AI usage caps | UF §10.8 / PRD §10 | ✗ | ✗ | `/profile/main.subscription`, `/usage/{monthKey}` | usage gate in Workers | – | – | – | ✗ | P14.T14.6 |
 | 62 | Remote-config kill switches | sysdesign §2 | ◐ | ◐ | Remote Config | – | – | – | – | ◐ | P16.T16.1 |
 | 63 | Crash + perf monitoring | sysdesign §2 | ◐ | ◐ | Crashlytics | – | – | – | – | ◐ | P16.T16.2 |
 | 64 | Firestore rules + indexes audit | sysdesign §4 | ✓ | – | rules + indexes | – | – | – | – | ✓ | P17.T17.1 |
 | 65 | App Check | sysdesign §2 | ✗ | – | – | – | – | – | – | ✗ | P17.T17.2 |
 | 66 | Migration / seed data | TODO 11.2 | ✗ | – | – | – | – | – | – | ✗ | P18.T18.2 |
-| 67 | Production QA suite | TODO 11.1 | ◐ skips | – | tests/* | functions/test/* | – | – | – | ◐ | P18.T18.1 |
+| 67 | Production QA suite | TODO 11.1 | ◐ skips | – | tests/* | workers/*/test/* | – | – | – | ◐ | P18.T18.1 |
 
 (Any row not marked ✓ shows up as a task in §6.)
 
@@ -385,7 +418,7 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 
 | Loop | Action | UI | Service | Firestore | Event |
 |---|---|---|---|---|---|
-| Morning | Open app | Home | DailyPlanner (AI Cloud Function) | `tasks/*`, `dailySummaries` | `day_started` |
+| Morning | Open app | Home | DailyPlanner (Cloudflare Cron Worker) | `tasks/*`, `dailySummaries` | `day_started` |
 | During day | Execute tasks | Routine | TaskService | `tasks` | task events |
 | Habit moment | Log good/slip | Home/Tracker | HabitService | `habit_logs` | habit events |
 | AI moment | Accept/dismiss | Routine/Coach/Home | SuggestionService | `suggestions` | suggestion events |
@@ -396,7 +429,7 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 ### 5.4 Routine Tab Flow (Add + AI buttons)
 
 - **Add button →** `add_task_sheet` opens with date/time/title/type/repeat → save → `tasks` (one-off) **or** `routine/current.templates.custom` (repeating). Events: `task_scheduled` + `notification_scheduled` if reminder enabled.
-- **AI button →** `ai_routine_panel` opens; calls `routineSuggest` callable; renders cards; accept emits `suggestion_accepted` + creates task or template.
+- **AI button →** `ai_routine_panel` opens; calls `ROUTINE_SUGGEST_ENDPOINT`; renders cards; accept emits `suggestion_accepted` + creates task or template.
 - **Day selector →** changes `RoutineNotifier.selectedDate`; materialiser fills missing tasks for that day.
 - **Setup empty states →** "Set up Skin Care" / "Set up Eating" / "Set up Class" / "Set up Supplements" buttons route to dedicated setup screens.
 
@@ -411,7 +444,7 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 ### 5.6 AI Routine Suggestion Flow
 
 1. User taps AI button in Routine tab → loading shimmer.
-2. Flutter calls `routineSuggest(userId, selectedDate, context)` → Cloud Function builds context snapshot → calls Gemini → returns suggestion JSON validated against schema.
+2. Flutter calls `ROUTINE_SUGGEST_ENDPOINT` with `{userId, selectedDate, context}` → Worker builds context snapshot → calls Gemini → returns suggestion JSON validated against schema.
 3. Suggestions written to `/users/{uid}/suggestions` with `status='pending'`, expires in 24h.
 4. UI lists cards: Accept → create task or template; Edit → opens editor pre-filled; Dismiss → status `dismissed` + decay similar.
 5. Events: `suggestion_generated` (server), `suggestion_accepted` / `suggestion_dismissed` (client).
@@ -436,33 +469,33 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 ### 5.9 Skin Care Routine Flow (3 modes)
 
 - **Manual:** Add blocks per weekday, edit subtasks (Cleanse / Vitamin C / SPF), save → `routine/current.templates.skin_care`.
-- **Text AI:** User types products → callable `routineImport` mode `skin_care_text` → returns structured items → review screen → accept → templates.
-- **Photo AI:** User uploads photo of products → upload to Storage → callable `routineImport` mode `skin_care_photo` (image_metadata) → returns items → review → accept.
+- **Text AI:** User types products → `ROUTINE_IMPORT_ENDPOINT` mode `skin_care_text` → returns structured items → review screen → accept → templates.
+- **Photo AI:** User uploads photo of products → upload to Storage → `ROUTINE_IMPORT_ENDPOINT` mode `skin_care_photo` (image_metadata) → returns items → review → accept.
 
 ### 5.10 Supplement Routine Flow (2 modes)
 
 - **Manual:** name, time, dosage, repeat → templates.
-- **Text AI:** user typed supplement list → callable `routineImport` mode `supplement_text` → returns timing rules → review → accept.
+- **Text AI:** user typed supplement list → `ROUTINE_IMPORT_ENDPOINT` mode `supplement_text` → returns timing rules → review → accept.
 
 ### 5.11 Class Routine Flow (2 modes)
 
 - **Manual:** subject, room, professor, weekday, start/end → templates.
-- **Photo OCR:** user uploads timetable photo → Storage → callable `routineImport` mode `class_timetable_photo` → returns weekday-keyed schedule → review → accept.
+- **Photo OCR:** user uploads timetable photo → Storage → `ROUTINE_IMPORT_ENDPOINT` mode `class_timetable_photo` → returns weekday-keyed schedule → review → accept.
 
 ### 5.12 Eating Routine Flow (3 modes)
 
 - **Manual:** meal name, food, time → templates.
-- **Mess menu photo:** user uploads hostel mess photo → Storage → callable `routineImport` mode `eating_mess_photo` → returns weekday × meal grid → review → accept.
-- **AI goal text:** user types food goal ("hostel mass-gain extras") → callable `routineImport` mode `eating_goal_text` → returns full weekly routine → review → accept.
+- **Mess menu photo:** user uploads hostel mess photo → Storage → `ROUTINE_IMPORT_ENDPOINT` mode `eating_mess_photo` → returns weekday × meal grid → review → accept.
+- **AI goal text:** user types food goal ("hostel mass-gain extras") → `ROUTINE_IMPORT_ENDPOINT` mode `eating_goal_text` → returns full weekly routine → review → accept.
 
 ### 5.13 Photo Upload AI Flow (shared)
 
-- Image picker → resize/compress → upload to Storage `users/{uid}/uploads/{type}/{ts}.jpg` → metadata to callable → AI returns structured items → review-before-save → templates → events.
+- Image picker → resize/compress → upload to Storage `users/{uid}/uploads/{type}/{ts}.jpg` → metadata to Worker endpoint → AI returns structured items → review-before-save → templates → events.
 - Failure: corrupt image / OCR fail → show "Couldn't read this — try again or type it in" → emit nothing.
 
 ### 5.14 Ghost Absence / Comeback Flow
 
-- Background `inactivityCheck` Cloud Function runs daily.
+- Background Cloudflare Cron `inactivityCheck` job runs daily.
 - Day 1/3/7/14/30 thresholds → push messages; streak pause at day 3; comeback modal on next open.
 - Comeback modal: Easy / Half / Full → `comeback_path_chosen` → 48h forced-supportive coach tone.
 - Streaks resume if gap ≤ 7d, reset if ≥ 8d.
@@ -476,7 +509,7 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 
 ### 5.16 AI Coach Interaction Flow
 
-- Coach tab → input bar → user message → callable `coachReply(userId, threadId, text, mode)` → Cloud Function builds snapshot → calls Gemini with system prompt → streams reply → write `coach_messages` and `coach_speak_log`.
+- Coach tab → input bar → user message → `COACH_REPLY_ENDPOINT` with `{userId, threadId, text, mode}` → Worker verifies Firebase token → calls Gemini with system prompt → returns reply → write `coach_messages` and `coach_speak_log`.
 - Topic modes: long-press avatar → swap mode → preserve thread.
 - Safety: regex/keyword match in client AND server → if match, route to safety function → show crisis card, never LLM-generate.
 
@@ -494,11 +527,11 @@ Format: **Feature** → Doc source · Expected behaviour · UI · State · Fires
 8. **Day-start / Day-close** → before mission ring, identity scoring, AI day planning (Phases 5 + 11).
 9. **Goal/Identity schema + StateAggregator goals ingestion (§G1)** → before identity mission ring + AI context (Phase 9).
 10. **Storage upload + image picker** → before any photo AI mode (Phase 12).
-11. **Cloud Function `routineImport`** → before skin/supplement/class/eating AI modes' UI calls (Phase 12).
+11. **Cloudflare Worker `ROUTINE_IMPORT_ENDPOINT`** → before skin/supplement/class/eating AI modes' UI calls (Phase 12).
 12. **Notification lifecycle service** → before custom alarms, caps, dedupe, AI nudges (Phase 10).
 13. **Context snapshots + speak budget** → before rule engine + LLM (Phase 11).
 14. **Suggestion storage** → before Routine AI accept/dismiss round-trip (Phase 11).
-15. **Subscription / usage caps in Cloud Functions** → before AI shipping to all users (Phase 14).
+15. **Subscription / usage caps in Cloudflare Workers** → before AI shipping to all users (Phase 14).
 16. **Privacy export/delete jobs** → before deletion lifecycle UI (Phase 14).
 17. **Analytics summaries** → after events and day-close are stable (Phase 15).
 18. **Remote config kill switches** → before final QA (Phase 16).
@@ -553,10 +586,10 @@ If another file is required, explain why before changing it.
 
 ## Requirements
 
-- Read every file under `lib/` plus `functions/index.js` and `functions/jobs/*.js`.
+- Read every file under `lib/`, `workers/**/src/*.js`, and legacy `functions/index.js` / `functions/jobs/*.js`.
 - Re-list current files and sizes; flag any file > 1 KB as needing per-task verification.
 - Add matrix rows for: smoking, screen time, mindful eating (eating-disorder swap), procrastination, hydration, meditation, money saving, reading, exercise/running, routine completion meta-tracker, supplement text-AI, skin care text-AI, skin care photo-AI, class timetable photo OCR, eating mess photo, eating goal-text AI, AI rule engine, AI safety routing, weekly summary, daily summary, notification center, notification settings, custom alarm editor + ringing, subscription, usage caps, privacy export, deletion lifecycle, App Check.
-- Each row must have columns: Feature · UI path · Flutter file · Provider/state · Service/repository · Firestore path · Event · Cloud Function/backend · Notification need · AI need · Status (implemented | partial | missing) · Verification.
+- Each row must have columns: Feature · UI path · Flutter file · Provider/state · Service/repository · Firestore path · Event · Backend (Cloudflare Worker / local / legacy Firebase Function) · Notification need · AI need · Status (implemented | partial | missing) · Verification.
 - Do not change app runtime code.
 
 ## Events
@@ -657,14 +690,14 @@ Only modify these files:
 - `test/services/rule_engine_service_contract_test.dart`
 - `test/services/safety_router_contract_test.dart`
 - `test/services/analytics_service_contract_test.dart`
-- `functions/test/routineImport.contract.test.js`
-- `functions/test/notificationDispatcher.contract.test.js`
-- `functions/test/safety.contract.test.js`
-- `functions/test/exportUserData.contract.test.js`
-- `functions/test/deleteUserData.contract.test.js`
-- `functions/test/aiPlanner.contract.test.js`
-- `functions/test/ruleEngine.contract.test.js`
-- `functions/test/weeklySummary.contract.test.js`
+- `workers/routine-import-worker/test/routineImport.contract.test.js`
+- `workers/notification-dispatcher-worker/test/notificationDispatcher.contract.test.js`
+- `workers/safety-router-worker/test/safety.contract.test.js`
+- `workers/privacy-worker/test/exportUserData.contract.test.js`
+- `workers/privacy-worker/test/deleteUserData.contract.test.js`
+- `workers/scheduler-worker/test/aiPlanner.contract.test.js`
+- `workers/scheduler-worker/test/ruleEngine.contract.test.js`
+- `workers/weekly-summary-worker/test/weeklySummary.contract.test.js`
 
 If another file is required, explain why before changing it.
 
@@ -676,7 +709,7 @@ If another file is required, explain why before changing it.
 
 - Use `test_skipped` or `skip:` markers — tests must not fail due to absent implementation.
 - Each test file must include a top-level comment describing the contract being tested.
-- Add npm script `npm test` in `functions/package.json` if not present (uses Mocha or Jest — pick whichever already exists or default to Mocha + sinon).
+- Add npm test scripts in Worker `package.json` files if tests are introduced (use the pattern already present in each Worker package).
 - Do not modify production services.
 
 ## Events
@@ -719,7 +752,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 - [x] All 14 test files exist.
 - [x] Test runners pass with skips.
-- [x] `functions/package.json` has `test` script.
+- [ ] Worker packages with tests have `test` scripts.
 
 ---
 
@@ -4665,7 +4698,7 @@ Complete production integrations for the Optivus Fitness Engine.
 - Event system integration.
 - Analytics surfaces.
 - Firestore security rules.
-- Cloud Functions automation.
+- Cloudflare Worker automation.
 - Offline queue/sync state.
 - Error, empty, loading, permission, and map failure states.
 - Tests and analyzer/build verification.
@@ -4711,14 +4744,14 @@ After completion, request personalized feedback using:
 
 Do not use user fitness data to train external models. Use it only for that user's coaching experience.
 
-## Cloud Functions
+## Cloudflare Workers
 
-- `onFitnessActivityCompleted`
-- `onFitnessGoalUpdated`
-- `scheduledFitnessWeeklySummary`
-- `cleanupOrCompressRoutePoints` optional
+- `workers/fitness-worker/src/jobs/onFitnessActivityCompleted.js`
+- `workers/fitness-worker/src/jobs/onFitnessGoalUpdated.js`
+- `workers/fitness-worker/src/jobs/scheduledFitnessWeeklySummary.js`
+- `workers/fitness-worker/src/jobs/cleanupOrCompressRoutePoints.js` optional
 
-Functions must be idempotent and avoid duplicate stats/events.
+Worker jobs must be idempotent and avoid duplicate stats/events. If Firestore trigger semantics are needed, use a Cron poller over unprocessed activity/goal rows because Cloudflare Workers do not have native Firestore triggers.
 
 ## Security rules
 
@@ -4752,8 +4785,8 @@ Protect aggregate stats if backend-managed.
 - `flutter test` if tests exist
 - Android debug build
 - iOS build if available
-- `npm test` in `functions/`
-- Firebase emulator rules/function verification where possible
+- Worker package tests if `workers/fitness-worker` is introduced
+- Firebase emulator rules verification where possible
 - Manual edge cases: denied permission, GPS off, no internet, pause/resume, cancel, duplicate finish, very short activity, no heart rate.
 ```
 
@@ -4778,7 +4811,7 @@ Protect aggregate stats if backend-managed.
 
 - [ ] Stats/goals services and UI exist.
 - [ ] Routine, streak, daily summary, analytics, event, and AI integrations exist.
-- [ ] Cloud Functions are idempotent.
+- [ ] Worker jobs are idempotent.
 - [ ] Firestore rules secure all fitness paths.
 - [ ] Offline/error/empty states are handled.
 
@@ -4834,8 +4867,8 @@ Confirm explicitly in the final response that Tasks 7.12.1-7.12.4 cover the full
 - `flutter test` if tests exist
 - Android debug build
 - iOS build if available
-- `npm test` in `functions/`
-- Firebase emulator verification for functions/rules where possible
+- Worker package tests if backend Worker tests exist
+- Firebase emulator verification for rules where possible
 - Manual UI flow verification from Track tab through completed route review
 - Firestore document verification for activities, route points, splits, daily stats, and weekly stats
 - Event verification for fitness start, complete, route saved, streak updated, and AI feedback requested
@@ -5889,7 +5922,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [ ] Not started
+- [x] Done (verified May 8 2026 — `notification_service.dart` implements lifecycle methods, custom scheduling, re-register on app start; `notification_service_contract_test.dart` covers sent/tapped/dismissed/suppressed/missed and re-register paths).
 
 #### Why
 
@@ -5967,9 +6000,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] All 11 methods.
-- [ ] Re-register on start.
-- [ ] Dedupe works.
+- [x] All 11 methods.
+- [x] Re-register on start.
+- [x] Dedupe works.
 
 ---
 
@@ -5977,7 +6010,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [ ] Not started
+- [x] Done (verified May 8 2026 — `lib/views/notifications/notification_center_screen.dart` exists and is routed from `app_router.dart`).
 
 #### Why
 
@@ -6046,9 +6079,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] Center screen.
-- [ ] Filters.
-- [ ] Deep links.
+- [x] Center screen.
+- [x] Filters.
+- [x] Deep links.
 
 ---
 
@@ -6056,7 +6089,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [ ] Not started
+- [x] Done (verified May 8 2026 — `lib/views/settings/notification_settings_screen.dart` exists; notification settings and custom alarm list are implemented).
 
 #### Why
 
@@ -6129,9 +6162,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] Budget + caps.
-- [ ] Quiet hours.
-- [ ] Test notification.
+- [x] Budget + caps.
+- [x] Quiet hours.
+- [x] Test notification.
 
 ---
 
@@ -6139,7 +6172,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [ ] Not started
+- [x] Done (verified May 8 2026 — `alarm_editor_screen.dart`, `alarm_ringing_screen.dart`, `snooze_reason_sheet.dart`, alarm chips, and P1 scheduling metadata exist).
 
 #### Why
 
@@ -6213,24 +6246,24 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] Editor.
-- [ ] Ringing.
-- [ ] Snooze reason saved.
+- [x] Editor.
+- [x] Ringing.
+- [x] Snooze reason saved.
 
 ---
 
 ## Phase 11 — AI Coach, Rule Engine, Suggestions, Safety
 
-### Task 11.1 — Move Gemini calls to Cloud Function
+### Task 11.1 — Move interactive coach reply to Cloudflare Worker
 
 #### Status
 
-- [x] Done (verified 2026-05-03 — `lib/services/gemini_service.dart` already calls `FirebaseFunctions.instance.httpsCallable('aiGenerate')`; `functions/index.js` exports `aiGenerate` with `secrets: [geminiApiKey]`; no Gemini key shipped in Flutter).
-- [ ] Needs review: client-side safety pre-filter (Task 11.5) and per-user usage cap (Task 14.5) still pending.
+- [x] Done (verified May 8 2026 — `lib/services/gemini_service.dart` calls `COACH_REPLY_ENDPOINT`; `workers/coach-reply-worker/src/index.js` verifies Firebase ID tokens and calls Gemini server-side; no Gemini key is shipped in Flutter for interactive coach replies).
+- [ ] Follow-up required: generic `aiGenerate` and future `routineImport` still use Firebase callable patterns. Complete Task 11.1A before building new AI features.
 
 #### Why
 
-Flutter must never hold the Gemini API key (sysdesign §2.1). Move all Gemini calls behind a callable Cloud Function.
+Flutter must never hold the Gemini API key. Interactive coach replies now use Cloudflare Workers because Firebase Cloud Functions require Blaze.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -6241,17 +6274,17 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Migrate Gemini calls from Flutter to a callable Cloud Function `coachReply`.
+Migrate interactive coach replies from Flutter/Firebase callable flow to a Cloudflare Worker endpoint.
 
 ## Files allowed to modify
 
 Only modify these files:
 
-- `lib/services/gemini_service.dart` (replace direct API call with HttpsCallable)
+- `lib/services/gemini_service.dart` (call `COACH_REPLY_ENDPOINT` over HTTPS)
 - `lib/services/coach_service.dart`
-- `functions/index.js`
-- `functions/ai/coachReply.js` (new)
-- `functions/test/coachReply.contract.test.js`
+- `workers/coach-reply-worker/src/index.js`
+- `workers/coach-reply-worker/wrangler.toml`
+- `workers/coach-reply-worker/package.json`
 
 ## Firestore paths
 
@@ -6261,16 +6294,19 @@ Only modify these files:
 
 ## Requirements
 
-- Function inputs: `{userId, threadId, text, mode}`. Auth via Firebase Auth callable.
-- Function reads context snapshot, calls Gemini with system prompt, validates JSON, returns text + suggested actions.
-- Function writes to `coach_messages` (server-trusted source).
+- Worker inputs: `{userId, threadId, text, mode}` over HTTPS.
+- Flutter sends `Authorization: Bearer <Firebase ID token>`.
+- Worker verifies Firebase ID token with Google JWKS and `FIREBASE_PROJECT_ID`.
+- Worker calls Gemini with server-side `GEMINI_API_KEY` stored as a Wrangler secret.
+- Worker returns text + suggested actions.
+- Until Worker has Firestore service-account writes, Flutter may write assistant message as `source='cloudflare_coach_reply'`; this must be revisited in Task 11.1A / 11.5 for server-trusted safety and budget records.
 - No API key in Flutter.
 - Crisis keywords routed before LLM (Phase 11.5).
 
 ## Events
 
 - `coach_message_sent` (client-side on send).
-- `coach_replied` (server-side on reply).
+- `coach_replied` (client-side until Worker owns trusted Firestore writes).
 
 ## Dependencies
 
@@ -6278,7 +6314,7 @@ Only modify these files:
 
 ## Verification
 
-Crashlytics: no Gemini key in client crash. Function tests cover happy path + safety rejection.
+Crashlytics: no Gemini key in client crash. Worker tests cover happy path + safety rejection.
 
 ## Final response format
 
@@ -6292,7 +6328,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 #### How to verify
 
 - Search Flutter source for Gemini key — must be absent.
-- Function emulator returns reply.
+- `wrangler dev` returns reply with a valid Firebase ID token.
 
 #### Estimate
 
@@ -6300,9 +6336,122 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] No keys in Flutter.
-- [ ] Function returns reply.
+- [x] No keys in Flutter for interactive coach replies.
+- [x] Worker returns reply.
 - [ ] Tests cover schema validation.
+
+---
+
+### Task 11.1A — Migrate remaining AI callables to Cloudflare endpoints (NEW — required before new AI work)
+
+#### Status
+
+- [ ] Not started
+
+#### Why
+
+The codebase now has a mixed backend: interactive coach replies use Cloudflare, but `GeminiService.generate`, `GeminiService.generateWithContext`, and `RoutineRepository.previewRoutineImport` still call Firebase callables. This blocks Blaze-free development because future tasks would keep depending on Cloud Functions.
+
+#### What to tell Gemini CLI / Antigravity
+
+```text
+Use `.gemini/GEMINI.md` as the project rules.
+
+Work in planning mode first. Do not edit code until you inspect the files and give a plan.
+
+## Task
+
+Remove Firebase callable dependencies from AI generation paths and introduce Cloudflare Worker endpoints for generic generation and routine import.
+
+## Files allowed to modify
+
+Only modify these files:
+
+- `lib/services/gemini_service.dart`
+- `lib/repositories/routine_repository.dart`
+- `pubspec.yaml` (remove `cloud_functions` only if no remaining import uses it)
+- `workers/ai-gateway-worker/src/index.js` (new)
+- `workers/ai-gateway-worker/wrangler.toml` (new)
+- `workers/ai-gateway-worker/package.json` (new)
+- `workers/routine-import-worker/src/index.js` (new)
+- `workers/routine-import-worker/wrangler.toml` (new)
+- `workers/routine-import-worker/package.json` (new)
+- tests matching the existing repo pattern, if test infrastructure exists
+
+If another file is required, explain why before changing it.
+
+## Endpoint contract
+
+- `AI_GENERATE_ENDPOINT`: replaces `FirebaseFunctions.instance.httpsCallable('aiGenerate')`.
+- `ROUTINE_IMPORT_ENDPOINT`: replaces `FirebaseFunctions.instance.httpsCallable('routineImport')`.
+- Both endpoints require `Authorization: Bearer <Firebase ID token>`.
+- Workers verify Firebase ID tokens with `FIREBASE_PROJECT_ID`, same pattern as `workers/coach-reply-worker/src/index.js`.
+- Workers store AI provider keys only as Wrangler secrets.
+
+## Firestore paths
+
+- read `/users/{uid}/profile/main` when safety flags or usage caps are needed
+- write `/users/{uid}/usage/{monthKey}` only from the Worker once Firestore REST service-account support is added
+
+## Requirements
+
+- Keep the existing public Dart method names so callers do not change.
+- Do not use `FirebaseFunctions.instance` anywhere in `gemini_service.dart` or `routine_repository.dart`.
+- Fail fast with clear messages when required endpoint dart-defines are missing.
+- Add a shared HTTP helper only if it reduces duplication across both services.
+- Document required local run flags:
+  - `--dart-define=COACH_REPLY_ENDPOINT=...`
+  - `--dart-define=AI_GENERATE_ENDPOINT=...`
+  - `--dart-define=ROUTINE_IMPORT_ENDPOINT=...`
+- Leave `functions/` untouched unless the task explicitly asks to delete legacy code.
+
+## Events
+
+- No new events. Preserve existing event emission behavior.
+
+## Dependencies
+
+- Task 11.1.
+
+## Verification
+
+After implementation, run:
+
+`flutter analyze`
+
+Also verify:
+
+- `rg "FirebaseFunctions|httpsCallable|cloud_functions" lib` returns no AI backend usage.
+- Coach reply still works through `COACH_REPLY_ENDPOINT`.
+- Generic generation works through `AI_GENERATE_ENDPOINT`.
+- Routine import preview works through `ROUTINE_IMPORT_ENDPOINT`.
+
+## Final response format
+
+Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore paths affected 5. Events implemented or skipped 6. Analyzer result 7. Remaining risks or missing dependencies
+```
+
+#### Dependencies
+
+- Task 11.1.
+
+#### How to verify
+
+- No AI path uses Firebase callable APIs.
+- Worker endpoints reject missing/invalid Firebase tokens.
+- Worker endpoints keep Gemini keys server-side.
+
+#### Estimate
+
+1 day
+
+#### Done Criteria
+
+- [ ] `gemini_service.dart` no longer imports `cloud_functions`.
+- [ ] `routine_repository.dart` no longer imports `cloud_functions`.
+- [ ] `AI_GENERATE_ENDPOINT` Worker exists.
+- [ ] `ROUTINE_IMPORT_ENDPOINT` Worker exists.
+- [ ] Local run instructions include all required dart-defines.
 
 ---
 
@@ -6310,7 +6459,8 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Status
 
-- [ ] Not started (verified 2026-05-03: `coach_service.dart` already writes to `/users/{uid}/coach_messages/{messageId}` at line 196 and `/users/{uid}/coach_speak_log/{logId}` at line 220 — wiring is real, but topic-mode picker, streaming UI, retry, and crisis-card branches still need to be built).
+- [x] Done (verified May 8 2026: `coach_tab.dart` has Recovery / Study / Calm / Ask Anything modes, retry state, typing state, and threaded messages; `coach_service.dart` writes coach messages and uses the Cloudflare reply path).
+- [ ] Follow-up required: crisis-card branch depends on Task 11.5; server-trusted Worker writes depend on Task 11.1A.
 
 #### Why
 
@@ -6368,6 +6518,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 #### Dependencies
 
 - Task 11.1.
+- Task 11.1A for removing the remaining Firebase callable AI paths.
 
 #### How to verify
 
@@ -6380,9 +6531,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Done Criteria
 
-- [ ] 4 modes.
-- [ ] Pagination.
-- [ ] Streaming.
+- [x] 4 modes.
+- [x] Pagination/history stream.
+- [x] Typing/retry state.
 
 ---
 
@@ -6429,7 +6580,7 @@ Only modify these files:
 
 - Service: stream pending suggestions; accept→ create task or template + status='accepted'; dismiss→ status='dismissed'+ decay similar.
 - Panel reads stream; Accept opens detail sheet; Dismiss is one tap.
-- Free-text "Ask AI..." bar calls `routineSuggest` callable (Cloud Function — Phase 13).
+- Free-text "Ask AI..." bar calls `ROUTINE_SUGGEST_ENDPOINT` Cloudflare Worker endpoint (Phase 13).
 
 ## Events
 
@@ -6438,7 +6589,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 5.2, 11.1.
+- Tasks 5.2, 11.1A.
 
 ## Verification
 
@@ -6451,7 +6602,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 5.2, 11.1.
+- Tasks 5.2, 11.1A.
 
 #### How to verify
 
@@ -6518,7 +6669,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Task 11.1, 9.G1.
+- Task 11.1A, 9.G1.
 
 ## Verification
 
@@ -6531,7 +6682,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 11.1, 9.G1.
+- Tasks 11.1A, 9.G1.
 
 #### How to verify
 
@@ -6569,7 +6720,7 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Implement safety router (client guard + Cloud Function).
+Implement safety router (client guard + Cloudflare Worker backstop).
 
 ## Files allowed to modify
 
@@ -6577,8 +6728,10 @@ Only modify these files:
 
 - `lib/services/coach_service.dart` (client pre-filter)
 - `lib/views/tabs/coach_tab.dart` (crisis card)
-- `functions/jobs/safety.js` (new)
-- `functions/index.js`
+- `lib/services/coach_safety_lists.dart` (new)
+- `workers/safety-router-worker/src/index.js` (new)
+- `workers/safety-router-worker/wrangler.toml` (new)
+- `workers/safety-router-worker/package.json` (new)
 
 ## Firestore paths
 
@@ -6588,7 +6741,7 @@ Only modify these files:
 
 - Client: regex/keyword pre-filter on user text.
 - If crisis keyword → show pre-LLM crisis card with regional helpline numbers.
-- Function: secondary check on server before Gemini call; if matched, return safe template, never call Gemini.
+- Worker: secondary check on server before Gemini call; if matched, return safe template, never call Gemini.
 - Medical/legal/financial: server-side decline message with "talk to a [doctor/lawyer/advisor]".
 - All safety triggers logged to `crisis_handoffs` (admin SDK).
 
@@ -6598,7 +6751,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Task 11.1, 11.4.
+- Task 11.1A, 11.4.
 
 ## Verification
 
@@ -6611,7 +6764,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 11.1, 11.4.
+- Tasks 11.1A, 11.4.
 
 #### How to verify
 
@@ -6630,7 +6783,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 ---
 
-### Task 11.6 — AI scheduled jobs (morning/midday/dayClose/inactivity)
+### Task 11.6 — AI scheduled jobs via Cloudflare Cron (morning/midday/dayClose/inactivity)
 
 #### Status
 
@@ -6638,7 +6791,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-EventSystem §13 / TODO 8.5 split: each job needs full implementation reading context snapshot, applying rules, writing suggestions/scheduled notifications.
+EventSystem §13 / TODO 8.5 split: each job needs full implementation reading context snapshot, applying rules, writing suggestions/scheduled notifications. Because Firebase Cloud Functions require Blaze, scheduled AI work must use Cloudflare Cron Triggers.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -6649,20 +6802,22 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Flesh out scheduled AI jobs (morning, midday, dayClose, inactivity, AI planner, rule engine).
+Flesh out scheduled AI jobs as Cloudflare Cron Workers (morning, midday, dayClose, inactivity, AI planner, rule engine).
 
 ## Files allowed to modify
 
 Only modify these files:
 
-- `functions/jobs/morningBrief.js`
-- `functions/jobs/middayPulse.js`
-- `functions/jobs/dayClose.js`
-- `functions/jobs/inactivityCheck.js`
-- `functions/jobs/aiPlanner.js` (new)
-- `functions/jobs/ruleEngine.js` (new)
-- `functions/jobs/utils.js`
-- `functions/index.js`
+- `workers/scheduler-worker/src/index.js` (new)
+- `workers/scheduler-worker/src/jobs/morningBrief.js` (new)
+- `workers/scheduler-worker/src/jobs/middayPulse.js` (new)
+- `workers/scheduler-worker/src/jobs/dayClose.js` (new)
+- `workers/scheduler-worker/src/jobs/inactivityCheck.js` (new)
+- `workers/scheduler-worker/src/jobs/aiPlanner.js` (new)
+- `workers/scheduler-worker/src/jobs/ruleEngine.js` (new)
+- `workers/scheduler-worker/src/jobs/utils.js` (new)
+- `workers/scheduler-worker/wrangler.toml` (new — Cron Trigger schedules)
+- `workers/scheduler-worker/package.json` (new)
 
 ## Firestore paths
 
@@ -6681,6 +6836,7 @@ Only modify these files:
 - Inactivity: detect 1/3/7/14/30-day absences; emit `ghost_day_detected`.
 - AI Planner: orchestrator the morning job calls.
 - Rule Engine: server replica of §11.4 rules.
+- Worker reads/writes Firestore through a trusted server path using Wrangler secrets; Flutter must not perform scheduled-job writes.
 - Skip safely for users without data.
 - Never store provider key in Flutter.
 
@@ -6696,11 +6852,11 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 11.1, 11.4, 11.5.
+- Tasks 11.1A, 11.4, 11.5.
 
 ## Verification
 
-Emulator: seed user data → run jobs → confirm outputs.
+Local Worker test: seed Firestore test data → run Worker job handler / `wrangler dev` route → confirm outputs. Do not require Firebase Functions emulator.
 
 ## Final response format
 
@@ -6709,11 +6865,11 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 11.1, 11.4, 11.5.
+- Tasks 11.1A, 11.4, 11.5.
 
 #### How to verify
 
-- Emulator runs all jobs without crash on no-data users.
+- Worker job handlers run without crash on no-data users.
 
 #### Estimate
 
@@ -6833,7 +6989,7 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Wire skin care setup screen text-AI mode + Cloud Function.
+Wire skin care setup screen text-AI mode + Cloudflare Worker endpoint.
 
 ## Files allowed to modify
 
@@ -6841,8 +6997,9 @@ Only modify these files:
 
 - `lib/views/routine/skin_care_setup_screen.dart`
 - `lib/views/routine/widgets/routine_review_screen.dart` (new shared)
-- `functions/ai/routineImport.js` (new)
-- `functions/index.js`
+- `workers/routine-import-worker/src/index.js`
+- `workers/routine-import-worker/wrangler.toml`
+- `workers/routine-import-worker/package.json`
 - `lib/repositories/routine_repository.dart` (already has previewRoutineImport — verify)
 
 ## Firestore paths
@@ -6854,8 +7011,8 @@ Only modify these files:
 ## Requirements
 
 - Setup screen has 3 mode tabs: Manual / Text AI / Photo AI.
-- Text AI: textarea → "Generate" button → callable `routineImport({routineType:'skin_care', mode:'skin_care_text', sourceText, commit:false})`.
-- Function returns `{templates: [...]}`; client renders review screen with edit/remove/add/regenerate; on Accept-all, calls `saveRoutineTemplates`.
+- Text AI: textarea → "Generate" button → HTTPS `ROUTINE_IMPORT_ENDPOINT` call with `{routineType:'skin_care', mode:'skin_care_text', sourceText, commit:false}`.
+- Worker returns `{templates: [...]}`; client renders review screen with edit/remove/add/regenerate; on Accept-all, calls `saveRoutineTemplates`.
 - Output schema: title, time, timing rule, weekday rule, steps, notes, confidence, warnings.
 
 ## Events
@@ -6866,7 +7023,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 6.1, 12.1, 11.1.
+- Tasks 6.1, 12.1, 11.1A.
 
 ## Verification
 
@@ -6879,7 +7036,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 6.1, 12.1, 11.1.
+- Tasks 6.1, 12.1, 11.1A.
 
 #### How to verify
 
@@ -6924,8 +7081,8 @@ Add photo AI mode to skin care setup.
 Only modify these files:
 
 - `lib/views/routine/skin_care_setup_screen.dart`
-- `functions/ai/routineImport.js`
-- `functions/index.js`
+- `workers/routine-import-worker/src/index.js`
+- `workers/routine-import-worker/wrangler.toml`
 
 ## Firestore paths
 
@@ -6938,8 +7095,8 @@ Only modify these files:
 
 ## Requirements
 
-- Photo mode: pick photo → upload via Task 12.1 helper → callable `routineImport({mode:'skin_care_photo', imageMetadata})`.
-- Function uses Gemini Pro Vision to extract product names + suggested timings.
+- Photo mode: pick photo → upload via Task 12.1 helper → HTTPS `ROUTINE_IMPORT_ENDPOINT` call with `{mode:'skin_care_photo', imageMetadata}`.
+- Worker uses Gemini Vision-capable model to extract product names + suggested timings.
 - Review screen identical to Task 12.2.
 - Bad image → friendly error, save nothing.
 
@@ -7006,7 +7163,7 @@ Add supplement text AI mode.
 Only modify these files:
 
 - `lib/views/routine/supplement_setup_screen.dart`
-- `functions/ai/routineImport.js`
+- `workers/routine-import-worker/src/index.js`
 
 ## Firestore paths
 
@@ -7015,7 +7172,7 @@ Only modify these files:
 ## Requirements
 
 - Modes tab: Manual / Text AI.
-- Text AI input → callable `routineImport({mode:'supplement_text', sourceText})`.
+- Text AI input → HTTPS `ROUTINE_IMPORT_ENDPOINT` call with `{mode:'supplement_text', sourceText}`.
 - Output: name, dosage, time, timing rule (after breakfast / after workout / after lunch / before bed), notes, warnings.
 - Review screen reuses shared widget from 12.2.
 
@@ -7025,7 +7182,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 6.2, 12.1, 12.2, 11.1.
+- Tasks 6.2, 12.1, 12.2, 11.1A.
 
 ## Verification
 
@@ -7038,7 +7195,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 6.2, 12.1, 12.2, 11.1.
+- Tasks 6.2, 12.1, 12.2, 11.1A.
 
 #### How to verify
 
@@ -7081,7 +7238,7 @@ Add photo OCR mode to class setup.
 Only modify these files:
 
 - `lib/views/routine/class_setup_screen.dart`
-- `functions/ai/routineImport.js`
+- `workers/routine-import-worker/src/index.js`
 
 ## Firestore paths
 
@@ -7094,7 +7251,7 @@ Only modify these files:
 ## Requirements
 
 - Modes tab: Manual / Photo OCR.
-- Pick image → upload → callable `routineImport({mode:'class_timetable_photo', imageMetadata})`.
+- Pick image → upload → HTTPS `ROUTINE_IMPORT_ENDPOINT` call with `{mode:'class_timetable_photo', imageMetadata}`.
 - Output: `{weekday, subject, room, professor, start, end}` array.
 - Review screen lets user adjust each class.
 - Recurring weekly schedule applied via templates.
@@ -7105,7 +7262,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 6.3, 12.1, 12.2, 11.1.
+- Tasks 6.3, 12.1, 12.2, 11.1A.
 
 ## Verification
 
@@ -7118,7 +7275,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 6.3, 12.1, 12.2, 11.1.
+- Tasks 6.3, 12.1, 12.2, 11.1A.
 
 #### How to verify
 
@@ -7145,7 +7302,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 Problem 8: Hostel users upload a weekly mess sheet photo → Claude Vision OCR extracts per-weekday meal times + items → populates eating templates automatically.
 
-**Note:** This task shares the `routineImport` Cloud Function with Tasks 12.2 (skin care photo), 12.3 (skin care text), 12.4 (class timetable photo), and 12.5 (skin care text). Build the CF once and route by `mode`. AI Goal text mode for eating is covered by the fully-redesigned **Task 12.7**.
+**Note:** This task shares the `ROUTINE_IMPORT_ENDPOINT` Cloudflare Worker with Tasks 12.2 (skin care photo), 12.3 (skin care text), 12.4 (class timetable photo), and 12.5 (skin care text). Build the Worker once and route by `mode`. AI Goal text mode for eating is covered by the fully-redesigned **Task 12.7**.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -7163,7 +7320,7 @@ Add eating mess-menu photo mode.
 Only modify these files:
 
 - `lib/views/routine/eating_setup_screen.dart`
-- `functions/ai/routineImport.js`
+- `workers/routine-import-worker/src/index.js`
 
 ## Firestore paths
 
@@ -7175,8 +7332,8 @@ Only modify these files:
 
 ## Requirements
 
-- Mess Photo button (already stubbed in `_showImportOptions`): pick → compress → upload Storage → callable `routineImport({mode:'eating_mess_photo', storagePath})`.
-- CF uses Claude Vision to OCR the sheet and returns weekly grid `{weekday, mealTime, mealName, items[]}`.
+- Mess Photo button (already stubbed in `_showImportOptions`): pick → compress → upload Storage → HTTPS `ROUTINE_IMPORT_ENDPOINT` call with `{mode:'eating_mess_photo', storagePath}`.
+- Worker uses a vision-capable model to OCR the sheet and returns weekly grid `{weekday, mealTime, mealName, items[]}`.
 - Review screen lets user adjust each meal before saving.
 - Saved templates use `repeatRule: 'mess_menu_weekday:N'` (N=1–7, 1=Mon).
 - AI Goal text mode (Task 12.7) is a separate button — do NOT add it here.
@@ -7187,8 +7344,8 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 6.4, 12.1, 11.1.
-  - Note: 12.2 (skin care photo AI) is NOT a dependency — the `routineImport` CF is shared infrastructure but this task's mode is independent.
+- Tasks 6.4, 12.1, 11.1A.
+  - Note: 12.2 (skin care photo AI) is NOT a dependency — the `routineImport` Worker is shared infrastructure but this task's mode is independent.
 
 ## Verification
 
@@ -7201,7 +7358,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 6.4, 12.1, 11.1.
+- Tasks 6.4, 12.1, 11.1A.
 
 #### How to verify
 
@@ -7253,8 +7410,9 @@ Only modify these files:
 - `lib/views/routine/routine_tab.dart`
 - `lib/views/routine/eating_setup_screen.dart`
 - `lib/models/task_model.dart`          ← add `deletable: bool` field (default true)
-- `functions/ai/adaptiveEating.js`      ← new callable Cloud Function
-- `functions/index.js`
+- `workers/adaptive-eating-worker/src/index.js`      ← new Cloudflare Worker endpoint
+- `workers/adaptive-eating-worker/wrangler.toml`
+- `workers/adaptive-eating-worker/package.json`
 - `lib/core/constants/event_names.dart`
 - `lib/services/event_payload_validator.dart`
 
@@ -7276,7 +7434,7 @@ None for this task.
 ## Requirements
 
 ### A — TDEE computation
-- On first run (or when biometrics change), callable `adaptiveEating({action:'compute_targets'})` computes TDEE using Mifflin-St Jeor formula:
+- On first run (or when biometrics change), HTTPS `ADAPTIVE_EATING_ENDPOINT` call with `{action:'compute_targets'}` computes TDEE using Mifflin-St Jeor formula:
   - Men:   BMR = 10·weight(kg) + 6.25·height(cm) − 5·age + 5
   - Women: BMR = 10·weight(kg) + 6.25·height(cm) − 5·age − 161
   - TDEE = BMR × activityMultiplier (sedentary 1.2, light 1.375, moderate 1.55, active 1.725, very active 1.9)
@@ -7285,8 +7443,8 @@ None for this task.
 - Emit `nutritional_target_computed` event.
 
 ### B — Gap-fill flow (triggered after meal marked done)
-- Triggered: user marks a meal task done in routine_tab → provider calls `adaptiveEating({action:'check_gap', date, completedMealTime})`.
-- CF sums calories of all meals marked done that day vs. `tdeeKcal`.
+- Triggered: user marks a meal task done in routine_tab → provider calls `ADAPTIVE_EATING_ENDPOINT` with `{action:'check_gap', date, completedMealTime}`.
+- Worker sums calories of all meals marked done that day vs. `tdeeKcal`.
 - If gap > 200 kcal and there are ≥ 2 hours left in the day:
   - Generate 1–2 food blocks to close the gap (respect `preferences.flavorTags`).
   - Store each block in `/users/{uid}/routine/ai_suggestions/{date}_{slot}` with `deletable: false`.
@@ -7296,8 +7454,8 @@ None for this task.
 
 ### C — Missed meal recovery
 - Triggered: routine_tab checks at end-of-day (or on next open after midnight) if any meal template for that date was never marked done.
-- Calls `adaptiveEating({action:'missed_meal_recovery', date, missedSlot})`.
-- CF generates a recovery snack for the following morning.
+- Calls `ADAPTIVE_EATING_ENDPOINT` with `{action:'missed_meal_recovery', date, missedSlot}`.
+- Worker generates a recovery snack for the following morning.
 - Stored in `ai_suggestions/{tomorrow}_{slot}`.
 - Non-recurring (one-off `repeatRule: 'once'`).
 - Emit `ai_meal_suggestion_created`.
@@ -7305,7 +7463,7 @@ None for this task.
 ### D — Preference steering
 - In eating_setup_screen.dart: add a "Steer AI suggestions" chip bar (sweet / spicy / light / high-protein / vegan).
 - Tapping a chip saves to `/users/{uid}/routine/preferences.flavorTags` (toggle on/off).
-- CF reads this on every gap-fill cycle.
+- Worker reads this on every gap-fill cycle.
 - Emit `ai_meal_preference_updated` event.
 
 ### E — Non-deletable display
@@ -7328,17 +7486,16 @@ These three events must be registered in `event_names.dart` and validated in `ev
 ## Dependencies
 
 - Task 6.4 (eating manual mode — templates exist).
-- Task 12.1 (routineImport CF skeleton — shared infra).
+- Task 11.1A (Cloudflare AI/routine endpoint skeleton — shared infra).
 - Task 12.6 (mess menu OCR — user's weekly meals populated before gap-fill makes sense).
-- Task 11.1 (About You biometrics — needed for TDEE).
-- Task 1.2 (profile/main — eatingDisorderFlag).
+- Task 1.2 (About You biometrics and `profile/main.eatingDisorderFlag`).
 - Task 3.1 (TaskModel base — adding `deletable` field here).
 - Task 2.3 re-open (new event validators).
 - Task 2.4 re-open (new Firestore indexes for `ai_suggestions` and `nutritional_targets`).
 
 ## Verification
 
-1. Mark all meals done for today with 600 kcal gap → CF creates gap-fill block in Firestore + appears in timeline with lock icon.
+1. Mark all meals done for today with 600 kcal gap → Worker creates gap-fill block in Firestore + appears in timeline with lock icon.
 2. Skip breakfast → next morning recovery snack appears.
 3. Toggle "spicy" chip → regenerate gap-fill → suggestion uses spicy tags.
 4. Attempt to delete AI block → blocked with PermissionDenied.
@@ -7351,7 +7508,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 6.4, 12.1, 12.6, 11.1, 1.2, 3.1.
+- Tasks 6.4, 12.1, 12.6, 11.1A, 1.2, 3.1.
 - Task 2.3 must be re-opened to add: `nutritional_target_computed`, `ai_meal_suggestion_created`, `ai_meal_preference_updated`.
 - Task 2.4 must be re-opened to add indexes for `ai_suggestions` (date+slot) and `nutritional_targets`.
 
@@ -7369,16 +7526,16 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 #### Done Criteria
 
 - [ ] TDEE computed and stored (Mifflin-St Jeor; eating-disorder flag respected).
-- [ ] Gap-fill CF creates recurring weekly AI blocks when daily shortfall > 200 kcal.
+- [ ] Gap-fill Worker creates recurring weekly AI blocks when daily shortfall > 200 kcal.
 - [ ] Missed meal recovery creates one-off next-morning block.
-- [ ] Preference chip bar saves `flavorTags`; CF respects them.
+- [ ] Preference chip bar saves `flavorTags`; Worker respects them.
 - [ ] AI blocks render with lock icon; delete blocked; "Request change" sheet works.
 - [ ] `TaskModel.deletable` field added; `TaskService.deleteTask()` enforces it.
 - [ ] Three new events registered, validated, and emitted.
 
 ---
 
-## Phase 13 — Cloud Functions Hardening
+## Phase 13 — Cloudflare Workers Hardening
 
 ### Task 13.1 — Server notification dispatcher
 
@@ -7388,7 +7545,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-For users offline at fire-time + cross-device delivery + caps enforced server-side.
+For users offline at fire-time + cross-device delivery + caps enforced server-side. This must be a Cloudflare Cron Worker, not a Firebase Cloud Function.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -7399,15 +7556,16 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Build the server notification dispatcher Cloud Function.
+Build the server notification dispatcher as a Cloudflare Cron Worker.
 
 ## Files allowed to modify
 
 Only modify these files:
 
-- `functions/jobs/notificationDispatcher.js` (new)
-- `functions/index.js`
-- `functions/test/notificationDispatcher.contract.test.js`
+- `workers/notification-dispatcher-worker/src/index.js` (new)
+- `workers/notification-dispatcher-worker/wrangler.toml` (new — Cron Trigger)
+- `workers/notification-dispatcher-worker/package.json` (new)
+- `workers/notification-dispatcher-worker/test/notificationDispatcher.contract.test.js` (new, if local JS test pattern exists)
 
 ## Firestore paths
 
@@ -7435,7 +7593,7 @@ Only modify these files:
 
 ## Verification
 
-Emulator: seed due notification → run dispatcher → status updates.
+Local Worker test: seed due notification → run dispatcher handler → status updates.
 
 ## Final response format
 
@@ -7448,7 +7606,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### How to verify
 
-- Emulator green.
+- Worker local test green.
 
 #### Estimate
 
@@ -7487,9 +7645,11 @@ Build maintenance + backfill jobs.
 
 Only modify these files:
 
-- `functions/jobs/eventMaintenance.js` (new)
-- `functions/jobs/schemaBackfill.js` (new)
-- `functions/index.js`
+- `workers/maintenance-worker/src/index.js` (new)
+- `workers/maintenance-worker/src/jobs/eventMaintenance.js` (new)
+- `workers/maintenance-worker/src/jobs/schemaBackfill.js` (new)
+- `workers/maintenance-worker/wrangler.toml` (new — Cron Trigger)
+- `workers/maintenance-worker/package.json` (new)
 
 ## Firestore paths
 
@@ -7514,7 +7674,7 @@ Only modify these files:
 
 ## Verification
 
-Emulator: seed old data → dry-run logs → write mode updates.
+Local Worker test: seed old data → dry-run logs → write mode updates.
 
 ## Final response format
 
@@ -7542,7 +7702,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 ---
 
-### Task 13.3 — Routine import callable Cloud Function (consolidates 12.x)
+### Task 13.3 — Routine import Cloudflare Worker endpoint (consolidates 12.x)
 
 #### Status
 
@@ -7550,7 +7710,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-Task 12.2–12.7 each call `routineImport`. This task ensures the function exists once with all 7 modes.
+Task 12.2–12.7 each call `ROUTINE_IMPORT_ENDPOINT`. This task ensures the Worker exists once with all 7 modes.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -7561,24 +7721,26 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Implement `routineImport` callable handling 7 modes.
+Implement `ROUTINE_IMPORT_ENDPOINT` Worker handling 7 modes.
 
 ## Files allowed to modify
 
 Only modify these files:
 
-- `functions/ai/routineImport.js`
-- `functions/index.js`
-- `functions/test/routineImport.contract.test.js`
+- `workers/routine-import-worker/src/index.js`
+- `workers/routine-import-worker/wrangler.toml`
+- `workers/routine-import-worker/package.json`
+- `workers/routine-import-worker/test/routineImport.contract.test.js` (new, if local JS test pattern exists)
 
 ## Firestore paths
 
-- writes only via Flutter; this function returns JSON to client.
-- writes `/users/{uid}/usage/{monthKey}` to track AI calls.
+- returns JSON preview to Flutter; commits still happen through existing Flutter review/save flow unless this task explicitly adds trusted Worker writes.
+- writes `/users/{uid}/usage/{monthKey}` to track AI calls only from the Worker trusted Firestore path.
 
 ## Requirements
 
 - Modes: skin_care_text, skin_care_photo, supplement_text, class_timetable_photo, eating_mess_photo, eating_goal_text, routine_goal_suggestions.
+- Requires `Authorization: Bearer <Firebase ID token>` and verifies the token before any AI call.
 - Validate output against per-mode JSON schema.
 - Reject malformed AI output (return safe error).
 - Enforce per-user usage cap (Phase 14.6).
@@ -7591,7 +7753,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Task 11.1, 12.1.
+- Task 11.1A, 12.1.
 
 ## Verification
 
@@ -7604,7 +7766,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 11.1, 12.1.
+- Tasks 11.1A, 12.1.
 
 #### How to verify
 
@@ -7868,9 +8030,11 @@ Build privacy + export + delete lifecycle.
 Only modify these files:
 
 - `lib/views/settings/privacy_data_screen.dart` (new)
-- `functions/jobs/exportUserData.js` (new)
-- `functions/jobs/deleteUserData.js` (new)
-- `functions/index.js`
+- `workers/privacy-worker/src/index.js` (new)
+- `workers/privacy-worker/src/jobs/exportUserData.js` (new)
+- `workers/privacy-worker/src/jobs/deleteUserData.js` (new)
+- `workers/privacy-worker/wrangler.toml` (new)
+- `workers/privacy-worker/package.json` (new)
 - `firestore.rules` (already carves out)
 
 ## Firestore paths
@@ -7895,7 +8059,7 @@ Only modify these files:
 
 ## Verification
 
-Emulator: request → status flow → cancel works.
+Local Worker test: request → status flow → cancel works.
 
 ## Final response format
 
@@ -7947,8 +8111,9 @@ Only modify these files:
 - `lib/views/settings/subscription_screen.dart` (new)
 - `lib/services/coach_service.dart`
 - `lib/services/notification_service.dart`
-- `functions/ai/routineImport.js` (cap check)
-- `functions/ai/coachReply.js` (cap check)
+- `workers/routine-import-worker/src/index.js` (cap check)
+- `workers/coach-reply-worker/src/index.js` (cap check)
+- `workers/ai-gateway-worker/src/index.js` (cap check)
 
 ## Firestore paths
 
@@ -7958,7 +8123,7 @@ Only modify these files:
 ## Requirements
 
 - Show plan + limits.
-- Server enforces caps (10 coach msgs/day free; AI imports/month).
+- Cloudflare Workers enforce caps (10 coach msgs/day free; AI imports/month). Flutter may display limits but must not be trusted for enforcement.
 - Disabled upgrade CTA if Stripe/Play not integrated yet.
 
 ## Events
@@ -7967,7 +8132,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 13.3, 11.1, 10.3.
+- Tasks 13.3, 11.1A, 10.3.
 
 ## Verification
 
@@ -7980,7 +8145,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 13.3, 11.1, 10.3.
+- Tasks 13.3, 11.1A, 10.3.
 
 #### How to verify
 
@@ -8090,14 +8255,15 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Build weekly summary Cloud Function + Strengths/Areas card.
+Build weekly summary Cloudflare Cron Worker + Strengths/Areas card.
 
 ## Files allowed to modify
 
 Only modify these files:
 
-- `functions/jobs/weeklySummary.js` (new)
-- `functions/index.js`
+- `workers/weekly-summary-worker/src/index.js` (new)
+- `workers/weekly-summary-worker/wrangler.toml` (new — Cron Trigger)
+- `workers/weekly-summary-worker/package.json` (new)
 - `lib/views/profile/strengths_areas_card.dart` (consume)
 
 ## Firestore paths
@@ -8106,7 +8272,7 @@ Only modify these files:
 
 ## Requirements
 
-- Job runs Sunday 23:59 user-local.
+- Worker Cron runs on a fixed cadence and computes each user's local Sunday 23:59 window from profile timezone.
 - Reads `dailySummaries` for the week.
 - Writes weekly metrics + AI-generated strengths/areas.
 - Emits `weekly_insight_ready`.
@@ -8121,7 +8287,7 @@ Only modify these files:
 
 ## Verification
 
-Emulator: seed week of data → run job → weeklySummary doc.
+Local Worker test: seed week of data → run job handler → weeklySummary doc.
 
 ## Final response format
 
@@ -8174,7 +8340,7 @@ Only modify these files:
 - `lib/services/remote_config_service.dart`
 - `lib/main.dart`
 - `lib/services/global_error_handler.dart`
-- `functions/index.js`
+- `workers/*/src/index.js` only for Workers that already exist in this repo after earlier tasks
 
 ## Config keys
 
@@ -8190,7 +8356,7 @@ Only modify these files:
 ## Requirements
 
 - UI: graceful disabled state per feature.
-- Functions: skip work if flag off; log skip reason.
+- Workers: skip work if flag off; log skip reason.
 
 ## Events
 
@@ -8202,7 +8368,7 @@ Only modify these files:
 
 ## Verification
 
-Flip flag → UI shows disabled; function skips.
+Flip flag → UI shows disabled; Worker skips.
 
 ## Final response format
 
@@ -8343,9 +8509,9 @@ Only modify these files:
 ## Requirements
 
 - Rules: owner-only read/write where appropriate.
-- `coach_messages`: client write user message; server (admin SDK) writes coach reply.
-- `ai_context_snapshots`: server-only writes; client read-only.
-- `usage`: server-only writes.
+- `coach_messages`: client writes user message; Cloudflare Worker trusted Firestore path writes coach reply when available.
+- `ai_context_snapshots`: Worker-only writes; client read-only.
+- `usage`: Worker-only writes.
 - Indexes: as listed in Task 2.4.
 - Storage rules: owner-only writes; max 5 MB.
 
@@ -8409,12 +8575,14 @@ Only modify these files:
 - `lib/main.dart`
 - `android/app/src/main/AndroidManifest.xml`
 - `ios/Runner/Runner.entitlements`
-- `functions/index.js` (enforceAppCheck on callable functions)
+- `workers/coach-reply-worker/src/index.js` (verify App Check token if Worker enforcement is implemented)
+- `workers/ai-gateway-worker/src/index.js` (verify App Check token if Worker enforcement is implemented)
+- `workers/routine-import-worker/src/index.js` (verify App Check token if Worker enforcement is implemented)
 
 ## Requirements
 
-- Token attached to all Firestore + Functions calls.
-- Functions reject without valid token.
+- Token attached to all Firestore + Worker calls where supported.
+- Workers reject without valid token once App Check verification is wired for custom backends.
 - Debug token allowed in dev only.
 
 ## Events
@@ -8479,7 +8647,7 @@ Only modify files under:
 - `test/services/*`
 - `test/widgets/*`
 - `integration_test/*`
-- `functions/test/*`
+- `workers/*/test/*`
 - `test/rules/*`
 
 ## Coverage required
@@ -8503,7 +8671,7 @@ Only modify files under:
 
 ## Requirements
 
-- Unit, widget, integration, function, rules layers.
+- Unit, widget, integration, Worker, rules layers.
 - No `skip:` markers when feature is implemented.
 - CI ready scripts in `package.json` and `pubspec.yaml`.
 
@@ -8517,7 +8685,7 @@ Only modify files under:
 
 ## Verification
 
-`flutter test`, `flutter test integration_test`, `cd functions && npm test`, `firebase emulators:exec --only firestore "npm test"`.
+`flutter test`, `flutter test integration_test`, Worker package tests under `workers/*`, and Firestore rules tests.
 
 ## Final response format
 
@@ -8541,7 +8709,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 - [ ] Unit tests pass.
 - [ ] Widget tests pass.
 - [ ] Integration smoke pass.
-- [ ] Function tests pass.
+- [ ] Worker tests pass.
 - [ ] Rules tests pass.
 
 ---
@@ -8569,7 +8737,8 @@ Only modify these files:
 
 - `docs/migration_checklist.md`
 - `docs/seed_data_checklist.md`
-- `functions/jobs/seedDevData.js` (new — emulator only)
+- `workers/dev-seed-worker/src/index.js` (new — emulator/dev only, if a seed script needs backend writes)
+- `workers/dev-seed-worker/wrangler.toml` (new, if needed)
 
 ## Requirements
 
@@ -8757,7 +8926,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 | 52 | Subscription + AI usage caps | ✓ T14.5 | ✓ | ✓ | server caps | – | – | ✓ | Profile → Subscription |
 | 53 | Firestore security rules | ✓ T17.1 | – | ✓ | – | – | – | ✓ | (system) |
 | 54 | App Check | ✓ T17.2 | – | ✓ | – | – | – | ✓ | (system) |
-| 55 | Cloud Functions | ✓ T11.6 + T13.x | – | ✓ | – | ✓ | yes | ✓ | (background) |
+| 55 | Cloudflare Workers backend | ✓ T11.6 + T13.x | – | ✓ | – | ✓ | yes | ✓ | (background) |
 | 56 | Crash + perf monitoring | ✓ T16.2 | – | – | Crashlytics | – | – | ✓ | (system) |
 | 57 | Remote config kill switches | ✓ T16.1 | ✓ | – | – | – | – | ✓ | (system) |
 | 58 | Production QA | ✓ T18.1 | – | – | – | – | – | ✓ | (CI) |
@@ -8781,12 +8950,12 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 | Earlier claim | Reality (file:line) | Status |
 |---|---|---|
 | `routine_template_*` validators missing | `event_payload_validator.dart:112-114` already maps all three to `_routineTemplateRule` | Validator OK — Task 2.3 trimmed |
-| `gemini_service.dart` may hold the API key | `gemini_service.dart` only calls `httpsCallable('aiGenerate')`; `functions/index.js` line 60 declares `secrets: [geminiApiKey]` | **No client-side key — Task 11.1 marked Done** |
-| Routine setup AI mode UI is "stubbed" | `skin_care_setup_screen.dart:940`, `eating_setup_screen.dart:849`, `class_setup_screen.dart:864`, `supplement_setup_screen.dart:114` all wire `RoutineRepository.previewRoutineImport` and have `_mode = 'Manual'` segmented controls | **UI wired; only the server-side `routineImport` callable is missing** — Task 13.3 unchanged |
-| `coach_messages` / `coach_speak_log` writes not yet wired | `coach_service.dart:196,220,268` already writes both | Task 11.2 reclassified — UI/topic-mode work remains, schema is correct |
+| `gemini_service.dart` may hold the API key | `gemini_service.dart` calls `COACH_REPLY_ENDPOINT` for interactive coach replies; remaining generic `aiGenerate` still uses Firebase callable code | **Interactive coach safe on Cloudflare — Task 11.1 done; generic AI migration moved to Task 11.1A** |
+| Routine setup AI mode UI is "stubbed" | `skin_care_setup_screen.dart:940`, `eating_setup_screen.dart:849`, `class_setup_screen.dart:864`, `supplement_setup_screen.dart:114` all wire `RoutineRepository.previewRoutineImport` and have `_mode = 'Manual'` segmented controls | **UI wired; backend must become `ROUTINE_IMPORT_ENDPOINT` Cloudflare Worker** — Tasks 11.1A and 13.3 |
+| `coach_messages` / `coach_speak_log` writes not yet wired | `coach_service.dart:196,220,268` already writes both and `coach_tab.dart` has topic modes | Task 11.2 marked Done; server-trusted Worker writes remain in Task 11.1A / 11.5 |
 | `screen_time_logs` collection unscoped | Already exists at `/users/{uid}/screen_time_logs/{logId}` — see `screen_time_log_model.dart` and `screen_time_importer.dart:130` | Task 7.5 path corrected below |
 | habit logs path mismatch | Code uses canonical flat `/users/{uid}/habit_logs/{logId}` AND legacy nested `/users/{uid}/habits/{habitId}/logs/{date}/items/{logId}` (dual-write per `habit_service.dart:7-10`) | TODO uses flat path ✓; spec (Service Contracts §3.3) is wrong vs code — code wins for v1 |
-| Cloud Functions deployed list missing | `functions/index.js:60,146-149` exports `aiGenerate`, `scheduledDayClose`, `scheduledInactivityCheck`, `scheduledMorningBrief`, `scheduledMiddayPulse` | Tasks 11.6, 13.1, 13.3, 14.4, 15.2 unchanged — they add the **missing** ones |
+| Cloud Functions deployed list missing | `functions/index.js:60,146-149` exports legacy Firebase Functions, but new backend work must not depend on Blaze | Tasks 11.6, 13.1, 13.3, 14.4, 15.2 now target Cloudflare Workers |
 
 ### 10.2 Genuine gaps I missed (added below as new tasks)
 
@@ -8795,8 +8964,8 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 | Per-user `coachEnabled` master kill switch with crisis-only carve-out | AI Master Engine §5.0 | **Task 14.7** below |
 | Watched-conditions on-device 60-second tick timer for in-app pattern detection | AI Master Engine §1.3 | **Task 11.7** below |
 | Derived fields (`bad_day_signal_count`, `routine_miss_count_7d`, `consecutive_recovery_days`) computed in `context_builder.dart` | AI Master Engine §4.4 | **Task 11.8** below |
-| `cf_costMonitor` daily cost cap + `ai:global_kill_switch` + `ai:monthly_spend_usd` | AI Master Engine §1.4 | **Task 13.4** below |
-| `cf_crisisAlert` Slack/email alert to ops on Tier 2/3 crisis (uid only, no PII) | AI Master Engine §1.4 | **Task 13.5** below |
+| `worker_costMonitor` daily cost cap + `ai:global_kill_switch` + `ai:monthly_spend_usd` | AI Master Engine §1.4 | **Task 13.4** below |
+| `worker_crisisAlert` Slack/email alert to ops on Tier 2/3 crisis (uid only, no PII) | AI Master Engine §1.4 | **Task 13.5** below |
 | Cross-device cooldowns + per-user daily token budget — Redis (or Firestore-backed surrogate at `/users/{uid}/coach_budget/...`) | AI Master Engine §1.4, §5.4 | **Task 11.9** below |
 | `addiction_logs` collection (typed: cigarettes, alcohol, weed, vape) per `addictionType` index | Database Schema §1A.1, §1A.2 | **Task 7.14** below |
 | `journal_entries` collection (day-close reflections, mood notes) | Database Schema §1A.1 | **Task 7.15** below |
@@ -8813,7 +8982,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 | `screen_time_exceeded` (AI Master Engine rules) | `bad_habit_slip_logged` with habit `screen_time_*` | Code wins; AI rule conditions read habit ID, not event name |
 | `routine_window_missed` (AI Master Engine rules) | `task_abandoned` with `reason='auto_no_start'` (parent routine task) | Code wins; rules pattern-match on payload, not event name |
 | `chat_user_message` (AI Master Engine D-series rules) | `coach_message_sent` (already exists in event_names.dart) | Code wins — same semantic |
-| `morning_brief` / `midday_pulse_low_completion` events | None — emitted by Cloud Function but not yet in `event_names.dart` | **Add** in Task 11.6 amendment |
+| `morning_brief` / `midday_pulse_low_completion` events | None — emitted by scheduled Worker but not yet in `event_names.dart` | **Add** in Task 11.6 amendment |
 | `user_inactive_24h` / `user_inactive_48h` (AI Master Engine §3 F1/F2) | `ghost_day_detected` (one event with `missedDays` payload field) | Code wins — derive 24/48h triage from `missedDays` |
 
 ### 10.4 Documentation responsibility
@@ -9038,7 +9207,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-The engine has three event sources: reactive (Firestore stream, <30s), watched (local 60s tick, in-app), scheduled (Cloud Function). Watched-conditions are the path for "Mission ring 0% with 90 min left in day" — needs the user's local clock + battery state, can't be done server-side.
+The engine has three event sources: reactive (Firestore stream, <30s), watched (local 60s tick, in-app), scheduled (Cloudflare Cron Worker). Watched-conditions are the path for "Mission ring 0% with 90 min left in day" — needs the user's local clock + battery state, can't be done server-side.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -9215,7 +9384,8 @@ Implement a cross-device cooldown + token-budget ledger for the coach engine. v1
 
 Only modify these files:
 
-- `functions/jobs/coachBudget.js` (new — cap enforcement helper)
+- `workers/ai-gateway-worker/src/coachBudget.js` (new — cap enforcement helper)
+- `workers/coach-reply-worker/src/coachBudget.js` (or shared copied helper until a package is introduced)
 - `lib/services/coach_service.dart` (read budget before client-side decision)
 - `firestore.rules` (carve out `coach_budget` server-only writes)
 
@@ -9225,7 +9395,7 @@ Only modify these files:
 
 ## Requirements
 
-- Read budget in `cf_aiGenerate` before LLM call; reject if exhausted.
+- Read budget in `AI_GENERATE_ENDPOINT` and `COACH_REPLY_ENDPOINT` before LLM call; reject if exhausted.
 - Update budget atomically in a transaction after each successful generation.
 - Cooldown topics keyed map; per-topic timestamp; engine reads server-side or via client snapshot (cached for 60s to avoid hot reads).
 - Documented Redis migration path in `docs/scaling_plan.md` for when Firestore reads cross threshold.
@@ -9236,7 +9406,7 @@ Only modify these files:
 
 ## Dependencies
 
-- Task 11.1, Task 11.4.
+- Task 11.1A, Task 11.4.
 
 ## Verification
 
@@ -9249,7 +9419,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 11.1, 11.4
+- Tasks 11.1A, 11.4
 
 #### How to verify
 
@@ -9343,9 +9513,9 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 ---
 
-## Phase 13 amendments — cost monitor + crisis alert
+## Phase 13 amendments — Cloudflare cost monitor + crisis alert
 
-### Task 13.4 — `cf_costMonitor` daily Cloud Function (NEW)
+### Task 13.4 — `worker_costMonitor` daily Cloudflare Cron Worker (NEW)
 
 #### Status
 
@@ -9353,7 +9523,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-AI Master Engine §1.4 requires a daily aggregator that sums coach LLM spend across all users and toggles `ai:global_kill_switch` if a monthly cap is breached. Without this, a single bug or abusive user can run the bill to thousands of dollars overnight.
+AI Master Engine §1.4 requires a daily aggregator that sums coach LLM spend across all users and toggles `ai:global_kill_switch` if a monthly cap is breached. Without this, a single bug or abusive user can run the bill to thousands of dollars overnight. This must run on Cloudflare Cron, not Firebase Functions.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -9364,15 +9534,16 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Build the cost-monitor scheduled Cloud Function.
+Build the cost-monitor scheduled Cloudflare Worker.
 
 ## Files allowed to modify
 
 Only modify these files:
 
-- `functions/jobs/costMonitor.js` (new)
-- `functions/index.js`
-- `functions/test/costMonitor.contract.test.js` (new)
+- `workers/cost-monitor-worker/src/index.js` (new)
+- `workers/cost-monitor-worker/wrangler.toml` (new — Cron Trigger)
+- `workers/cost-monitor-worker/package.json` (new)
+- `workers/cost-monitor-worker/test/costMonitor.contract.test.js` (new, if local JS test pattern exists)
 
 ## Firestore paths
 
@@ -9382,11 +9553,11 @@ Only modify these files:
 
 ## Requirements
 
-- Pub/Sub schedule: daily 02:00 UTC.
+- Cloudflare Cron schedule: daily 02:00 UTC.
 - Aggregates `tokensUsed` across all `coach_speak_log` entries for the current month.
 - Computes USD using configured per-1k-tokens rate from `/app_config/llm_pricing`.
 - Toggles `global_kill_switch=true` if monthly cap breached.
-- Sends Slack alert (via webhook stored in functions config) if 80% / 100% of cap.
+- Sends Slack alert (via webhook stored as Wrangler secret) if 80% / 100% of cap.
 
 ## Events
 
@@ -9394,11 +9565,11 @@ Only modify these files:
 
 ## Dependencies
 
-- Task 11.1.
+- Task 11.1A.
 
 ## Verification
 
-Emulator: seed speak logs above cap → run job → kill switch flipped.
+Local Worker test: seed speak logs above cap → run handler → kill switch flipped.
 
 ## Final response format
 
@@ -9407,7 +9578,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Task 11.1
+- Task 11.1A
 
 #### How to verify
 
@@ -9425,7 +9596,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 ---
 
-### Task 13.5 — `cf_crisisAlert` Slack/email alert on Tier 2/3 crisis (NEW)
+### Task 13.5 — `worker_crisisAlert` Slack/email alert on Tier 2/3 crisis (NEW)
 
 #### Status
 
@@ -9433,7 +9604,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Why
 
-AI Master Engine §1.4: when a Tier 2/3 crisis fires, an off-app alert must reach ops within minutes. Cannot rely on the client to deliver; must be server-driven on a Firestore trigger.
+AI Master Engine §1.4: when a Tier 2/3 crisis fires, an off-app alert must reach ops within minutes. Cannot rely on the client to deliver. Because Cloudflare Workers do not have native Firestore triggers, this is implemented as a short-interval Cron poller over unalerted crisis rows.
 
 #### What to tell Gemini CLI / Antigravity
 
@@ -9444,24 +9615,26 @@ Work in planning mode first. Do not edit code until you inspect the files and gi
 
 ## Task
 
-Build the crisis-alert Firestore trigger.
+Build the crisis-alert Cloudflare Cron poller.
 
 ## Files allowed to modify
 
 Only modify these files:
 
-- `functions/jobs/crisisAlert.js` (new)
-- `functions/index.js`
+- `workers/crisis-alert-worker/src/index.js` (new)
+- `workers/crisis-alert-worker/wrangler.toml` (new — frequent Cron Trigger)
+- `workers/crisis-alert-worker/package.json` (new)
 
 ## Firestore paths
 
-- trigger on writes to `/users/{uid}/coach_speak_log/{logId}` where `crisisTier in ['T2', 'T3']`
+- poll unalerted writes in `/users/{uid}/coach_speak_log/{logId}` where `crisisTier in ['T2', 'T3']`
 - read `/crisis_handoffs/{handoffId}` (admin-only, already in rules)
 
 ## Requirements
 
 - Send Slack webhook + email with: `uid`, tier, ts, ruleId. NO PII (no email, no name, no message text).
 - Idempotent on `logId` (don't re-alert on retry).
+- Mark each alerted row with `alertedAt` / `alertStatus` from the Worker trusted Firestore path.
 - Document the Slack channel and on-call rotation in `docs/oncall.md`.
 
 ## Events
@@ -9470,11 +9643,11 @@ Only modify these files:
 
 ## Dependencies
 
-- Tasks 11.1, 11.5.
+- Tasks 11.1A, 11.5.
 
 ## Verification
 
-Emulator: seed Tier 3 row → alert posted.
+Local Worker test: seed Tier 3 row → poller posts alert and marks row alerted.
 
 ## Final response format
 
@@ -9483,7 +9656,7 @@ Return: 1. Files inspected 2. Files changed 3. Summary of changes 4. Firestore p
 
 #### Dependencies
 
-- Tasks 11.1, 11.5
+- Tasks 11.1A, 11.5
 
 #### How to verify
 
@@ -9534,7 +9707,7 @@ Only modify these files:
 - `lib/services/watched_conditions_service.dart` (Gate 0)
 - `lib/views/settings/coach_settings_screen.dart` (toggle + 1-tap re-enable)
 - `lib/views/tabs/coach_tab.dart` ("Coach is paused" placeholder + composer disabled)
-- `functions/jobs/morningBrief.js`, `middayPulse.js`, `dayClose.js`, `inactivityCheck.js` (skip user if false)
+- `workers/scheduler-worker/src/jobs/morningBrief.js`, `middayPulse.js`, `dayClose.js`, `inactivityCheck.js` (skip user if false)
 - `lib/services/notification_service.dart` (cancel coach-source notifications on flip-off)
 - `lib/core/constants/event_names.dart` (add `coachReEnabled = 'coach_re_enabled'`)
 - `lib/services/event_payload_validator.dart`
@@ -9572,7 +9745,7 @@ Also verify:
 - Toggle OFF → speak no proactive messages for 24h.
 - Toggle OFF → user types crisis phrase → E1 still fires.
 - Toggle ON → fresh start, no backlog replay.
-- Cloud Functions skip user when false (logs reason).
+- Cloudflare Cron Workers skip user when false (logs reason).
 
 ## Final response format
 

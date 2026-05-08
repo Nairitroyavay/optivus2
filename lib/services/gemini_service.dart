@@ -1,7 +1,49 @@
 // lib/services/gemini_service.dart
 
+import 'dart:convert';
+
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/services/event_service.dart';
+
+const String _coachReplyEndpoint =
+    String.fromEnvironment('COACH_REPLY_ENDPOINT');
+
+class CoachReplyResult {
+  final String text;
+  final List<String> suggestedActions;
+  final String? messageId;
+  final String? safetyBranch;
+
+  const CoachReplyResult({
+    required this.text,
+    this.suggestedActions = const [],
+    this.messageId,
+    this.safetyBranch,
+  });
+
+  factory CoachReplyResult.fromCallableData(Object? data) {
+    final map = Map<String, dynamic>.from(data as Map);
+    return CoachReplyResult.fromMap(map);
+  }
+
+  factory CoachReplyResult.fromMap(Map<String, dynamic> map) {
+    final actions = (map['suggestedActions'] as List? ?? const [])
+        .map((action) => action.toString())
+        .where((action) => action.trim().isNotEmpty)
+        .toList(growable: false);
+
+    return CoachReplyResult(
+      text: (map['text'] as String? ?? map['reply'] as String? ?? '').trim(),
+      suggestedActions: actions,
+      messageId: map['messageId'] as String?,
+      safetyBranch: map['safetyBranch'] as String?,
+    );
+  }
+}
 
 class GeminiService {
   // Singleton instance
@@ -12,6 +54,63 @@ class GeminiService {
   }
 
   GeminiService._internal();
+
+  /// Interactive coach reply via the Cloudflare `coachReply` endpoint.
+  ///
+  /// The Worker verifies the Firebase ID token and calls Gemini server-side so
+  /// the Gemini key is never shipped in Flutter.
+  Future<CoachReplyResult> coachReply({
+    required String userId,
+    required String threadId,
+    required String text,
+    required String mode,
+  }) async {
+    if (_coachReplyEndpoint.isEmpty) {
+      throw Exception(
+        'COACH_REPLY_ENDPOINT is not configured. Pass '
+        '--dart-define=COACH_REPLY_ENDPOINT=https://...',
+      );
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    final idToken = await user?.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Cannot call coach reply endpoint without auth token');
+    }
+
+    final response = await http.post(
+      Uri.parse(_coachReplyEndpoint),
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'userId': userId,
+        'threadId': threadId,
+        'text': text,
+        'mode': mode,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Coach reply endpoint failed: ${response.statusCode} ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception('Coach reply endpoint returned invalid JSON');
+    }
+
+    final result = CoachReplyResult.fromMap(
+      Map<String, dynamic>.from(decoded),
+    );
+    if (result.text.isEmpty) {
+      throw Exception('Empty coach reply from endpoint');
+    }
+    return result;
+  }
 
   /// Single-shot text generation via Firebase Cloud Functions
   Future<String> generate({
@@ -79,11 +178,15 @@ class GeminiService {
   GeminiChatSession startChat(
     String systemPrompt, {
     List<Map<String, dynamic>>? initialHistory,
+    String threadId = 'main_thread',
+    String mode = 'chat',
   }) {
     return GeminiChatSession(
       systemPrompt: systemPrompt,
       service: this,
       initialHistory: initialHistory,
+      threadId: threadId,
+      mode: mode,
     );
   }
 }
@@ -91,6 +194,8 @@ class GeminiService {
 class GeminiChatSession {
   final String systemPrompt;
   final GeminiService service;
+  final String threadId;
+  final String mode;
 
   // Track chat history locally
   final List<Map<String, dynamic>> _history;
@@ -98,6 +203,8 @@ class GeminiChatSession {
   GeminiChatSession({
     required this.systemPrompt,
     required this.service,
+    required this.threadId,
+    required this.mode,
     List<Map<String, dynamic>>? initialHistory,
   }) : _history = initialHistory ?? [];
 
@@ -112,11 +219,28 @@ class GeminiChatSession {
 
   Future<String> sendMessage(String message) async {
     try {
-      final reply = await service.generate(
-        systemPrompt: systemPrompt,
-        userMessage: message,
-        history: _history,
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Cannot send coach message without auth');
+      }
+
+      try {
+        await EventService().emit(
+          eventName: EventNames.coachMessageSent,
+          payload: {'text': message},
+          source: 'ui',
+        );
+      } catch (e) {
+        debugPrint('[GeminiChatSession] coach_message_sent event failed: $e');
+      }
+
+      final result = await service.coachReply(
+        userId: user.uid,
+        threadId: threadId,
+        text: message,
+        mode: mode,
       );
+      final reply = result.text;
 
       // Update history after successful generation
       _history.add({

@@ -1,0 +1,6 @@
+name = "optivus-coach-reply"
+main = "src/index.js"
+compatibility_date = "2026-05-08"
+
+[vars]
+GEMINI_MODEL = "gemini-1.5-flash"
