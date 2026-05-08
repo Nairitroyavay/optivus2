@@ -1,17 +1,90 @@
-import { SignJWT, createRemoteJWKSet, importPKCS8, jwtVerify } from "jose";
+import { SignJWT, createLocalJWKSet, createRemoteJWKSet, importPKCS8, jwtVerify } from "jose";
 
 const firebaseJwks = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
 );
 
-const allowedRoutineTypes = new Set([
-  "skin_care",
-  "supplements",
-  "classes",
-  "eating"
-]);
-
 const firestoreScope = "https://www.googleapis.com/auth/datastore";
+const maxItemsPerMode = 12;
+
+const modeContracts = {
+  skin_care_text: {
+    routineType: "skin_care",
+    outputKey: "templates",
+    input: "text",
+    title: "skin care routine from text"
+  },
+  skin_care_photo: {
+    routineType: "skin_care",
+    outputKey: "templates",
+    input: "photo",
+    title: "skin care routine from product photo"
+  },
+  supplement_text: {
+    routineType: "supplements",
+    outputKey: "templates",
+    input: "text",
+    title: "supplement routine from text"
+  },
+  class_timetable_photo: {
+    routineType: "classes",
+    outputKey: "templates",
+    input: "photo",
+    title: "class timetable from photo"
+  },
+  eating_mess_photo: {
+    routineType: "eating",
+    outputKey: "templates",
+    input: "photo",
+    title: "mess menu from photo"
+  },
+  eating_goal_text: {
+    routineType: "eating",
+    outputKey: "templates",
+    input: "text",
+    title: "eating routine from goal text"
+  },
+  routine_goal_suggestions: {
+    routineType: "routine",
+    outputKey: "suggestions",
+    input: "text",
+    title: "routine goal suggestions"
+  }
+};
+
+const modeAliases = {
+  "skin_care:text_ai": "skin_care_text",
+  "skin_care:photo_ai": "skin_care_photo",
+  "skin_care:text": "skin_care_text",
+  "skin_care:photo": "skin_care_photo",
+  "supplements:text_ai": "supplement_text",
+  "supplements:text": "supplement_text",
+  "classes:timetable_image": "class_timetable_photo",
+  "classes:photo_ai": "class_timetable_photo",
+  "classes:photo": "class_timetable_photo",
+  "eating:photo_ai": "eating_mess_photo",
+  "eating:mess_photo": "eating_mess_photo",
+  "eating:photo": "eating_mess_photo",
+  "eating:text_ai": "eating_goal_text",
+  "eating:text": "eating_goal_text",
+  "routine:suggestions": "routine_goal_suggestions",
+  "routine:goal_suggestions": "routine_goal_suggestions"
+};
+
+class UsageCapError extends Error {
+  constructor(message, usage) {
+    super(message);
+    this.name = "UsageCapError";
+    this.usage = usage;
+  }
+}
+
+class AiOutputValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "AiOutputValidationError";
+  }
+}
 
 export default {
   async fetch(request, env) {
@@ -29,15 +102,19 @@ export default {
       return json({ error: "Method not allowed" }, 405, corsHeaders);
     }
 
-    if (!env.GEMINI_API_KEY) {
-      return json({ error: "Server missing GEMINI_API_KEY" }, 500, corsHeaders);
+    const missingEnv = requiredEnv(env);
+    if (missingEnv.length > 0) {
+      return json(
+        {
+          error: "Server missing routine import configuration",
+          missingEnv
+        },
+        500,
+        corsHeaders
+      );
     }
 
-    if (!env.FIREBASE_PROJECT_ID) {
-      return json({ error: "Server missing FIREBASE_PROJECT_ID" }, 500, corsHeaders);
-    }
-
-    const authResult = await authenticate(request, env.FIREBASE_PROJECT_ID);
+    const authResult = await authenticate(request, env);
     if (!authResult.ok) {
       return json(authResult.body, authResult.status, corsHeaders);
     }
@@ -50,126 +127,129 @@ export default {
     }
 
     const uid = authResult.decodedToken.sub;
-    const userIdFromBody = String(body.userId || "").trim();
+    const userIdFromBody = stringField(body.userId);
     if (userIdFromBody && userIdFromBody !== uid) {
       return json({ error: "userId does not match Firebase token" }, 403, corsHeaders);
     }
 
-    const routineType = String(body.routineType || "").trim();
-    const mode = String(body.mode || "").trim();
-    const sourceText = String(body.sourceText || "").trim();
-    const imageMetadata = body.imageMetadata && typeof body.imageMetadata === "object"
-      ? body.imageMetadata
-      : null;
-    const providedTemplates = Array.isArray(body.templates)
-      ? body.templates
-      : Array.isArray(body.items)
-        ? body.items
-        : Array.isArray(body.blocks)
-          ? body.blocks
-          : null;
-    const commit = body.commit === true;
-
-    if (!allowedRoutineTypes.has(routineType)) {
-      return json({ error: "Unsupported routineType" }, 400, corsHeaders);
+    if (body.commit === true) {
+      return json(
+        { error: "Worker routine commits are not supported; save reviewed previews from Flutter" },
+        400,
+        corsHeaders
+      );
     }
 
-    if (!mode) {
-      return json({ error: "mode is required" }, 400, corsHeaders);
+    const modeResult = resolveMode(body);
+    if (!modeResult.ok) {
+      return json({ error: modeResult.error }, 400, corsHeaders);
     }
 
-    if (!sourceText && !imageMetadata && !(commit && providedTemplates)) {
-      return json({ error: "Provide sourceText or imageMetadata" }, 400, corsHeaders);
+    const mode = modeResult.mode;
+    const contract = modeContracts[mode];
+    const sourceText = stringField(body.sourceText || body.text || body.prompt);
+    const imageMetadata = objectField(body.imageMetadata);
+    const context = objectField(body.context) || objectField(body.contextPayload) || {};
+
+    const inputError = validateInput(contract, sourceText, imageMetadata, context);
+    if (inputError) {
+      return json({ error: inputError }, 400, corsHeaders);
     }
 
-    if (commit) {
-      const missingSecrets = requiredCommitSecrets(env);
-      if (missingSecrets.length > 0) {
+    let accessToken;
+    try {
+      accessToken = await getServiceAccountAccessToken(env);
+    } catch (error) {
+      return json(
+        {
+          error: "Firestore service-account authentication failed",
+          details: String(error)
+        },
+        500,
+        corsHeaders
+      );
+    }
+
+    try {
+      const profile = await getUserProfile({
+        projectId: env.FIREBASE_PROJECT_ID,
+        uid,
+        accessToken
+      });
+      const safetyFlags = extractSafetyFlags(profile);
+      const usage = await reserveUsageCall({
+        env,
+        uid,
+        mode,
+        accessToken,
+        profile
+      });
+      const preview = await generatePreview({
+        env,
+        uid,
+        mode,
+        contract,
+        sourceText,
+        imageMetadata,
+        context,
+        safetyFlags
+      });
+      const safePreview = applySafetyPolicy(preview, contract, safetyFlags);
+      const suggestions = await writeSuggestionGeneratedEvents({
+        projectId: env.FIREBASE_PROJECT_ID,
+        uid,
+        mode,
+        contract,
+        sourceText,
+        imageMetadata,
+        preview: safePreview,
+        accessToken
+      });
+
+      const output = {
+        mode,
+        routineType: contract.routineType,
+        commit: false,
+        source: "gemini",
+        userId: uid,
+        usage,
+        safetyFlags: publicSafetyFlags(safetyFlags),
+        suggestionIds: suggestions.map((item) => item.suggestionId)
+      };
+
+      if (contract.outputKey === "suggestions") {
+        output.suggestions = safePreview;
+        output.items = safePreview;
+      } else {
+        output.templates = safePreview;
+        output.items = safePreview;
+        output.blocks = safePreview;
+      }
+
+      return json(output, 200, corsHeaders);
+    } catch (error) {
+      if (error instanceof UsageCapError) {
         return json(
           {
-            error: "Server missing Firestore service-account secrets",
-            missingSecrets
+            error: "AI usage cap reached",
+            usage: error.usage
           },
-          500,
+          429,
           corsHeaders
         );
       }
 
-      try {
-        const templates = providedTemplates
-          ? normalizeTemplates(providedTemplates, routineType)
-          : await importRoutineTemplates({
-            env,
-            uid,
-            routineType,
-            mode,
-            sourceText,
-            imageMetadata
-          });
-
-        if (templates.length === 0) {
-          return json({ error: "No routine templates to commit" }, 400, corsHeaders);
-        }
-
-        const commitTemplates = normalizeTemplatesForFirestore(templates);
-        const result = await commitRoutineImport({
-          env,
-          uid,
-          routineType,
-          mode,
-          sourceText,
-          imageMetadata,
-          templates: commitTemplates
-        });
-
+      if (error instanceof AiOutputValidationError) {
         return json(
           {
-            ...result,
-            templates: commitTemplates,
-            items: commitTemplates,
-            blocks: commitTemplates,
-            commit: true,
-            source: "gemini",
-            userId: uid
-          },
-          200,
-          corsHeaders
-        );
-      } catch (error) {
-        return json(
-          {
-            error: "Routine import commit failed",
-            details: String(error)
+            error: "Routine import AI output rejected",
+            reason: "The model returned malformed or unsafe JSON for this mode"
           },
           502,
           corsHeaders
         );
       }
-    }
 
-    try {
-      const templates = await importRoutineTemplates({
-        env,
-        uid,
-        routineType,
-        mode,
-        sourceText,
-        imageMetadata
-      });
-
-      return json(
-        {
-          templates,
-          items: templates,
-          blocks: templates,
-          commit: false,
-          source: "gemini",
-          userId: uid
-        },
-        200,
-        corsHeaders
-      );
-    } catch (error) {
       return json(
         {
           error: "Routine import failed",
@@ -182,7 +262,16 @@ export default {
   }
 };
 
-async function authenticate(request, projectId) {
+function requiredEnv(env) {
+  return [
+    "GEMINI_API_KEY",
+    "FIREBASE_PROJECT_ID",
+    "FIREBASE_CLIENT_EMAIL",
+    "FIREBASE_PRIVATE_KEY"
+  ].filter((name) => !env[name]);
+}
+
+async function authenticate(request, env) {
   const authHeader = request.headers.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring("Bearer ".length)
@@ -197,7 +286,7 @@ async function authenticate(request, projectId) {
   }
 
   try {
-    const decodedToken = await verifyFirebaseIdToken(token, projectId);
+    const decodedToken = await verifyFirebaseIdToken(token, env);
     return { ok: true, decodedToken };
   } catch (error) {
     return {
@@ -211,10 +300,13 @@ async function authenticate(request, projectId) {
   }
 }
 
-async function verifyFirebaseIdToken(idToken, projectId) {
+async function verifyFirebaseIdToken(idToken, env) {
+  const projectId = env.FIREBASE_PROJECT_ID;
   const issuer = `https://securetoken.google.com/${projectId}`;
-
-  const { payload } = await jwtVerify(idToken, firebaseJwks, {
+  const keySet = env.ROUTINE_IMPORT_TEST_JWKS_JSON
+    ? createLocalJWKSet(JSON.parse(env.ROUTINE_IMPORT_TEST_JWKS_JSON))
+    : firebaseJwks;
+  const { payload } = await jwtVerify(idToken, keySet, {
     issuer,
     audience: projectId
   });
@@ -226,131 +318,36 @@ async function verifyFirebaseIdToken(idToken, projectId) {
   return payload;
 }
 
-async function importRoutineTemplates({ env, uid, routineType, mode, sourceText, imageMetadata }) {
-  const prompt = buildRoutineImportPrompt({
-    routineType,
-    mode,
-    sourceText,
-    imageMetadata
-  });
+function resolveMode(body) {
+  const rawMode = stringField(body.mode);
+  const routineType = stringField(body.routineType);
 
-  const data = await callGemini({
-    env,
-    prompt,
-    maxOutputTokens: 900,
-    temperature: 0.2
-  });
-
-  const text = extractGeminiText(data).trim();
-  const parsed = parseJsonObject(text);
-  const templates = Array.isArray(parsed.templates)
-    ? parsed.templates
-    : Array.isArray(parsed.items)
-      ? parsed.items
-      : Array.isArray(parsed.blocks)
-        ? parsed.blocks
-        : [];
-
-  const normalized = normalizeTemplates(templates, routineType);
-
-  console.log(
-    `[routineImport] preview generated uid=${uid} routineType=${routineType} mode=${mode} count=${normalized.length}`
-  );
-
-  return normalized;
-}
-
-function normalizeTemplates(templates, routineType) {
-  return templates
-    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
-    .map((item, index) => normalizeTemplate(item, routineType, index))
-    .filter((item) => item.title);
-}
-
-function normalizeTemplatesForFirestore(templates) {
-  return templates.map((template) => ({
-    ...template,
-    startTime: normalizeRoutineTime(template.startTime, "09:00"),
-    endTime: normalizeRoutineTime(template.endTime, "09:30")
-  }));
-}
-
-function requiredCommitSecrets(env) {
-  return [
-    "FIREBASE_CLIENT_EMAIL",
-    "FIREBASE_PRIVATE_KEY"
-  ].filter((name) => !env[name]);
-}
-
-async function commitRoutineImport({
-  env,
-  uid,
-  routineType,
-  mode,
-  sourceText,
-  imageMetadata,
-  templates
-}) {
-  const importId = await deterministicImportId({
-    uid,
-    routineType,
-    mode,
-    sourceText,
-    imageMetadata,
-    templates
-  });
-  const accessToken = await getServiceAccountAccessToken(env);
-  const existing = await getRoutineDocument({
-    projectId: env.FIREBASE_PROJECT_ID,
-    uid,
-    accessToken
-  });
-  const existingImportId = existing?.imports?.[routineType]?.importId || "";
-
-  if (existingImportId === importId) {
-    return {
-      ok: true,
-      deduped: true,
-      importId,
-      routineType,
-      templatesCommitted: templates.length,
-      firestorePath: `/users/${uid}/routine/current`
-    };
+  if (modeContracts[rawMode]) {
+    const expectedRoutineType = modeContracts[rawMode].routineType;
+    if (routineType && expectedRoutineType !== "routine" && routineType !== expectedRoutineType) {
+      return { ok: false, error: "routineType does not match mode" };
+    }
+    return { ok: true, mode: rawMode };
   }
 
-  const importMetadata = {
-    importId,
-    mode,
-    routineType,
-    sourceText,
-    imageMetadata: imageMetadata || null,
-    templatesCommitted: templates.length,
-    committedAt: new Date().toISOString(),
-    source: "routine-import-worker",
-    schemaVersion: 1
-  };
+  const alias = modeAliases[`${routineType}:${rawMode}`];
+  if (alias) {
+    return { ok: true, mode: alias };
+  }
 
-  await writeRoutineImport({
-    projectId: env.FIREBASE_PROJECT_ID,
-    uid,
-    routineType,
-    templates,
-    importMetadata,
-    accessToken
-  });
+  return { ok: false, error: "Unsupported routine import mode" };
+}
 
-  console.log(
-    `[routineImport] committed uid=${uid} routineType=${routineType} importId=${importId} count=${templates.length}`
-  );
+function validateInput(contract, sourceText, imageMetadata, context) {
+  if (contract.input === "text" && !sourceText && Object.keys(context).length === 0) {
+    return "Provide sourceText for this mode";
+  }
 
-  return {
-    ok: true,
-    deduped: false,
-    importId,
-    routineType,
-    templatesCommitted: templates.length,
-    firestorePath: `/users/${uid}/routine/current`
-  };
+  if (contract.input === "photo" && !imageMetadata && !sourceText) {
+    return "Provide imageMetadata or extracted sourceText for this photo mode";
+  }
+
+  return null;
 }
 
 async function getServiceAccountAccessToken(env) {
@@ -389,8 +386,487 @@ function normalizePrivateKey(value) {
   return String(value || "").replace(/\\n/g, "\n");
 }
 
-async function getRoutineDocument({ projectId, uid, accessToken }) {
-  const response = await fetch(firestoreDocumentUrl(projectId, uid), {
+async function getUserProfile({ projectId, uid, accessToken }) {
+  const document = await getFirestoreDocument({
+    projectId,
+    path: `users/${uid}/profile/main`,
+    accessToken
+  });
+  return document.exists ? document.data : {};
+}
+
+async function reserveUsageCall({ env, uid, mode, accessToken, profile }) {
+  const monthKey = currentMonthKey();
+  const limit = usageLimitFor(profile, env);
+  const projectId = env.FIREBASE_PROJECT_ID;
+  const documentPath = `users/${uid}/usage/${monthKey}`;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const usageDoc = await getFirestoreDocument({
+      projectId,
+      path: documentPath,
+      accessToken
+    });
+    const aiCalls = usageDoc.exists ? safeNumber(usageDoc.data.aiCalls) : 0;
+    const usage = {
+      monthKey,
+      aiCalls,
+      limit,
+      remaining: Math.max(0, limit - aiCalls)
+    };
+
+    if (aiCalls >= limit) {
+      throw new UsageCapError("AI usage cap reached", usage);
+    }
+
+    const committed = await commitUsageIncrement({
+      projectId,
+      uid,
+      monthKey,
+      mode,
+      accessToken,
+      usageDoc
+    });
+
+    if (committed) {
+      return {
+        monthKey,
+        aiCalls: aiCalls + 1,
+        limit,
+        remaining: Math.max(0, limit - aiCalls - 1)
+      };
+    }
+  }
+
+  throw new Error("Could not reserve AI usage after concurrent updates");
+}
+
+async function commitUsageIncrement({ projectId, uid, monthKey, mode, accessToken, usageDoc }) {
+  const documentName = firestoreDocumentName(projectId, `users/${uid}/usage/${monthKey}`);
+  const write = {
+    update: {
+      name: documentName,
+      fields: {
+        monthKey: toFirestoreValue(monthKey),
+        source: toFirestoreValue("routine-import-worker"),
+        lastAiMode: toFirestoreValue(mode),
+        schemaVersion: toFirestoreValue(1)
+      }
+    },
+    updateMask: {
+      fieldPaths: ["monthKey", "source", "lastAiMode", "schemaVersion"]
+    },
+    updateTransforms: [
+      {
+        fieldPath: "aiCalls",
+        increment: { integerValue: "1" }
+      },
+      {
+        fieldPath: "lastAiCallAt",
+        setToServerValue: "REQUEST_TIME"
+      },
+      {
+        fieldPath: "updatedAt",
+        setToServerValue: "REQUEST_TIME"
+      }
+    ]
+  };
+
+  if (usageDoc.exists) {
+    write.currentDocument = { updateTime: usageDoc.updateTime };
+  } else {
+    write.currentDocument = { exists: false };
+    write.updateTransforms.push({
+      fieldPath: "createdAt",
+      setToServerValue: "REQUEST_TIME"
+    });
+  }
+
+  const response = await fetch(firestoreCommitUrl(projectId), {
+    method: "POST",
+    headers: firestoreHeaders(accessToken),
+    body: JSON.stringify({ writes: [write] })
+  });
+  const data = await response.json();
+
+  if (response.ok) {
+    return true;
+  }
+
+  const status = data?.error?.status || "";
+  if (status === "ABORTED" || status === "FAILED_PRECONDITION" || status === "ALREADY_EXISTS") {
+    return false;
+  }
+
+  throw new Error(`Firestore usage write failed: ${JSON.stringify(data)}`);
+}
+
+function usageLimitFor(profile, env) {
+  const subscription = objectField(profile.subscription) || {};
+  const plan = stringField(subscription.plan || profile.plan || profile.subscriptionPlan).toLowerCase();
+  const explicitLimit = safeNumber(subscription.aiImportMonthlyLimit ?? profile.aiImportMonthlyLimit);
+  if (explicitLimit > 0) return explicitLimit;
+  if (plan === "pro" || plan === "premium" || plan === "paid") {
+    return safePositiveInteger(env.PRO_AI_IMPORT_MONTHLY_LIMIT, 100);
+  }
+  return safePositiveInteger(env.FREE_AI_IMPORT_MONTHLY_LIMIT, 20);
+}
+
+async function generatePreview({
+  env,
+  uid,
+  mode,
+  contract,
+  sourceText,
+  imageMetadata,
+  context,
+  safetyFlags
+}) {
+  const prompt = buildRoutineImportPrompt({
+    uid,
+    mode,
+    contract,
+    sourceText,
+    imageMetadata,
+    context,
+    safetyFlags
+  });
+  const data = await callGemini({
+    env,
+    prompt,
+    maxOutputTokens: contract.outputKey === "suggestions" ? 700 : 1000,
+    temperature: 0.2
+  });
+  const text = extractGeminiText(data).trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (_) {
+    throw new AiOutputValidationError("Gemini returned non-JSON output");
+  }
+
+  return validateAiOutput(parsed, mode, contract);
+}
+
+function validateAiOutput(parsed, mode, contract) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new AiOutputValidationError("AI output root must be an object");
+  }
+
+  if (contract.outputKey === "suggestions") {
+    const rawSuggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions : null;
+    if (!rawSuggestions) {
+      throw new AiOutputValidationError("Missing suggestions array");
+    }
+
+    const suggestions = rawSuggestions.slice(0, maxItemsPerMode).map((item, index) => {
+      validateRawSuggestionForMode(item, index);
+      const suggestion = normalizeSuggestion(item, index);
+      return suggestion;
+    });
+
+    if (suggestions.length === 0) {
+      throw new AiOutputValidationError("No valid suggestions returned");
+    }
+
+    return suggestions;
+  }
+
+  const rawTemplates = Array.isArray(parsed.templates)
+    ? parsed.templates
+    : Array.isArray(parsed.items)
+      ? parsed.items
+      : Array.isArray(parsed.blocks)
+        ? parsed.blocks
+        : null;
+
+  if (!rawTemplates) {
+    throw new AiOutputValidationError("Missing templates array");
+  }
+
+  const templates = rawTemplates.slice(0, maxItemsPerMode).map((item, index) => {
+    validateRawTemplateForMode(item, mode, index);
+    const template = normalizeTemplate(item, contract.routineType, index);
+    validateTemplateForMode(template, mode, index);
+    return template;
+  });
+
+  if (templates.length === 0) {
+    throw new AiOutputValidationError("No valid templates returned");
+  }
+
+  return templates;
+}
+
+function validateRawTemplateForMode(item, mode, index) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw new AiOutputValidationError(`Template at index ${index} must be an object`);
+  }
+
+  if (!stringField(item.title || item.name)) {
+    throw new AiOutputValidationError(`Missing title at index ${index}`);
+  }
+
+  if (!isInputRoutineTime(item.startTime || item.time)) {
+    throw new AiOutputValidationError(`Missing or invalid startTime at index ${index}`);
+  }
+
+  if (!isInputRoutineTime(item.endTime)) {
+    throw new AiOutputValidationError(`Missing or invalid endTime at index ${index}`);
+  }
+
+  if ((mode === "skin_care_text" || mode === "skin_care_photo") && !hasValidSteps(item.steps)) {
+    throw new AiOutputValidationError(`Missing skin care steps at index ${index}`);
+  }
+
+  if (mode === "supplement_text" && !stringField(item.dosage || item.amount)) {
+    throw new AiOutputValidationError(`Missing supplement dosage at index ${index}`);
+  }
+
+  if ((mode === "eating_mess_photo" || mode === "eating_goal_text")
+    && !stringField(item.mealType || item.type)) {
+    throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
+  }
+}
+
+function validateRawSuggestionForMode(item, index) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw new AiOutputValidationError(`Suggestion at index ${index} must be an object`);
+  }
+
+  if (!stringField(item.title || item.taskTitle)) {
+    throw new AiOutputValidationError(`Missing suggestion title at index ${index}`);
+  }
+
+  if (!stringField(item.reason || item.rationale)) {
+    throw new AiOutputValidationError(`Missing suggestion reason at index ${index}`);
+  }
+
+  if (!isInputRoutineTime(item.time || item.startTime)) {
+    throw new AiOutputValidationError(`Missing or invalid suggestion time at index ${index}`);
+  }
+
+  const action = stringField(item.action).toLowerCase();
+  if (!["add", "remove", "adjust"].includes(action)) {
+    throw new AiOutputValidationError(`Invalid suggestion action at index ${index}`);
+  }
+
+  if (item.priorityScore !== undefined || item.priority !== undefined) {
+    const priority = Number(item.priorityScore ?? item.priority);
+    if (!Number.isFinite(priority) || priority < 0 || priority > 1) {
+      throw new AiOutputValidationError(`Invalid suggestion priorityScore at index ${index}`);
+    }
+  }
+}
+
+function validateTemplateForMode(template, mode, index) {
+  if (!template.title) {
+    throw new AiOutputValidationError(`Missing title at index ${index}`);
+  }
+  if (!isRoutineTime(template.startTime) || !isRoutineTime(template.endTime)) {
+    throw new AiOutputValidationError(`Invalid time at index ${index}`);
+  }
+
+  if ((mode === "skin_care_text" || mode === "skin_care_photo")
+    && (!Array.isArray(template.steps) || template.steps.length === 0)) {
+    throw new AiOutputValidationError(`Missing skin care steps at index ${index}`);
+  }
+
+  if (mode === "supplement_text" && !template.dosage) {
+    throw new AiOutputValidationError(`Missing supplement dosage at index ${index}`);
+  }
+
+  if ((mode === "eating_mess_photo" || mode === "eating_goal_text") && !template.mealType) {
+    throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
+  }
+}
+
+function hasValidSteps(value) {
+  return Array.isArray(value)
+    && value.some((step) => {
+      if (typeof step === "string") return stringField(step);
+      if (step && typeof step === "object" && !Array.isArray(step)) {
+        return stringField(step.name || step.title);
+      }
+      return false;
+    });
+}
+
+function normalizeTemplate(item, routineType, index) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw new AiOutputValidationError(`Template at index ${index} must be an object`);
+  }
+
+  const title = stringField(item.title || item.name);
+  const template = {
+    templateId: stringField(item.templateId || item.id) || `${routineType}_${index}_${slug(title || "template")}`,
+    title,
+    startTime: normalizeRoutineTime(item.startTime || item.time || defaultStartTime(routineType, index), ""),
+    endTime: normalizeRoutineTime(item.endTime || defaultEndTime(routineType, index), ""),
+    repeatRule: stringField(item.repeatRule) || "daily",
+    notes: stringField(item.notes || item.reason),
+    reminderEnabled: item.reminderEnabled === true
+  };
+
+  if (routineType === "skin_care") {
+    const steps = Array.isArray(item.steps)
+      ? item.steps
+      : stringField(item.steps || item.notes).split(/,|\n/);
+    template.steps = steps
+      .map((step) => {
+        if (typeof step === "string") return { name: step.trim() };
+        if (step && typeof step === "object") {
+          return {
+            name: stringField(step.name || step.title),
+            notes: stringField(step.notes)
+          };
+        }
+        return null;
+      })
+      .filter((step) => step && step.name);
+  }
+
+  if (routineType === "supplements") {
+    template.dosage = stringField(item.dosage || item.amount);
+  }
+
+  if (routineType === "classes") {
+    template.room = stringField(item.room || item.location);
+    template.professor = stringField(item.professor || item.teacher || item.instructor);
+  }
+
+  if (routineType === "eating") {
+    template.mealType = stringField(item.mealType || item.type) || inferMealType(index);
+  }
+
+  return template;
+}
+
+function normalizeSuggestion(item, index) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw new AiOutputValidationError(`Suggestion at index ${index} must be an object`);
+  }
+
+  const title = stringField(item.title || item.taskTitle);
+  return {
+    id: stringField(item.id || item.suggestionId) || `routine_suggestion_${index}_${slug(title || "suggestion")}`,
+    title,
+    reason: stringField(item.reason || item.rationale),
+    emoji: stringField(item.emoji) || "spark",
+    action: allowedAction(item.action),
+    time: normalizeRoutineTime(item.time || item.startTime || "09:00", "09:00"),
+    taskTitle: stringField(item.taskTitle || item.title),
+    targetSurface: stringField(item.targetSurface) || "routine",
+    priorityScore: clampNumber(item.priorityScore ?? item.priority, 0, 1, 0.5)
+  };
+}
+
+function applySafetyPolicy(preview, contract, safetyFlags) {
+  if (contract.routineType !== "eating" || !safetyFlags.eatingDisorderHistory) {
+    return preview;
+  }
+
+  return preview.map((item) => {
+    const safe = { ...item };
+    for (const key of [
+      "calories",
+      "targetCalories",
+      "calorieTarget",
+      "macros",
+      "proteinGrams",
+      "carbGrams",
+      "fatGrams",
+      "weightGoal"
+    ]) {
+      delete safe[key];
+    }
+    safe.safetyAdjusted = true;
+    safe.notes = removeUnsafeEatingLanguage(safe.notes);
+    return safe;
+  });
+}
+
+function removeUnsafeEatingLanguage(value) {
+  return String(value || "")
+    .replace(/\b\d+\s*k?cal(?:ories)?\b/gi, "")
+    .replace(/\bweight\s*loss\b/gi, "wellbeing")
+    .replace(/\bdiet\b/gi, "routine")
+    .trim();
+}
+
+async function writeSuggestionGeneratedEvents({
+  projectId,
+  uid,
+  mode,
+  contract,
+  sourceText,
+  imageMetadata,
+  preview,
+  accessToken
+}) {
+  const suggestions = [];
+  for (let index = 0; index < preview.length; index += 1) {
+    const item = preview[index];
+    const suggestionId = await deterministicId("suggestion", {
+      uid,
+      mode,
+      index,
+      item
+    });
+    suggestions.push({
+      suggestionId,
+      uid,
+      type: contract.outputKey === "suggestions" ? "routine_goal_suggestion" : "routine_import_preview",
+      title: item.title || item.taskTitle,
+      reason: item.reason || item.notes || `Generated ${contract.title}`,
+      status: "pending",
+      targetSurface: "routine",
+      routineType: contract.routineType,
+      mode,
+      source: "routine-import-worker",
+      eventName: "suggestion_generated",
+      eventType: "suggestion_generated",
+      preview: item,
+      sourceText: sourceText ? sourceText.slice(0, 500) : "",
+      imageMetadata: imageMetadata || null,
+      schemaVersion: 1
+    });
+  }
+
+  if (suggestions.length === 0) return [];
+
+  const writes = suggestions.map((suggestion) => ({
+    update: {
+      name: firestoreDocumentName(projectId, `users/${uid}/suggestions/${suggestion.suggestionId}`),
+      fields: toFirestoreValue(suggestion).mapValue.fields
+    },
+    updateTransforms: [
+      {
+        fieldPath: "createdAt",
+        setToServerValue: "REQUEST_TIME"
+      },
+      {
+        fieldPath: "updatedAt",
+        setToServerValue: "REQUEST_TIME"
+      }
+    ]
+  }));
+
+  const response = await fetch(firestoreCommitUrl(projectId), {
+    method: "POST",
+    headers: firestoreHeaders(accessToken),
+    body: JSON.stringify({ writes })
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(`Firestore suggestion write failed: ${JSON.stringify(data)}`);
+  }
+
+  return suggestions;
+}
+
+async function getFirestoreDocument({ projectId, path, accessToken }) {
+  const response = await fetch(firestoreDocumentUrl(projectId, path), {
     method: "GET",
     headers: {
       "Authorization": `Bearer ${accessToken}`
@@ -398,150 +874,159 @@ async function getRoutineDocument({ projectId, uid, accessToken }) {
   });
 
   if (response.status === 404) {
-    return null;
+    return { exists: false, data: {}, updateTime: "" };
   }
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(`Firestore routine read failed: ${JSON.stringify(data)}`);
+    throw new Error(`Firestore read failed: ${JSON.stringify(data)}`);
   }
 
-  return firestoreDocumentToJs(data);
+  return {
+    exists: true,
+    data: firestoreDocumentToJs(data),
+    updateTime: data.updateTime || ""
+  };
 }
 
-async function writeRoutineImport({
-  projectId,
-  uid,
-  routineType,
-  templates,
-  importMetadata,
-  accessToken
-}) {
-  const documentName = firestoreDocumentName(projectId, uid);
-  const setupFlag = setupFlagFor(routineType);
-  const response = await fetch(
-    `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`,
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        writes: [
-          {
-            update: {
-              name: documentName,
-              fields: {
-                templates: toFirestoreValue({
-                  [routineType]: templates
-                }),
-                imports: toFirestoreValue({
-                  [routineType]: importMetadata
-                }),
-                [setupFlag]: toFirestoreValue(templates.length > 0)
-              }
-            },
-            updateMask: {
-              fieldPaths: [
-                `templates.${routineType}`,
-                `imports.${routineType}`,
-                setupFlag
-              ]
-            },
-            updateTransforms: [
-              {
-                fieldPath: "updatedAt",
-                setToServerValue: "REQUEST_TIME"
-              }
-            ]
-          }
-        ]
-      })
-    }
+function firestoreDocumentUrl(projectId, path) {
+  return `https://firestore.googleapis.com/v1/${firestoreDocumentName(projectId, path)}`;
+}
+
+function firestoreDocumentName(projectId, path) {
+  return `projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${path
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+}
+
+function firestoreCommitUrl(projectId) {
+  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`;
+}
+
+function firestoreHeaders(accessToken) {
+  return {
+    "Authorization": `Bearer ${accessToken}`,
+    "Content-Type": "application/json"
+  };
+}
+
+function extractSafetyFlags(profile) {
+  const sensitiveContext = objectField(profile.sensitiveContext) || {};
+  const health = objectField(profile.health) || {};
+  const eatingDisorderHistory = Boolean(
+    profile.eatingDisorderFlag
+    || profile.eatingDisorderHistory
+    || sensitiveContext.eatingDisorderFlag
+    || sensitiveContext.eatingDisorderHistory
+    || health.eatingDisorderFlag
+    || health.eatingDisorderHistory
   );
+
+  return {
+    eatingDisorderHistory
+  };
+}
+
+function publicSafetyFlags(safetyFlags) {
+  return {
+    eatingDisorderHistory: safetyFlags.eatingDisorderHistory === true
+  };
+}
+
+function buildRoutineImportPrompt({ uid, mode, contract, sourceText, imageMetadata, context, safetyFlags }) {
+  return `You are the Optivus routine import parser.
+Return only strict JSON. No markdown, comments, trailing commas, or prose.
+
+User: ${uid}
+Mode: ${mode}
+Routine type: ${contract.routineType}
+Task: Generate editable preview data for ${contract.title}.
+
+Source text:
+${sourceText || "(none)"}
+
+Image metadata or OCR hints:
+${JSON.stringify(imageMetadata || {})}
+
+Context:
+${JSON.stringify(context || {})}
+
+Safety flags:
+${JSON.stringify(publicSafetyFlags(safetyFlags))}
+
+${schemaInstructionFor(mode)}
+
+Rules:
+- Use 24-hour HH:MM times.
+- Keep titles concise.
+- Do not invent medical claims.
+- For eating modes, do not include calories, macros, weight-loss framing, or restrictive dieting language when eatingDisorderHistory is true.
+- Return at least 1 and at most ${maxItemsPerMode} items.`;
+}
+
+function schemaInstructionFor(mode) {
+  switch (mode) {
+    case "skin_care_text":
+    case "skin_care_photo":
+      return `JSON schema:
+{"templates":[{"templateId":"stable_id","title":"Morning skin care","startTime":"07:30","endTime":"07:45","repeatRule":"daily","notes":"","reminderEnabled":false,"steps":[{"name":"Cleanser","notes":""}]}]}`;
+    case "supplement_text":
+      return `JSON schema:
+{"templates":[{"templateId":"stable_id","title":"Vitamin D","dosage":"1000 IU","startTime":"08:00","endTime":"08:05","repeatRule":"daily","notes":"","reminderEnabled":false}]}`;
+    case "class_timetable_photo":
+      return `JSON schema:
+{"templates":[{"templateId":"stable_id","title":"Physics","startTime":"09:00","endTime":"10:00","repeatRule":"weekly","room":"A-101","professor":"Dr Rao","notes":"","reminderEnabled":false}]}`;
+    case "eating_mess_photo":
+    case "eating_goal_text":
+      return `JSON schema:
+{"templates":[{"templateId":"stable_id","title":"Breakfast","mealType":"Breakfast","startTime":"08:00","endTime":"08:30","repeatRule":"daily","notes":"","reminderEnabled":false}]}`;
+    case "routine_goal_suggestions":
+      return `JSON schema:
+{"suggestions":[{"id":"stable_id","title":"Add morning planning","reason":"Supports the user's goal","emoji":"spark","action":"add","time":"09:00","taskTitle":"Morning planning","targetSurface":"routine","priorityScore":0.8}]}`;
+    default:
+      return "";
+  }
+}
+
+async function callGemini({ env, prompt, maxOutputTokens, temperature }) {
+  const model = env.GEMINI_MODEL || "gemini-1.5-flash";
+  const geminiUrl =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
+
+  const response = await fetch(geminiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }]
+        }
+      ],
+      generationConfig: {
+        temperature,
+        maxOutputTokens,
+        responseMimeType: "application/json"
+      }
+    })
+  });
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(`Firestore routine commit failed: ${JSON.stringify(data)}`);
+    throw new Error(`Gemini failed: ${JSON.stringify(data)}`);
   }
 
   return data;
 }
 
-function firestoreDocumentUrl(projectId, uid) {
-  return `https://firestore.googleapis.com/v1/${firestoreDocumentName(projectId, uid)}`;
-}
-
-function firestoreDocumentName(projectId, uid) {
-  return `projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(uid)}/routine/current`;
-}
-
-function setupFlagFor(routineType) {
-  switch (routineType) {
-    case "fixed_schedule":
-      return "fixedScheduleSetUp";
-    case "skin_care":
-      return "skinCareSetUp";
-    case "classes":
-      return "classesSetUp";
-    case "eating":
-      return "eatingSetUp";
-    case "supplements":
-      return "supplementsSetUp";
-    default:
-      return `${routineType.replace(/_/g, "")}TemplatesSetUp`;
-  }
-}
-
-async function deterministicImportId({
-  uid,
-  routineType,
-  mode,
-  sourceText,
-  imageMetadata,
-  templates
-}) {
-  const input = stableJson({
-    uid,
-    routineType,
-    mode,
-    sourceText,
-    imageMetadata: imageMetadata || null,
-    templates
-  });
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(input)
-  );
-  return `routine_import_${hex(hash).slice(0, 32)}`;
-}
-
-function stableJson(value) {
-  return JSON.stringify(sortForStableJson(value));
-}
-
-function sortForStableJson(value) {
-  if (Array.isArray(value)) {
-    return value.map(sortForStableJson);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.keys(value)
-      .sort()
-      .reduce((acc, key) => {
-        acc[key] = sortForStableJson(value[key]);
-        return acc;
-      }, {});
-  }
-
-  return value;
-}
-
-function hex(buffer) {
-  return [...new Uint8Array(buffer)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+function extractGeminiText(data) {
+  return data?.candidates?.[0]?.content?.parts
+    ?.map((part) => part.text || "")
+    .join("")
+    || "";
 }
 
 function toFirestoreValue(value) {
@@ -611,76 +1096,44 @@ function firestoreValueToJs(value) {
   return undefined;
 }
 
-function buildRoutineImportPrompt({ routineType, mode, sourceText, imageMetadata }) {
-  return `You are the Optivus routine import parser.
-Convert the user input into editable routine template previews.
-
-Routine type: ${routineType}
-Mode: ${mode}
-Source text:
-${sourceText || "(none)"}
-
-Image metadata:
-${JSON.stringify(imageMetadata || {})}
-
-Return only valid JSON. No markdown.
-Shape:
-{
-  "templates": [
-    {
-      "templateId": "stable_short_id",
-      "title": "Name",
-      "startTime": "8:00 AM",
-      "endTime": "8:30 AM",
-      "repeatRule": "daily",
-      "notes": "",
-      "reminderEnabled": false
-    }
-  ]
+async function deterministicId(prefix, value) {
+  const input = stableJson(value);
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input)
+  );
+  return `${prefix}_${hex(hash).slice(0, 32)}`;
 }
 
-Additional fields by routine type:
-- skin_care: include "steps": [{"name":"Cleanser"}]
-- supplements: include "dosage"
-- classes: include "room" and "professor" when available
-- eating: include "mealType" such as Breakfast, Lunch, Snack, or Dinner
-
-Use realistic times when the source does not specify them. Keep titles concise.`;
+function stableJson(value) {
+  return JSON.stringify(sortForStableJson(value));
 }
 
-function normalizeTemplate(item, routineType, index) {
-  const title = String(item.title || item.name || "").trim();
-  const template = {
-    ...item,
-    templateId: String(item.templateId || `${routineType}_${index}_${slug(title || "template")}`),
-    title,
-    startTime: String(item.startTime || defaultStartTime(routineType, index)),
-    endTime: String(item.endTime || defaultEndTime(routineType, index)),
-    repeatRule: String(item.repeatRule || "daily"),
-    notes: String(item.notes || ""),
-    reminderEnabled: item.reminderEnabled === true
-  };
-
-  if (routineType === "skin_care" && !Array.isArray(template.steps)) {
-    template.steps = template.notes
-      ? template.notes.split(/,|\n/).map((name) => ({ name: name.trim() })).filter((step) => step.name)
-      : [{ name: title }];
+function sortForStableJson(value) {
+  if (Array.isArray(value)) {
+    return value.map(sortForStableJson);
   }
 
-  if (routineType === "supplements") {
-    template.dosage = String(item.dosage || "");
+  if (value && typeof value === "object") {
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = sortForStableJson(value[key]);
+        return acc;
+      }, {});
   }
 
-  if (routineType === "classes") {
-    template.room = String(item.room || "");
-    template.professor = String(item.professor || "");
-  }
+  return value;
+}
 
-  if (routineType === "eating") {
-    template.mealType = String(item.mealType || inferMealType(index));
-  }
+function hex(buffer) {
+  return [...new Uint8Array(buffer)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
 
-  return template;
+function currentMonthKey(date = new Date()) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function normalizeRoutineTime(value, fallback) {
@@ -705,6 +1158,14 @@ function normalizeRoutineTime(value, fallback) {
   return fallback;
 }
 
+function isRoutineTime(value) {
+  return /^\d{2}:\d{2}$/.test(value) && normalizeRoutineTime(value, "") === value;
+}
+
+function isInputRoutineTime(value) {
+  return normalizeRoutineTime(value, "") !== "";
+}
+
 function validTime(hour, minute) {
   return Number.isInteger(hour)
     && Number.isInteger(minute)
@@ -718,84 +1179,60 @@ function formatTime(hour, minute) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-function slug(value) {
-  const clean = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  return clean || "template";
-}
-
 function defaultStartTime(routineType, index) {
-  if (routineType === "classes") return `${9 + index}:00 AM`;
-  if (routineType === "eating") return ["8:00 AM", "12:30 PM", "5:00 PM", "8:00 PM"][index] || "8:00 PM";
-  if (routineType === "skin_care") return index === 0 ? "7:30 AM" : "9:30 PM";
-  return "8:00 AM";
+  if (routineType === "classes") return `${String(Math.min(9 + index, 20)).padStart(2, "0")}:00`;
+  if (routineType === "eating") return ["08:00", "12:30", "17:00", "20:00"][index] || "20:00";
+  if (routineType === "skin_care") return index === 0 ? "07:30" : "21:30";
+  return "08:00";
 }
 
 function defaultEndTime(routineType, index) {
-  if (routineType === "classes") return `${10 + index}:00 AM`;
-  if (routineType === "eating") return ["8:30 AM", "1:00 PM", "5:30 PM", "8:30 PM"][index] || "8:30 PM";
-  if (routineType === "skin_care") return index === 0 ? "8:00 AM" : "10:00 PM";
-  return "8:15 AM";
+  if (routineType === "classes") return `${String(Math.min(10 + index, 21)).padStart(2, "0")}:00`;
+  if (routineType === "eating") return ["08:30", "13:00", "17:30", "20:30"][index] || "20:30";
+  if (routineType === "skin_care") return index === 0 ? "07:45" : "21:45";
+  return "08:05";
 }
 
 function inferMealType(index) {
   return ["Breakfast", "Lunch", "Snack", "Dinner"][index] || "Meal";
 }
 
-async function callGemini({ env, prompt, maxOutputTokens, temperature }) {
-  const model = env.GEMINI_MODEL || "gemini-1.5-flash";
-  const geminiUrl =
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`;
-
-  const response = await fetch(geminiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }]
-        }
-      ],
-      generationConfig: {
-        temperature,
-        maxOutputTokens,
-        responseMimeType: "application/json"
-      }
-    })
-  });
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(`Gemini failed: ${JSON.stringify(data)}`);
-  }
-
-  return data;
+function allowedAction(value) {
+  const action = stringField(value).toLowerCase();
+  return ["add", "remove", "adjust"].includes(action) ? action : "add";
 }
 
-function extractGeminiText(data) {
-  return data?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || "")
-    .join("")
-    || "";
+function slug(value) {
+  const clean = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return clean || "item";
 }
 
-function parseJsonObject(text) {
-  try {
-    return JSON.parse(text);
-  } catch (_) {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      return JSON.parse(text.slice(start, end + 1));
-    }
-    throw new Error("Gemini returned non-JSON routine import output");
-  }
+function stringField(value) {
+  return String(value || "").trim();
+}
+
+function objectField(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function safeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function safePositiveInteger(value, fallback) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }
 
 function json(data, status = 200, headers = {}) {

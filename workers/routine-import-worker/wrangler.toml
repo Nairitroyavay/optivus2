@@ -7,3 +7,6 @@ compatibility_date = "2026-05-08"
 # wrangler secret put FIREBASE_PROJECT_ID
 # wrangler secret put FIREBASE_CLIENT_EMAIL
 # wrangler secret put FIREBASE_PRIVATE_KEY
+# Optional monthly caps:
+# wrangler secret put FREE_AI_IMPORT_MONTHLY_LIMIT
+# wrangler secret put PRO_AI_IMPORT_MONTHLY_LIMIT
