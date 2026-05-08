@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/core/utils/uuid_generator.dart';
 import 'package:optivus2/providers/routine_provider.dart';
+import 'package:optivus2/views/routine/widgets/routine_review_screen.dart';
 
 class SupplementSetupScreen extends ConsumerStatefulWidget {
   final VoidCallback onComplete;
@@ -21,7 +23,10 @@ class _SupplementItem {
   String time;
   int durationMinutes;
   String repeatRule;
+  String timingRule;
   String notes;
+  List<String> warnings;
+  double confidence;
   bool reminderEnabled;
 
   _SupplementItem({
@@ -31,7 +36,10 @@ class _SupplementItem {
     required this.time,
     this.durationMinutes = 5,
     this.repeatRule = 'daily',
+    this.timingRule = 'after breakfast',
     this.notes = '',
+    this.warnings = const [],
+    this.confidence = 0.75,
     this.reminderEnabled = false,
   });
 
@@ -44,8 +52,12 @@ class _SupplementItem {
       'startTime': time,
       'endTime': _endTime(time, durationMinutes),
       'repeatRule': repeatRule,
+      'timingRule': timingRule,
+      'weekdayRule': repeatRule,
       'dosage': dosage.trim(),
       'notes': notes.trim(),
+      'warnings': warnings,
+      'confidence': confidence,
       'reminderEnabled': reminderEnabled,
       'isActive': true,
       'createdAt': now,
@@ -59,6 +71,8 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
   final List<_SupplementItem> _items = [];
   String _mode = 'Manual';
   Map<String, dynamic>? _pendingImportMetadata;
+  bool _isGenerating = false;
+  String? _generationError;
 
   @override
   void initState() {
@@ -73,7 +87,10 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
         time: item['startTime']?.toString() ?? '08:00',
         durationMinutes: 5,
         repeatRule: item['repeatRule']?.toString() ?? 'daily',
+        timingRule: _normalizeTimingRule(item['timingRule']?.toString() ?? ''),
         notes: item['notes']?.toString() ?? '',
+        warnings: _stringList(item['warnings']),
+        confidence: _templateConfidence(item['confidence']),
         reminderEnabled: item['reminderEnabled'] == true,
       );
     }));
@@ -107,43 +124,99 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
 
   Future<void> _generateFromText() async {
     final sourceText = _textImportCtrl.text.trim();
-    if (sourceText.isEmpty) return;
-    var generated = <Map<String, dynamic>>[];
-    try {
-      generated =
-          await ref.read(routineRepositoryProvider).previewRoutineImport(
-                routineType: 'supplements',
-                mode: 'text_ai',
-                sourceText: sourceText,
-              );
-    } catch (e) {
-      debugPrint('[SupplementSetup] routineImport preview failed: $e');
-    }
+    if (sourceText.isEmpty || _isGenerating) return;
 
-    final items = generated.isNotEmpty
-        ? generated.map(_supplementFromTemplate).toList()
-        : _supplementsFromText(sourceText);
-    _showSupplementReview(items, {
-      'mode': 'text_ai',
+    setState(() {
+      _isGenerating = true;
+      _generationError = null;
+    });
+
+    List<Map<String, dynamic>> templates;
+    final importMetadata = <String, dynamic>{
+      'mode': 'supplement_text',
       'sourceText': sourceText,
       'createdAt': DateTime.now().toIso8601String(),
-    });
+    };
+    try {
+      templates = await _previewSupplementTemplates(sourceText);
+    } catch (e) {
+      debugPrint('[SupplementSetup] routineImport preview failed: $e');
+      templates = _supplementsFromText(sourceText)
+          .map((item) => item.toTemplate())
+          .toList();
+      importMetadata['fallbackReason'] = e.toString();
+      if (mounted) {
+        setState(() => _generationError =
+            'AI endpoint failed. Showing a local draft you can still edit.');
+      }
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
+
+    final suggestionIds = templates
+        .map((template) => template['_suggestionId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (suggestionIds.isNotEmpty) {
+      importMetadata['suggestionIds'] = suggestionIds;
+    }
+
+    if (!mounted) return;
+    final accepted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RoutineReviewScreen(
+          title: 'Review supplements',
+          routineType: 'supplements',
+          templates: templates,
+          onRegenerate: () => _previewSupplementTemplates(sourceText),
+          onAcceptAll: (reviewed) async {
+            await _acceptGeneratedSupplements(reviewed, importMetadata);
+          },
+        ),
+      ),
+    );
+    if (accepted == true && mounted) {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _previewSupplementTemplates(
+    String sourceText,
+  ) async {
+    final generated =
+        await ref.read(routineRepositoryProvider).previewRoutineImport(
+              routineType: 'supplements',
+              mode: 'supplement_text',
+              sourceText: sourceText,
+            );
+    return generated.isNotEmpty
+        ? generated.map(_normalizeSupplementTemplate).toList()
+        : _supplementsFromText(sourceText)
+            .map((item) => item.toTemplate())
+            .toList();
   }
 
   List<_SupplementItem> _supplementsFromText(String sourceText) {
-    final lines = sourceText
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
+    final entries = sourceText
+        .split(RegExp(r'\n|,|;'))
+        .map((entry) => entry.trim())
+        .where((entry) => entry.isNotEmpty)
         .toList();
-    return lines.map((line) {
-      final parts = line.split(RegExp(r'[,|-]')).map((p) => p.trim()).toList();
+    return entries.asMap().entries.map((entry) {
+      final line = entry.value;
+      final parts =
+          line.split(RegExp(r'\s+-\s+|\s+\|\s+')).map((p) => p.trim()).toList();
+      final defaults = _defaultSupplementTiming(entry.key, parts.first);
       return _SupplementItem(
         templateId: generateId(),
         title: parts.isNotEmpty ? parts[0] : line,
-        dosage: parts.length > 1 ? parts[1] : '',
-        time: parts.length > 2 ? _normalizeTime(parts[2]) : '08:00',
+        dosage: parts.length > 1 ? parts[1] : _defaultSupplementDosage(line),
+        time: parts.length > 2 ? _normalizeTime(parts[2]) : defaults.time,
+        timingRule: defaults.timingRule,
         notes: 'Generated from text import',
+        warnings: const ['Local fallback draft'],
+        confidence: 0.55,
       );
     }).toList();
   }
@@ -155,80 +228,80 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
       dosage: template['dosage']?.toString() ?? '',
       time: _normalizeTime(template['startTime']?.toString() ?? '08:00'),
       repeatRule: template['repeatRule']?.toString() ?? 'daily',
+      timingRule:
+          _normalizeTimingRule(template['timingRule']?.toString() ?? ''),
       notes: template['notes']?.toString() ?? '',
+      warnings: _stringList(template['warnings']),
+      confidence: _templateConfidence(template['confidence']),
       reminderEnabled: template['reminderEnabled'] == true,
     );
   }
 
-  Future<void> _showSupplementReview(
-    List<_SupplementItem> items,
+  Map<String, dynamic> _normalizeSupplementTemplate(
+    Map<String, dynamic> template,
+  ) {
+    final item = _supplementFromTemplate(template);
+    final next = item.toTemplate();
+    next['templateId'] =
+        template['templateId']?.toString().trim().isNotEmpty == true
+            ? template['templateId'].toString().trim()
+            : item.templateId;
+    next['time'] = next['startTime'];
+    next['notes'] =
+        _notesWithDosage(next['dosage']?.toString() ?? '', item.notes);
+    if (template['_suggestionId'] != null) {
+      next['_suggestionId'] = template['_suggestionId'];
+    }
+    return next;
+  }
+
+  Future<void> _acceptGeneratedSupplements(
+    List<Map<String, dynamic>> reviewed,
     Map<String, dynamic> importMetadata,
   ) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final review = List<_SupplementItem>.from(items);
-        return StatefulBuilder(builder: (context, setSheetState) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              MediaQuery.of(ctx).viewInsets.bottom + 20,
-            ),
-            child: SizedBox(
-              height: MediaQuery.of(ctx).size.height * 0.72,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('Review generated supplements',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: review.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) => _SupplementCard(
-                        item: review[index],
-                        onChanged: () => setSheetState(() {}),
-                        onDelete: () =>
-                            setSheetState(() => review.removeAt(index)),
-                      ),
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _generateFromText();
-                        },
-                        child: const Text('Regenerate'),
-                      ),
-                      const Spacer(),
-                      FilledButton(
-                        onPressed: () {
-                          setState(() {
-                            _items
-                              ..clear()
-                              ..addAll(review);
-                            _pendingImportMetadata = importMetadata;
-                          });
-                          Navigator.pop(ctx);
-                        },
-                        child: const Text('Accept all'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        });
-      },
-    );
+    final templates = reviewed.map(_normalizeSupplementTemplate).toList();
+    setState(() {
+      _items
+        ..clear()
+        ..addAll(templates.map(_supplementFromTemplate));
+      _pendingImportMetadata = importMetadata;
+    });
+    await ref.read(routineProvider.notifier).setRoutineTemplates(
+          'supplements',
+          templates.map(_templateForSave).toList(),
+          importMetadata: importMetadata,
+        );
+    await _markSuggestionsAccepted(reviewed);
+    widget.onComplete();
+  }
+
+  Map<String, dynamic> _templateForSave(Map<String, dynamic> template) {
+    final next = Map<String, dynamic>.from(template);
+    next.remove('_suggestionId');
+    return next;
+  }
+
+  Future<void> _markSuggestionsAccepted(
+    List<Map<String, dynamic>> templates,
+  ) async {
+    final ids = templates
+        .map((template) => template['_suggestionId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final suggestionId in ids) {
+      await ref.read(firestoreServiceProvider).saveSuggestion(
+        suggestionId,
+        {
+          'status': 'accepted',
+          'acceptedAt': DateTime.now().toIso8601String(),
+        },
+      );
+      await ref.read(eventServiceProvider).emit(
+        eventName: EventNames.suggestionAccepted,
+        source: 'supplement_setup',
+        payload: {'suggestionId': suggestionId},
+      );
+    }
   }
 
   Future<void> _save() async {
@@ -295,24 +368,60 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
               if (_mode == 'Text AI')
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  child: TextField(
-                    controller: _textImportCtrl,
-                    minLines: 3,
-                    maxLines: 5,
-                    decoration: InputDecoration(
-                      hintText:
-                          'Paste supplement plan. One per line: Vitamin D, 1000 IU, 08:00',
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.82),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _textImportCtrl,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: InputDecoration(
+                          hintText: 'creatine, whey, vitamin D, omega 3',
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.82),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          suffixIcon: IconButton(
+                            onPressed: _isGenerating ? null : _generateFromText,
+                            icon: _isGenerating
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.auto_awesome_rounded),
+                          ),
+                        ),
                       ),
-                      suffixIcon: IconButton(
-                        onPressed: _generateFromText,
-                        icon: const Icon(Icons.auto_awesome_rounded),
+                      if (_generationError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _generationError!,
+                          style: const TextStyle(
+                            color: Color(0xFFB91C1C),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      FilledButton.icon(
+                        onPressed: _isGenerating ? null : _generateFromText,
+                        icon: _isGenerating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.auto_awesome_rounded),
+                        label: const Text('Generate'),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               Expanded(
@@ -422,6 +531,34 @@ class _SupplementCard extends StatelessWidget {
             },
           ),
           DropdownButtonFormField<String>(
+            initialValue: item.timingRule,
+            decoration: const InputDecoration(labelText: 'Timing rule'),
+            items: const [
+              DropdownMenuItem(
+                value: 'after breakfast',
+                child: Text('After breakfast'),
+              ),
+              DropdownMenuItem(
+                value: 'after workout',
+                child: Text('After workout'),
+              ),
+              DropdownMenuItem(
+                value: 'after lunch',
+                child: Text('After lunch'),
+              ),
+              DropdownMenuItem(
+                value: 'before bed',
+                child: Text('Before bed'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                item.timingRule = value;
+                onChanged();
+              }
+            },
+          ),
+          DropdownButtonFormField<String>(
             initialValue: item.repeatRule,
             decoration: const InputDecoration(labelText: 'Repeat days'),
             items: const [
@@ -458,6 +595,86 @@ String _normalizeTime(String raw) {
   final hour = (int.tryParse(match.group(1)!) ?? 8).clamp(0, 23);
   final minute = (int.tryParse(match.group(2)!) ?? 0).clamp(0, 59);
   return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+}
+
+({String time, String timingRule}) _defaultSupplementTiming(
+  int index,
+  String name,
+) {
+  final clean = name.toLowerCase();
+  if (clean.contains('whey') || clean.contains('protein')) {
+    return (time: '18:30', timingRule: 'after workout');
+  }
+  if (clean.contains('omega') || clean.contains('fish oil')) {
+    return (time: '13:30', timingRule: 'after lunch');
+  }
+  if (clean.contains('magnesium') || clean.contains('melatonin')) {
+    return (time: '22:00', timingRule: 'before bed');
+  }
+  if (clean.contains('creatine')) {
+    return (time: '18:30', timingRule: 'after workout');
+  }
+  if (clean.contains('vitamin d') || clean.contains('multi')) {
+    return (time: '08:30', timingRule: 'after breakfast');
+  }
+  const defaults = [
+    (time: '08:30', timingRule: 'after breakfast'),
+    (time: '18:30', timingRule: 'after workout'),
+    (time: '13:30', timingRule: 'after lunch'),
+    (time: '22:00', timingRule: 'before bed'),
+  ];
+  return defaults[index % defaults.length];
+}
+
+String _defaultSupplementDosage(String name) {
+  final clean = name.toLowerCase();
+  if (clean.contains('creatine')) return '3-5 g';
+  if (clean.contains('whey') || clean.contains('protein')) return '1 scoop';
+  if (clean.contains('vitamin d')) return '1000 IU';
+  if (clean.contains('omega')) return '1 capsule';
+  return '';
+}
+
+String _normalizeTimingRule(String raw) {
+  final clean = raw.trim().toLowerCase();
+  const allowed = {
+    'after breakfast',
+    'after workout',
+    'after lunch',
+    'before bed',
+  };
+  if (allowed.contains(clean)) return clean;
+  if (clean.contains('workout') || clean.contains('exercise')) {
+    return 'after workout';
+  }
+  if (clean.contains('lunch')) return 'after lunch';
+  if (clean.contains('bed') || clean.contains('night')) return 'before bed';
+  return 'after breakfast';
+}
+
+List<String> _stringList(Object? raw) {
+  if (raw is List) {
+    return raw
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+  final value = raw?.toString().trim() ?? '';
+  return value.isEmpty ? const [] : [value];
+}
+
+double _templateConfidence(Object? raw) {
+  final value = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 0.75;
+  return value.clamp(0.0, 1.0).toDouble();
+}
+
+String _notesWithDosage(String dosage, String notes) {
+  final cleanDosage = dosage.trim();
+  final cleanNotes = notes.trim();
+  if (cleanDosage.isEmpty) return cleanNotes;
+  if (cleanNotes.toLowerCase().contains('dosage:')) return cleanNotes;
+  if (cleanNotes.isEmpty) return 'Dosage: $cleanDosage';
+  return 'Dosage: $cleanDosage. $cleanNotes';
 }
 
 String _endTime(String startTime, int durationMinutes) {

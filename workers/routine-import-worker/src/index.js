@@ -657,6 +657,12 @@ function validateRawTemplateForMode(item, mode, index) {
     throw new AiOutputValidationError(`Missing supplement dosage at index ${index}`);
   }
 
+  if (mode === "supplement_text"
+    && item.timingRule !== undefined
+    && !isSupplementTimingRule(item.timingRule)) {
+    throw new AiOutputValidationError(`Invalid supplement timingRule at index ${index}`);
+  }
+
   if ((mode === "eating_mess_photo" || mode === "eating_goal_text")
     && !stringField(item.mealType || item.type)) {
     throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
@@ -710,6 +716,10 @@ function validateTemplateForMode(template, mode, index) {
     throw new AiOutputValidationError(`Missing supplement dosage at index ${index}`);
   }
 
+  if (mode === "supplement_text" && !isSupplementTimingRule(template.timingRule)) {
+    throw new AiOutputValidationError(`Invalid supplement timingRule at index ${index}`);
+  }
+
   if ((mode === "eating_mess_photo" || mode === "eating_goal_text") && !template.mealType) {
     throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
   }
@@ -742,7 +752,7 @@ function normalizeTemplate(item, routineType, index) {
     time: startTime,
     startTime,
     endTime: normalizeRoutineTime(
-      item.endTime || addMinutesToTime(startTime, routineType === "skin_care" ? 15 : 30),
+      item.endTime || addMinutesToTime(startTime, defaultDurationMinutes(routineType)),
       defaultEndTime(routineType, index)
     ),
     repeatRule: stringField(item.repeatRule || item.weekdayRule) || "daily",
@@ -776,6 +786,7 @@ function normalizeTemplate(item, routineType, index) {
 
   if (routineType === "supplements") {
     template.dosage = stringField(item.dosage || item.amount);
+    template.timingRule = normalizeSupplementTimingRule(item.timingRule, startTime);
   }
 
   if (routineType === "classes") {
@@ -1065,7 +1076,8 @@ function schemaInstructionFor(mode) {
 For skin care text, split AM-safe products such as Vitamin C and SPF into a morning block, and PM products such as retinol into a night block when both are present. For skin care photos, use visible product names as step names and suggest morning/night timing from common label usage.`;
     case "supplement_text":
       return `JSON schema:
-{"templates":[{"templateId":"stable_id","title":"Vitamin D","dosage":"1000 IU","startTime":"08:00","endTime":"08:05","repeatRule":"daily","notes":"","reminderEnabled":false}]}`;
+{"templates":[{"templateId":"stable_id","title":"Vitamin D","dosage":"1000 IU","startTime":"08:30","endTime":"08:35","timingRule":"after breakfast","repeatRule":"daily","notes":"","warnings":[],"confidence":0.85,"reminderEnabled":false}]}
+For supplements, create one template per named supplement. Use only these timingRule values: after breakfast, after workout, after lunch, before bed. For "creatine, whey, vitamin D, omega 3", return four templates with sensible dosage defaults and times. Add warnings for uncertainty, interactions, or missing dosage; do not give medical claims.`;
     case "class_timetable_photo":
       return `JSON schema:
 {"templates":[{"templateId":"stable_id","title":"Physics","startTime":"09:00","endTime":"10:00","repeatRule":"weekly","room":"A-101","professor":"Dr Rao","notes":"","reminderEnabled":false}]}`;
@@ -1333,6 +1345,7 @@ function defaultStartTime(routineType, index) {
   if (routineType === "classes") return `${String(Math.min(9 + index, 20)).padStart(2, "0")}:00`;
   if (routineType === "eating") return ["08:00", "12:30", "17:00", "20:00"][index] || "20:00";
   if (routineType === "skin_care") return index === 0 ? "07:30" : "21:30";
+  if (routineType === "supplements") return ["08:30", "18:30", "13:30", "22:00"][index] || "08:30";
   return "08:00";
 }
 
@@ -1340,7 +1353,14 @@ function defaultEndTime(routineType, index) {
   if (routineType === "classes") return `${String(Math.min(10 + index, 21)).padStart(2, "0")}:00`;
   if (routineType === "eating") return ["08:30", "13:00", "17:30", "20:30"][index] || "20:30";
   if (routineType === "skin_care") return index === 0 ? "07:45" : "21:45";
+  if (routineType === "supplements") return ["08:35", "18:35", "13:35", "22:05"][index] || "08:35";
   return "08:05";
+}
+
+function defaultDurationMinutes(routineType) {
+  if (routineType === "supplements") return 5;
+  if (routineType === "skin_care") return 15;
+  return 30;
 }
 
 function addMinutesToTime(time, minutes) {
@@ -1356,6 +1376,32 @@ function timingRuleFor(time) {
   if (hour < 12) return "morning";
   if (hour < 17) return "afternoon";
   return "night";
+}
+
+function normalizeSupplementTimingRule(value, startTime) {
+  const raw = stringField(value).toLowerCase();
+  if (isSupplementTimingRule(raw)) return raw;
+  if (raw.includes("workout") || raw.includes("exercise") || raw.includes("training")) {
+    return "after workout";
+  }
+  if (raw.includes("lunch")) return "after lunch";
+  if (raw.includes("bed") || raw.includes("night") || raw.includes("sleep")) {
+    return "before bed";
+  }
+  const hour = Number(String(startTime || "08:30").split(":")[0]);
+  if (hour >= 17 && hour < 21) return "after workout";
+  if (hour >= 12 && hour < 17) return "after lunch";
+  if (hour >= 21 || hour < 5) return "before bed";
+  return "after breakfast";
+}
+
+function isSupplementTimingRule(value) {
+  return [
+    "after breakfast",
+    "after workout",
+    "after lunch",
+    "before bed"
+  ].includes(stringField(value).toLowerCase());
 }
 
 function inferMealType(index) {
