@@ -1,9 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/routine_provider.dart';
+import 'package:optivus2/services/image_upload_service.dart';
 
 String _formatTimeFromStart(double hoursFrom6AM) {
   int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
@@ -29,6 +32,8 @@ class ClassRoutineBlock {
   bool hasTopTape;
   bool hasBottomTape;
   bool reminderEnabled;
+  int? weekday;
+  String? suggestionId;
 
   String get displayStartTime => _formatTimeFromStart(start);
   String get displayEndTime => _formatTimeFromStart(start + duration);
@@ -46,6 +51,8 @@ class ClassRoutineBlock {
     this.hasTopTape = false,
     this.hasBottomTape = false,
     this.reminderEnabled = false,
+    this.weekday,
+    this.suggestionId,
   });
 }
 
@@ -73,6 +80,10 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
   ];
   int _colorIndex = 0;
   Map<String, dynamic>? _pendingImportMetadata;
+  final ImageUploadService _imageUploadService = ImageUploadService();
+  String _setupMode = 'Manual';
+  bool _isImportingPhoto = false;
+  String? _photoImportError;
 
   @override
   void initState() {
@@ -781,8 +792,12 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
             'templateId': 'class_${weekday}_${item.id}',
             'title': item.subject,
             'routineType': 'classes',
+            'weekday': weekday,
+            'subject': item.subject,
             'startTime': format24h(item.start),
             'endTime': format24h(item.start + item.duration),
+            'start': format24h(item.start),
+            'end': format24h(item.start + item.duration),
             'repeatRule': 'weekly:$weekday',
             'room': item.room,
             'professor': item.professor,
@@ -805,203 +820,576 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
   }
 
   Future<void> _showImportOptions() async {
-    final noteCtrl = TextEditingController();
-    await showModalBottomSheet(
+    if (_isImportingPhoto) return;
+    final source = await showModalBottomSheet<ImageSource>(
       context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
+      builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Upload timetable',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Optional notes for the timetable image',
-                border: OutlineInputBorder(),
-              ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Camera'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
             ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _loadGeneratedClasses(
-                  noteCtrl.text.trim(),
-                  imageMetadata: {
-                    'source': 'class_timetable_upload',
-                    'createdAt': DateTime.now().toIso8601String(),
-                  },
-                );
-              },
-              icon: const Icon(Icons.image_rounded),
-              label: const Text('Upload timetable image/screenshot'),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
             ),
           ],
         ),
       ),
     );
-    noteCtrl.dispose();
+    if (source == null) return;
+    await _pickUploadAndImportPhoto(source);
   }
 
-  Future<void> _loadGeneratedClasses(
-    String sourceText, {
-    required Map<String, dynamic> imageMetadata,
-  }) async {
-    var generated = <Map<String, dynamic>>[];
+  Future<void> _pickUploadAndImportPhoto(ImageSource source) async {
+    setState(() {
+      _setupMode = 'Photo OCR';
+      _isImportingPhoto = true;
+      _photoImportError = null;
+    });
+
+    Map<String, dynamic>? imageMetadata;
     try {
-      generated =
+      final uploaded = await _imageUploadService.pickCompressAndUpload(
+        source: source,
+        routineType: 'classes',
+      );
+      if (!mounted || uploaded == null) return;
+
+      imageMetadata = {
+        ...uploaded,
+        'source': 'class_timetable_photo',
+        'routineType': 'classes',
+        'uploadedAt': DateTime.now().toIso8601String(),
+      };
+
+      final generated =
           await ref.read(routineRepositoryProvider).previewRoutineImport(
                 routineType: 'classes',
-                mode: 'timetable_image',
-                sourceText: sourceText,
+                mode: 'class_timetable_photo',
                 imageMetadata: imageMetadata,
               );
+      if (!mounted) return;
+
+      final blocks = generated
+          .asMap()
+          .entries
+          .map((entry) => _classBlockFromTemplate(entry.value, entry.key))
+          .where((block) => block.subject.trim().isNotEmpty)
+          .toList();
+      if (blocks.isEmpty) {
+        await _deleteUploadedImageQuietly(imageMetadata);
+        if (!mounted) return;
+        setState(() {
+          _photoImportError =
+              'No classes were detected. Try a clearer timetable photo.';
+        });
+        return;
+      }
+
+      final accepted = await _showClassReview(blocks, {
+        'mode': 'class_timetable_photo',
+        'imageMetadata': imageMetadata,
+        'suggestionIds': blocks
+            .map((block) => block.suggestionId ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList(),
+        'createdAt': DateTime.now().toIso8601String(),
+      });
+      if (accepted != true) {
+        await _deleteUploadedImageQuietly(imageMetadata);
+      }
     } catch (e) {
       debugPrint('[ClassSetup] routineImport preview failed: $e');
+      await _deleteUploadedImageQuietly(imageMetadata);
+      if (mounted) {
+        setState(() {
+          _photoImportError =
+              'Photo OCR failed. Check the timetable image and endpoint configuration.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isImportingPhoto = false);
     }
-    final blocks = generated.isNotEmpty
-        ? generated.map(_classBlockFromTemplate).toList()
-        : [
-            ClassRoutineBlock(
-              id: 'generated_${DateTime.now().microsecondsSinceEpoch}',
-              subject: sourceText.isEmpty ? 'Imported Class' : sourceText,
-              start: 3.0,
-              duration: 1.0,
-              icon: Icons.school_rounded,
-              color: const Color(0xFF378ADD),
-              hasTopTape: true,
-              hasBottomTape: true,
-            )
-          ];
-    _showClassReview(blocks, {
-      'mode': 'timetable_image',
-      if (sourceText.isNotEmpty) 'sourceText': sourceText,
-      'imageMetadata': imageMetadata,
-      'createdAt': DateTime.now().toIso8601String(),
-    });
   }
 
-  ClassRoutineBlock _classBlockFromTemplate(Map<String, dynamic> template) {
-    final start =
-        _parseHoursFrom6AM(template['startTime']?.toString() ?? '9:00 AM');
-    final end =
-        _parseHoursFrom6AM(template['endTime']?.toString() ?? '10:00 AM');
+  Future<void> _deleteUploadedImageQuietly(
+    Map<String, dynamic>? imageMetadata,
+  ) async {
+    try {
+      await _imageUploadService.deleteUploadedMetadata(imageMetadata);
+    } catch (e) {
+      debugPrint('[ClassSetup] upload cleanup failed: $e');
+    }
+  }
+
+  ClassRoutineBlock _classBlockFromTemplate(
+    Map<String, dynamic> template,
+    int index,
+  ) {
+    final start = _parseHoursFrom6AM(
+        (template['start'] ?? template['startTime'])?.toString() ?? '9:00 AM');
+    var end = _parseHoursFrom6AM(
+        (template['end'] ?? template['endTime'])?.toString() ?? '10:00 AM');
+    if (end <= start) end += 24;
+    final color = _cycleColors[(_colorIndex + index) % _cycleColors.length];
     return ClassRoutineBlock(
       id: template['templateId']?.toString() ??
           'generated_${DateTime.now().microsecondsSinceEpoch}',
-      subject: template['title']?.toString() ?? 'Imported Class',
+      subject: (template['subject'] ?? template['title'])?.toString() ??
+          'Imported Class',
       room: template['room']?.toString() ?? '',
       professor: template['professor']?.toString() ?? '',
       start: start,
       duration: (end > start ? end - start : 1.0).clamp(0.5, 4.0).toDouble(),
       icon: Icons.school_rounded,
-      color: const Color(0xFF378ADD),
+      color: color,
       hasTopTape: true,
       hasBottomTape: true,
       reminderEnabled: template['reminderEnabled'] == true,
+      weekday: _weekdayFromTemplate(template),
+      suggestionId: template['_suggestionId']?.toString(),
     );
   }
 
-  Future<void> _showClassReview(
+  int _weekdayFromTemplate(Map<String, dynamic> template) {
+    final direct = _weekdayFromValue(template['weekday']);
+    if (direct != null) return direct;
+    final repeatRule = template['repeatRule']?.toString() ?? '';
+    final weeklyMatch = RegExp(r'weekly:(\d)').firstMatch(repeatRule);
+    if (weeklyMatch != null) {
+      return _clampWeekday(int.parse(weeklyMatch.group(1)!));
+    }
+    return _clampWeekday(_day + 1);
+  }
+
+  int? _weekdayFromValue(Object? value) {
+    if (value is int) return _clampWeekday(value);
+    if (value is num) return _clampWeekday(value.round());
+    final text = value?.toString().trim().toLowerCase() ?? '';
+    if (text.isEmpty) return null;
+    final numeric = int.tryParse(text);
+    if (numeric != null) return _clampWeekday(numeric);
+    const aliases = {
+      'mon': 1,
+      'monday': 1,
+      'tue': 2,
+      'tues': 2,
+      'tuesday': 2,
+      'wed': 3,
+      'wednesday': 3,
+      'thu': 4,
+      'thur': 4,
+      'thurs': 4,
+      'thursday': 4,
+      'fri': 5,
+      'friday': 5,
+      'sat': 6,
+      'saturday': 6,
+      'sun': 7,
+      'sunday': 7,
+    };
+    return aliases[text];
+  }
+
+  int _clampWeekday(int value) => value.clamp(1, 7).toInt();
+
+  String _weekdayLabel(int weekday) {
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return labels[(weekday - 1).clamp(0, 6).toInt()];
+  }
+
+  String _format24h(double hoursFrom6AM) {
+    int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
+    int h = (totalMinutes ~/ 60) % 24;
+    int m = totalMinutes % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  Future<bool> _showClassReview(
     List<ClassRoutineBlock> blocks,
     Map<String, dynamic> importMetadata,
   ) async {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final review = List<ClassRoutineBlock>.from(blocks);
-        return StatefulBuilder(builder: (context, setSheetState) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              MediaQuery.of(ctx).viewInsets.bottom + 20,
-            ),
-            child: SizedBox(
-              height: MediaQuery.of(ctx).size.height * 0.72,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('Review imported classes',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: review.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final item = review[index];
-                        return TextFormField(
-                          initialValue:
-                              '${item.subject}: ${item.room} ${item.professor}'
-                                  .trim(),
-                          decoration: const InputDecoration(
-                            labelText: 'Subject, room, professor',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (value) {
-                            final parts = value.split(':');
-                            item.subject = parts.first.trim().isEmpty
-                                ? item.subject
-                                : parts.first.trim();
-                            if (parts.length > 1) {
-                              item.room = parts.sublist(1).join(':').trim();
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  Row(
+    return await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          builder: (ctx) {
+            final review = List<ClassRoutineBlock>.from(blocks);
+            var isAccepting = false;
+            return StatefulBuilder(builder: (context, setSheetState) {
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  20,
+                  20,
+                  MediaQuery.of(ctx).viewInsets.bottom + 20,
+                ),
+                child: SizedBox(
+                  height: MediaQuery.of(ctx).size.height * 0.78,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextButton.icon(
-                        onPressed: () => setSheetState(() {
-                          if (review.isNotEmpty) review.removeLast();
-                        }),
-                        icon: const Icon(Icons.remove_circle_outline_rounded),
-                        label: const Text('Remove'),
+                      const Text('Review imported classes',
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: review.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final item = review[index];
+                            return Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: const Color(0xFFE2E8F0), width: 1),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: DropdownButtonFormField<int>(
+                                          initialValue: _clampWeekday(
+                                              item.weekday ?? _day + 1),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Day',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          items: List.generate(
+                                            7,
+                                            (dayIndex) => DropdownMenuItem(
+                                              value: dayIndex + 1,
+                                              child: Text(
+                                                  _weekdayLabel(dayIndex + 1)),
+                                            ),
+                                          ),
+                                          onChanged: (value) {
+                                            if (value != null) {
+                                              item.weekday = value;
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        flex: 2,
+                                        child: TextFormField(
+                                          initialValue: item.subject,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Subject',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) =>
+                                              item.subject = value.trim(),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: item.room,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Room',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) =>
+                                              item.room = value.trim(),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: item.professor,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Professor',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) =>
+                                              item.professor = value.trim(),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: _format24h(item.start),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Start',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) {
+                                            final parsed =
+                                                _parseHoursFrom6AM(value);
+                                            final currentEnd =
+                                                item.start + item.duration;
+                                            item.start = parsed;
+                                            item.duration =
+                                                (currentEnd - parsed)
+                                                    .clamp(0.5, 4.0)
+                                                    .toDouble();
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: TextFormField(
+                                          initialValue: _format24h(
+                                              item.start + item.duration),
+                                          decoration: const InputDecoration(
+                                            labelText: 'End',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (value) {
+                                            var parsed =
+                                                _parseHoursFrom6AM(value);
+                                            if (parsed <= item.start) {
+                                              parsed += 24;
+                                            }
+                                            item.duration =
+                                                (parsed - item.start)
+                                                    .clamp(0.5, 4.0)
+                                                    .toDouble();
+                                          },
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Remove',
+                                        onPressed: () => setSheetState(
+                                            () => review.removeAt(index)),
+                                        icon: const Icon(Icons
+                                            .remove_circle_outline_rounded),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          _showImportOptions();
-                        },
-                        child: const Text('Regenerate'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: () {
-                          setState(() {
-                            weeklyRoutines[_day]!.insertAll(0, review);
-                            _pendingImportMetadata = importMetadata;
-                          });
-                          Navigator.pop(ctx);
-                        },
-                        child: const Text('Accept all'),
+                      Row(
+                        children: [
+                          const Spacer(),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx, false);
+                              _showImportOptions();
+                            },
+                            child: const Text('Regenerate'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: isAccepting
+                                ? null
+                                : () async {
+                                    setSheetState(() => isAccepting = true);
+                                    final accepted = review
+                                        .where((item) =>
+                                            item.subject.trim().isNotEmpty)
+                                        .toList();
+                                    await _markSuggestionsAccepted(accepted);
+                                    if (!mounted) return;
+                                    setState(() {
+                                      _applyReviewedClasses(accepted);
+                                      _pendingImportMetadata = importMetadata;
+                                      _colorIndex += accepted.length;
+                                    });
+                                    if (!ctx.mounted) return;
+                                    Navigator.pop(ctx, true);
+                                  },
+                            child: Text(
+                                isAccepting ? 'Accepting...' : 'Accept all'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
+              );
+            });
+          },
+        ) ??
+        false;
+  }
+
+  void _applyReviewedClasses(List<ClassRoutineBlock> review) {
+    for (int d = 0; d < 7; d++) {
+      final existing =
+          (weeklyRoutines[d] ?? []).where((item) => !item.isAdd).toList();
+      final imported = review
+          .where((item) => (item.weekday ?? _day + 1) == d + 1)
+          .map((item) {
+        item.weekday = d + 1;
+        item.isAdd = false;
+        item.hasTopTape = true;
+        item.hasBottomTape = true;
+        item.icon = Icons.school_rounded;
+        item.color ??= _cycleColors[_colorIndex % _cycleColors.length];
+        return item;
+      }).toList();
+      final next = [...existing, ...imported]
+        ..sort((a, b) => a.start.compareTo(b.start));
+      next.add(ClassRoutineBlock(
+        id: 'add_imported_${d}_${DateTime.now().microsecondsSinceEpoch}',
+        subject: '',
+        start: next.isEmpty ? 7.0 : next.last.start + next.last.duration + 0.5,
+        isAdd: true,
+      ));
+      weeklyRoutines[d] = next;
+    }
+  }
+
+  Future<void> _markSuggestionsAccepted(
+    List<ClassRoutineBlock> blocks,
+  ) async {
+    final ids = blocks
+        .map((block) => block.suggestionId ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    for (final suggestionId in ids) {
+      await ref.read(firestoreServiceProvider).saveSuggestion(
+        suggestionId,
+        {
+          'status': 'accepted',
+          'acceptedAt': DateTime.now().toIso8601String(),
+        },
+      );
+      await ref.read(eventServiceProvider).emit(
+        eventName: EventNames.suggestionAccepted,
+        source: 'class_setup',
+        payload: {'suggestionId': suggestionId},
+      );
+    }
+  }
+
+  Widget _buildModeTabs() {
+    Widget tab(String label, IconData icon) {
+      final selected = _setupMode == label;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => setState(() => _setupMode = label),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: 42,
+            decoration: BoxDecoration(
+              color: selected
+                  ? const Color(0xFF0F111A)
+                  : Colors.white.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.9),
+                width: 1,
               ),
             ),
-          );
-        });
-      },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon,
+                    size: 18,
+                    color: selected ? Colors.white : const Color(0xFF475569)),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: selected ? Colors.white : const Color(0xFF475569),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(18),
+          border:
+              Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1),
+        ),
+        child: Row(
+          children: [
+            tab('Manual', Icons.edit_calendar_rounded),
+            const SizedBox(width: 4),
+            tab('Photo OCR', Icons.document_scanner_rounded),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoOcrPanel() {
+    if (_setupMode != 'Photo OCR') return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(18),
+          border:
+              Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.document_scanner_rounded,
+                color: _isImportingPhoto
+                    ? const Color(0xFF64748B)
+                    : const Color(0xFF2563EB)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _photoImportError ??
+                    (_isImportingPhoto
+                        ? 'Uploading and reading timetable...'
+                        : 'Pick a timetable photo to extract weekly classes.'),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _photoImportError == null
+                      ? const Color(0xFF334155)
+                      : const Color(0xFFB91C1C),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilledButton.icon(
+              onPressed: _isImportingPhoto ? null : _showImportOptions,
+              icon: _isImportingPhoto
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.image_rounded, size: 18),
+              label: const Text('Pick'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1016,9 +1404,15 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showImportOptions,
-        icon: const Icon(Icons.image_rounded),
-        label: const Text('Upload'),
+        onPressed: _isImportingPhoto ? null : _showImportOptions,
+        icon: _isImportingPhoto
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.document_scanner_rounded),
+        label: Text(_isImportingPhoto ? 'Reading' : 'Photo OCR'),
       ),
       body: LiquidBg(
         child: Stack(children: [
@@ -1084,6 +1478,9 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                     );
                   }),
                 ),
+                const SizedBox(height: 12),
+                _buildModeTabs(),
+                _buildPhotoOcrPanel(),
                 const SizedBox(height: 20),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),

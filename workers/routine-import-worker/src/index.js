@@ -224,6 +224,10 @@ export default {
         suggestionIds: suggestions.map((item) => item.suggestionId)
       };
 
+      if (mode === "class_timetable_photo") {
+        output.classes = safePreview.map(classOutputItem);
+      }
+
       if (contract.outputKey === "suggestions") {
         output.suggestions = safePreview;
         output.items = safePreview;
@@ -608,7 +612,9 @@ function validateAiOutput(parsed, mode, contract) {
       ? parsed.items
       : Array.isArray(parsed.blocks)
         ? parsed.blocks
-        : null;
+        : mode === "class_timetable_photo" && Array.isArray(parsed.classes)
+          ? parsed.classes
+          : null;
 
   if (!rawTemplates) {
     throw new AiOutputValidationError("Missing templates array");
@@ -635,6 +641,22 @@ function validateAiOutput(parsed, mode, contract) {
 function validateRawTemplateForMode(item, mode, index) {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
     throw new AiOutputValidationError(`Template at index ${index} must be an object`);
+  }
+
+  if (mode === "class_timetable_photo") {
+    if (!stringField(item.subject || item.title || item.name)) {
+      throw new AiOutputValidationError(`Missing class subject at index ${index}`);
+    }
+    if (_classWeekdayFromItem(item) === 0) {
+      throw new AiOutputValidationError(`Missing or invalid class weekday at index ${index}`);
+    }
+    if (!isInputRoutineTime(item.start || item.startTime || item.time)) {
+      throw new AiOutputValidationError(`Missing or invalid class start at index ${index}`);
+    }
+    if (!isInputRoutineTime(item.end || item.endTime)) {
+      throw new AiOutputValidationError(`Missing or invalid class end at index ${index}`);
+    }
+    return;
   }
 
   if (!stringField(item.title || item.name)) {
@@ -723,6 +745,10 @@ function validateTemplateForMode(template, mode, index) {
   if ((mode === "eating_mess_photo" || mode === "eating_goal_text") && !template.mealType) {
     throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
   }
+
+  if (mode === "class_timetable_photo" && (!template.weekday || !template.subject)) {
+    throw new AiOutputValidationError(`Missing class weekday or subject at index ${index}`);
+  }
 }
 
 function hasValidSteps(value) {
@@ -741,21 +767,24 @@ function normalizeTemplate(item, routineType, index) {
     throw new AiOutputValidationError(`Template at index ${index} must be an object`);
   }
 
-  const title = stringField(item.title || item.name);
+  const title = stringField(item.title || item.name || item.subject);
   const startTime = normalizeRoutineTime(
-    item.startTime || item.time || defaultStartTime(routineType, index),
+    item.startTime || item.start || item.time || defaultStartTime(routineType, index),
     defaultStartTime(routineType, index)
   );
+  const weekday = routineType === "classes" ? _classWeekdayFromItem(item) : 0;
   const template = {
     templateId: stringField(item.templateId || item.id) || `${routineType}_${index}_${slug(title || "template")}`,
     title,
     time: startTime,
     startTime,
     endTime: normalizeRoutineTime(
-      item.endTime || addMinutesToTime(startTime, defaultDurationMinutes(routineType)),
+      item.endTime || item.end || addMinutesToTime(startTime, defaultDurationMinutes(routineType)),
       defaultEndTime(routineType, index)
     ),
-    repeatRule: stringField(item.repeatRule || item.weekdayRule) || "daily",
+    repeatRule: routineType === "classes" && weekday > 0
+      ? `weekly:${weekday}`
+      : stringField(item.repeatRule || item.weekdayRule) || "daily",
     timingRule: stringField(item.timingRule) || timingRuleFor(startTime),
     weekdayRule: stringField(item.weekdayRule || item.repeatRule) || "daily",
     notes: stringField(item.notes || item.reason),
@@ -790,6 +819,10 @@ function normalizeTemplate(item, routineType, index) {
   }
 
   if (routineType === "classes") {
+    template.weekday = weekday || 1;
+    template.subject = title;
+    template.start = template.startTime;
+    template.end = template.endTime;
     template.room = stringField(item.room || item.location);
     template.professor = stringField(item.professor || item.teacher || item.instructor);
   }
@@ -817,6 +850,61 @@ function normalizeSuggestion(item, index) {
     taskTitle: stringField(item.taskTitle || item.title),
     targetSurface: stringField(item.targetSurface) || "routine",
     priorityScore: clampNumber(item.priorityScore ?? item.priority, 0, 1, 0.5)
+  };
+}
+
+function _classWeekday(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.min(7, Math.max(1, Math.round(value)));
+  }
+
+  const text = stringField(value).toLowerCase();
+  if (!text) return 0;
+  const numeric = Number.parseInt(text, 10);
+  if (Number.isFinite(numeric)) {
+    return Math.min(7, Math.max(1, numeric));
+  }
+
+  const aliases = {
+    mon: 1,
+    monday: 1,
+    tue: 2,
+    tues: 2,
+    tuesday: 2,
+    wed: 3,
+    wednesday: 3,
+    thu: 4,
+    thur: 4,
+    thurs: 4,
+    thursday: 4,
+    fri: 5,
+    friday: 5,
+    sat: 6,
+    saturday: 6,
+    sun: 7,
+    sunday: 7
+  };
+  return aliases[text] || 0;
+}
+
+function _classWeekdayFromItem(item) {
+  const direct = _classWeekday(item?.weekday);
+  if (direct > 0) return direct;
+
+  const repeatRule = stringField(item?.repeatRule || item?.weekdayRule).toLowerCase();
+  const weeklyMatch = repeatRule.match(/^weekly:(\d)$/);
+  if (weeklyMatch) return _classWeekday(weeklyMatch[1]);
+  return 0;
+}
+
+function classOutputItem(item) {
+  return {
+    weekday: item.weekday,
+    subject: item.subject || item.title,
+    room: item.room || "",
+    professor: item.professor || "",
+    start: item.start || item.startTime,
+    end: item.end || item.endTime
   };
 }
 
@@ -1080,7 +1168,8 @@ For skin care text, split AM-safe products such as Vitamin C and SPF into a morn
 For supplements, create one template per named supplement. Use only these timingRule values: after breakfast, after workout, after lunch, before bed. For "creatine, whey, vitamin D, omega 3", return four templates with sensible dosage defaults and times. Add warnings for uncertainty, interactions, or missing dosage; do not give medical claims.`;
     case "class_timetable_photo":
       return `JSON schema:
-{"templates":[{"templateId":"stable_id","title":"Physics","startTime":"09:00","endTime":"10:00","repeatRule":"weekly","room":"A-101","professor":"Dr Rao","notes":"","reminderEnabled":false}]}`;
+{"classes":[{"weekday":1,"subject":"Physics","room":"A-101","professor":"Dr Rao","start":"09:00","end":"10:00"}]}
+For class timetable photos, use weekday 1=Monday through 7=Sunday. Return one item per recurring weekly class period, including blank strings for unknown room or professor.`;
     case "eating_mess_photo":
     case "eating_goal_text":
       return `JSON schema:
