@@ -74,7 +74,7 @@ test.before(async () => {
 });
 
 for (const [mode, fixture] of Object.entries(modeFixtures)) {
-  test(`returns validated preview and logs usage for ${mode}`, async () => {
+  test(`returns validated preview without Firestore writes for ${mode}`, async () => {
     const state = mockFetchState(fixture.ai);
     globalThis.fetch = createMockFetch(state);
 
@@ -84,14 +84,16 @@ for (const [mode, fixture] of Object.entries(modeFixtures)) {
     assert.equal(response.status, 200, JSON.stringify(body));
     assert.equal(body.mode, mode);
     assert.equal(body.commit, false);
+    assert.equal(body.previewOnly, true);
     assert.equal(body.userId, uid);
-    assert.equal(body.usage.aiCalls, 1);
-    assert.equal(body.suggestionIds.length, 1);
+    assert.equal(body.usage.aiCalls, 0);
+    assert.equal(body.usage.previewOnly, true);
+    assert.equal(body.suggestionIds.length, 0);
     assert.equal(Array.isArray(body[fixture.responseKey]), true);
     assert.equal(body[fixture.responseKey].length, 1);
     assert.equal(state.geminiCalls, 1);
-    assert.equal(state.usageCommits, 1);
-    assert.equal(state.suggestionCommits, 1);
+    assert.equal(state.usageCommits, 0);
+    assert.equal(state.suggestionCommits, 0);
   });
 }
 
@@ -122,7 +124,7 @@ test("rejects malformed AI output with a safe error", async () => {
   assert.equal(body.error, "Routine import AI output rejected");
   assert.equal(body.details, undefined);
   assert.equal(state.geminiCalls, 1);
-  assert.equal(state.usageCommits, 1);
+  assert.equal(state.usageCommits, 0);
   assert.equal(state.suggestionCommits, 0);
 });
 
@@ -147,7 +149,7 @@ test("rejects schema-invalid AI output with a safe error", async () => {
   assert.equal(body.error, "Routine import AI output rejected");
   assert.equal(body.details, undefined);
   assert.equal(state.geminiCalls, 1);
-  assert.equal(state.usageCommits, 1);
+  assert.equal(state.usageCommits, 0);
   assert.equal(state.suggestionCommits, 0);
 });
 
@@ -393,6 +395,7 @@ function classTemplate() {
   return {
     templateId: "physics",
     title: "Physics",
+    weekday: 1,
     startTime: "09:00",
     endTime: "10:00",
     repeatRule: "weekly",
@@ -407,7 +410,9 @@ function eatingTemplate() {
   return {
     templateId: "breakfast",
     title: "Breakfast",
+    weekday: 1,
     mealType: "Breakfast",
+    items: ["Poha"],
     startTime: "08:00",
     endTime: "08:30",
     repeatRule: "daily",

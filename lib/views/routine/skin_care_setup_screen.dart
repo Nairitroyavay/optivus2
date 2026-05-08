@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
@@ -1016,6 +1017,10 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
 
   Future<void> _pickSkinCarePhoto() async {
     if (_isUploadingPhoto || _isGenerating) return;
+    if (!FeatureFlags.skinProductImageImportReady) {
+      _showPhotoAiComingSoon();
+      return;
+    }
 
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -1065,6 +1070,15 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
     } finally {
       if (mounted) setState(() => _isUploadingPhoto = false);
     }
+  }
+
+  void _showPhotoAiComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+            'Product photo AI is coming soon. Text AI and manual setup still work.'),
+      ),
+    );
   }
 
   Future<void> _removeSkinCarePhoto() async {
@@ -1578,7 +1592,9 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                                           ? Icons.add_a_photo_rounded
                                           : Icons.check_circle_rounded),
                                   label: Text(_photoImportMetadata == null
-                                      ? 'Add product photo'
+                                      ? FeatureFlags.skinProductImageImportReady
+                                          ? 'Add product photo'
+                                          : 'Coming soon'
                                       : _photoUploadLabel(
                                           _photoImportMetadata!)),
                                 ),
@@ -1604,6 +1620,16 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                               _generationError!,
                               style: const TextStyle(
                                 color: Color(0xFFB91C1C),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                          if (!FeatureFlags.skinProductImageImportReady) ...[
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Photo AI is coming soon. Use Text AI or manual setup for now.',
+                              style: TextStyle(
+                                color: Color(0xFF334155),
                                 fontWeight: FontWeight.w700,
                               ),
                             ),

@@ -4,10 +4,7 @@ const firebaseJwks = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
 );
 
-const firestoreScope = [
-  "https://www.googleapis.com/auth/datastore",
-  "https://www.googleapis.com/auth/devstorage.read_only"
-].join(" ");
+const firestoreScope = "https://www.googleapis.com/auth/datastore";
 const maxItemsPerMode = 12;
 
 const modeContracts = {
@@ -158,17 +155,7 @@ export default {
     const mode = modeResult.mode;
     const contract = modeContracts[mode];
     const sourceText = stringField(body.sourceText || body.text || body.prompt);
-    let imageMetadata = objectField(body.imageMetadata);
-    const storagePath = stringField(
-      body.storagePath || body.imagePath || imageMetadata?.storagePath || imageMetadata?.path
-    );
-    if (storagePath) {
-      imageMetadata = {
-        ...(imageMetadata || {}),
-        storagePath,
-        path: imageMetadata?.path || storagePath
-      };
-    }
+    const imageMetadata = objectField(body.imageMetadata);
     const context = objectField(body.context) || objectField(body.contextPayload) || {};
 
     const inputError = validateInput(contract, sourceText, imageMetadata, context);
@@ -197,10 +184,9 @@ export default {
         accessToken
       });
       const safetyFlags = extractSafetyFlags(profile);
-      const usage = await reserveUsageCall({
+      const usage = await readUsageStatus({
         env,
         uid,
-        mode,
         accessToken,
         profile
       });
@@ -216,26 +202,16 @@ export default {
         safetyFlags
       });
       const safePreview = applySafetyPolicy(preview, contract, safetyFlags);
-      const suggestions = await writeSuggestionGeneratedEvents({
-        projectId: env.FIREBASE_PROJECT_ID,
-        uid,
-        mode,
-        contract,
-        sourceText,
-        imageMetadata,
-        preview: safePreview,
-        accessToken
-      });
-
       const output = {
         mode,
         routineType: contract.routineType,
         commit: false,
+        previewOnly: true,
         source: "gemini",
         userId: uid,
         usage,
         safetyFlags: publicSafetyFlags(safetyFlags),
-        suggestionIds: suggestions.map((item) => item.suggestionId)
+        suggestionIds: []
       };
 
       if (mode === "class_timetable_photo") {
@@ -384,15 +360,14 @@ function validateInput(contract, sourceText, imageMetadata, context) {
 
   if (contract.input === "photo") {
     const hasImageUrl = !!stringField(imageMetadata?.downloadUrl || imageMetadata?.url);
-    const hasStoragePath = !!stringField(imageMetadata?.storagePath || imageMetadata?.path);
     const hasTextHint = !!stringField(
       sourceText || imageMetadata?.ocrText || imageMetadata?.text || imageMetadata?.description
     );
     if (!imageMetadata && !sourceText) {
       return "Provide imageMetadata or extracted sourceText for this photo mode";
     }
-    if (!hasImageUrl && !hasStoragePath && !hasTextHint) {
-      return "Provide an uploaded image URL, Storage path, or OCR text for this photo mode";
+    if (!hasImageUrl && !hasTextHint) {
+      return "Provide an R2 image URL or OCR text for this photo mode";
     }
   }
 
@@ -444,110 +419,29 @@ async function getUserProfile({ projectId, uid, accessToken }) {
   return document.exists ? document.data : {};
 }
 
-async function reserveUsageCall({ env, uid, mode, accessToken, profile }) {
+async function readUsageStatus({ env, uid, accessToken, profile }) {
   const monthKey = currentMonthKey();
   const limit = usageLimitFor(profile, env);
   const projectId = env.FIREBASE_PROJECT_ID;
   const documentPath = `users/${uid}/usage/${monthKey}`;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const usageDoc = await getFirestoreDocument({
-      projectId,
-      path: documentPath,
-      accessToken
-    });
-    const aiCalls = usageDoc.exists ? safeNumber(usageDoc.data.aiCalls) : 0;
-    const usage = {
-      monthKey,
-      aiCalls,
-      limit,
-      remaining: Math.max(0, limit - aiCalls)
-    };
-
-    if (aiCalls >= limit) {
-      throw new UsageCapError("AI usage cap reached", usage);
-    }
-
-    const committed = await commitUsageIncrement({
-      projectId,
-      uid,
-      monthKey,
-      mode,
-      accessToken,
-      usageDoc
-    });
-
-    if (committed) {
-      return {
-        monthKey,
-        aiCalls: aiCalls + 1,
-        limit,
-        remaining: Math.max(0, limit - aiCalls - 1)
-      };
-    }
-  }
-
-  throw new Error("Could not reserve AI usage after concurrent updates");
-}
-
-async function commitUsageIncrement({ projectId, uid, monthKey, mode, accessToken, usageDoc }) {
-  const documentName = firestoreDocumentName(projectId, `users/${uid}/usage/${monthKey}`);
-  const write = {
-    update: {
-      name: documentName,
-      fields: {
-        monthKey: toFirestoreValue(monthKey),
-        source: toFirestoreValue("routine-import-worker"),
-        lastAiMode: toFirestoreValue(mode),
-        schemaVersion: toFirestoreValue(1)
-      }
-    },
-    updateMask: {
-      fieldPaths: ["monthKey", "source", "lastAiMode", "schemaVersion"]
-    },
-    updateTransforms: [
-      {
-        fieldPath: "aiCalls",
-        increment: { integerValue: "1" }
-      },
-      {
-        fieldPath: "lastAiCallAt",
-        setToServerValue: "REQUEST_TIME"
-      },
-      {
-        fieldPath: "updatedAt",
-        setToServerValue: "REQUEST_TIME"
-      }
-    ]
+  const usageDoc = await getFirestoreDocument({
+    projectId,
+    path: documentPath,
+    accessToken
+  });
+  const aiCalls = usageDoc.exists ? safeNumber(usageDoc.data.aiCalls) : 0;
+  const usage = {
+    monthKey,
+    aiCalls,
+    limit,
+    remaining: Math.max(0, limit - aiCalls),
+    previewOnly: true
   };
 
-  if (usageDoc.exists) {
-    write.currentDocument = { updateTime: usageDoc.updateTime };
-  } else {
-    write.currentDocument = { exists: false };
-    write.updateTransforms.push({
-      fieldPath: "createdAt",
-      setToServerValue: "REQUEST_TIME"
-    });
+  if (aiCalls >= limit) {
+    throw new UsageCapError("AI usage cap reached", usage);
   }
-
-  const response = await fetch(firestoreCommitUrl(projectId), {
-    method: "POST",
-    headers: firestoreHeaders(accessToken),
-    body: JSON.stringify({ writes: [write] })
-  });
-  const data = await response.json();
-
-  if (response.ok) {
-    return true;
-  }
-
-  const status = data?.error?.status || "";
-  if (status === "ABORTED" || status === "FAILED_PRECONDITION" || status === "ALREADY_EXISTS") {
-    return false;
-  }
-
-  throw new Error(`Firestore usage write failed: ${JSON.stringify(data)}`);
+  return usage;
 }
 
 function usageLimitFor(profile, env) {
@@ -1068,118 +962,6 @@ function removeUnsafeEatingLanguage(value) {
     .trim();
 }
 
-async function writeSuggestionGeneratedEvents({
-  projectId,
-  uid,
-  mode,
-  contract,
-  sourceText,
-  imageMetadata,
-  preview,
-  accessToken
-}) {
-  const suggestions = [];
-  for (let index = 0; index < preview.length; index += 1) {
-    const item = preview[index];
-    const suggestionId = await deterministicId("suggestion", {
-      uid,
-      mode,
-      index,
-      item
-    });
-    const eventId = await deterministicId("event", {
-      uid,
-      eventName: "suggestion_generated",
-      suggestionId
-    });
-    suggestions.push({
-      suggestionId,
-      eventId,
-      uid,
-      type: contract.outputKey === "suggestions" ? "routine_goal_suggestion" : "routine_import_preview",
-      title: item.title || item.taskTitle,
-      reason: item.reason || item.notes || `Generated ${contract.title}`,
-      status: "pending",
-      targetSurface: "routine",
-      routineType: contract.routineType,
-      mode,
-      source: "routine-import-worker",
-      eventName: "suggestion_generated",
-      eventType: "suggestion_generated",
-      preview: item,
-      sourceText: sourceText ? sourceText.slice(0, 500) : "",
-      imageMetadata: imageMetadata || null,
-      schemaVersion: 1
-    });
-  }
-
-  if (suggestions.length === 0) return [];
-
-  const writes = suggestions.flatMap((suggestion) => {
-    const event = {
-      eventId: suggestion.eventId,
-      eventName: "suggestion_generated",
-      uid,
-      source: "routine-import-worker",
-      schemaVersion: 1,
-      payloadVersion: 1,
-      payload: {
-        suggestionId: suggestion.suggestionId
-      },
-      deviceId: "server",
-      appVersion: "worker"
-    };
-
-    return [
-      {
-        update: {
-          name: firestoreDocumentName(projectId, `users/${uid}/suggestions/${suggestion.suggestionId}`),
-          fields: toFirestoreValue(suggestion).mapValue.fields
-        },
-        updateTransforms: [
-          {
-            fieldPath: "createdAt",
-            setToServerValue: "REQUEST_TIME"
-          },
-          {
-            fieldPath: "updatedAt",
-            setToServerValue: "REQUEST_TIME"
-          }
-        ]
-      },
-      eventWrite(projectId, uid, "events", event),
-      eventWrite(projectId, uid, "events_recent", event)
-    ];
-  });
-
-  const response = await fetch(firestoreCommitUrl(projectId), {
-    method: "POST",
-    headers: firestoreHeaders(accessToken),
-    body: JSON.stringify({ writes })
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(`Firestore suggestion write failed: ${JSON.stringify(data)}`);
-  }
-
-  return suggestions;
-}
-
-function eventWrite(projectId, uid, collectionId, event) {
-  return {
-    update: {
-      name: firestoreDocumentName(projectId, `users/${uid}/${collectionId}/${event.eventId}`),
-      fields: toFirestoreValue(event).mapValue.fields
-    },
-    updateTransforms: [
-      {
-        fieldPath: "timestamp",
-        setToServerValue: "REQUEST_TIME"
-      }
-    ]
-  };
-}
-
 async function getFirestoreDocument({ projectId, path, accessToken }) {
   const response = await fetch(firestoreDocumentUrl(projectId, path), {
     method: "GET",
@@ -1213,17 +995,6 @@ function firestoreDocumentName(projectId, path) {
     .split("/")
     .map(encodeURIComponent)
     .join("/")}`;
-}
-
-function firestoreCommitUrl(projectId) {
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents:commit`;
-}
-
-function firestoreHeaders(accessToken) {
-  return {
-    "Authorization": `Bearer ${accessToken}`,
-    "Content-Type": "application/json"
-  };
 }
 
 function extractSafetyFlags(profile) {
@@ -1349,26 +1120,25 @@ async function callGemini({ env, prompt, imagePart, maxOutputTokens, temperature
   return data;
 }
 
-async function imagePartFromMetadata(imageMetadata, env, accessToken, uid) {
+async function imagePartFromMetadata(imageMetadata) {
   const downloadUrl = stringField(imageMetadata?.downloadUrl || imageMetadata?.url);
-  const storagePath = stringField(imageMetadata?.storagePath || imageMetadata?.path);
-  if (!downloadUrl && !storagePath) return null;
+  if (!downloadUrl) return null;
+  let url;
+  try {
+    url = new URL(downloadUrl);
+  } catch (_) {
+    throw new BadImageError("Invalid image URL");
+  }
+  if (
+    url.hostname.endsWith("googleapis.com") ||
+    url.hostname.endsWith("firebasestorage.app")
+  ) {
+    throw new BadImageError("Firebase Storage and Google Cloud Storage URLs are not supported");
+  }
 
   let response;
   try {
-    if (storagePath) {
-      response = await fetchStorageObject({
-        env,
-        accessToken,
-        uid,
-        storagePath
-      });
-      if (!response.ok && downloadUrl) {
-        response = await fetch(downloadUrl);
-      }
-    } else {
-      response = await fetch(downloadUrl);
-    }
+    response = await fetch(downloadUrl);
   } catch (_) {
     throw new BadImageError("Image fetch failed");
   }
@@ -1398,22 +1168,6 @@ async function imagePartFromMetadata(imageMetadata, env, accessToken, uid) {
   };
 }
 
-async function fetchStorageObject({ env, accessToken, uid, storagePath }) {
-  const expectedPrefix = `users/${uid}/uploads/`;
-  if (!storagePath.startsWith(expectedPrefix)) {
-    throw new BadImageError("Image path is not owned by this user");
-  }
-
-  const bucket = stringField(env.FIREBASE_STORAGE_BUCKET)
-    || `${env.FIREBASE_PROJECT_ID}.appspot.com`;
-  const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(storagePath)}?alt=media`;
-  return fetch(url, {
-    headers: {
-      "Authorization": `Bearer ${accessToken}`
-    }
-  });
-}
-
 function normalizeImageMimeType(value) {
   const mimeType = stringField(value).split(";")[0].toLowerCase();
   if (["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
@@ -1437,43 +1191,6 @@ function extractGeminiText(data) {
     ?.map((part) => part.text || "")
     .join("")
     || "";
-}
-
-function toFirestoreValue(value) {
-  if (value === null || value === undefined) {
-    return { nullValue: null };
-  }
-
-  if (Array.isArray(value)) {
-    return {
-      arrayValue: {
-        values: value.map(toFirestoreValue)
-      }
-    };
-  }
-
-  if (typeof value === "boolean") {
-    return { booleanValue: value };
-  }
-
-  if (typeof value === "number") {
-    if (Number.isInteger(value)) {
-      return { integerValue: String(value) };
-    }
-    return { doubleValue: value };
-  }
-
-  if (typeof value === "object") {
-    return {
-      mapValue: {
-        fields: Object.fromEntries(
-          Object.entries(value).map(([key, item]) => [key, toFirestoreValue(item)])
-        )
-      }
-    };
-  }
-
-  return { stringValue: String(value) };
 }
 
 function firestoreDocumentToJs(document) {
@@ -1504,42 +1221,6 @@ function firestoreValueToJs(value) {
     );
   }
   return undefined;
-}
-
-async function deterministicId(prefix, value) {
-  const input = stableJson(value);
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(input)
-  );
-  return `${prefix}_${hex(hash).slice(0, 32)}`;
-}
-
-function stableJson(value) {
-  return JSON.stringify(sortForStableJson(value));
-}
-
-function sortForStableJson(value) {
-  if (Array.isArray(value)) {
-    return value.map(sortForStableJson);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.keys(value)
-      .sort()
-      .reduce((acc, key) => {
-        acc[key] = sortForStableJson(value[key]);
-        return acc;
-      }, {});
-  }
-
-  return value;
-}
-
-function hex(buffer) {
-  return [...new Uint8Array(buffer)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 function currentMonthKey(date = new Date()) {

@@ -9,6 +9,12 @@
 
 ---
 
+> Spark-only override, 2026-05-08: references to Firebase Cloud Functions are
+> legacy design notes. AI runtime, scheduled jobs, safety routing, routine
+> import, and coach reply endpoints must run on Cloudflare Workers or Cron
+> Triggers. Flutter must call Workers with Firebase ID tokens and must not
+> expose AI keys.
+
 ## Notes for Antigravity (the AI agent reading this to build it)
 
 Read this whole file before writing any code. The spec has heavy internal cross-references — Rules in §3 depend on archetypes in §2.1 which depend on user states in §1.7 which depend on the context snapshot in §1.6. Skipping ahead breaks the design.

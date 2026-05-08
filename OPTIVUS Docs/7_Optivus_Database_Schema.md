@@ -9,6 +9,12 @@
 
 ---
 
+> Spark-only override, 2026-05-08: Firestore remains allowed, but any document
+> guidance that assumes Cloud Functions must be implemented with Cloudflare
+> Workers/Cron or client-reviewed Flutter saves. Do not use Firebase Storage,
+> Firebase Hosting/App Hosting, Google Maps API, or new Google Cloud billing
+> dependencies.
+
 ## Notes for Antigravity (the AI agent reading this to build it)
 
 Before generating any migration, read this entire document. The schema has heavy interconnection — events reference rules, ai_messages reference events, streaks are derived from habit_logs. Skipping ahead breaks foreign keys.

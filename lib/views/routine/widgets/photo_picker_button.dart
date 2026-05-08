@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/config/feature_flags.dart';
 import '../../../services/image_upload_service.dart';
 
 class PhotoPickerButton extends StatefulWidget {
@@ -49,6 +50,10 @@ class _PhotoPickerButtonState extends State<PhotoPickerButton> {
 
   Future<void> _chooseSource() async {
     if (_isBusy || !widget.enabled) return;
+    if (!_uploadsEnabled) {
+      _showComingSoon();
+      return;
+    }
 
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -73,6 +78,20 @@ class _PhotoPickerButtonState extends State<PhotoPickerButton> {
     if (source == null) return;
 
     await _pickCompressAndUpload(source);
+  }
+
+  bool get _uploadsEnabled {
+    if (widget.routineType == 'profile') {
+      return FeatureFlags.enableR2Uploads &&
+          FeatureFlags.enableProfileImageUpload;
+    }
+    return FeatureFlags.enableR2Uploads;
+  }
+
+  void _showComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Photo uploads are coming soon.')),
+    );
   }
 
   Future<void> _pickCompressAndUpload(ImageSource source) async {

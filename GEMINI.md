@@ -3,6 +3,14 @@
 > This file is the operating contract for Gemini CLI inside the **Optivus** repository.
 > Read it fully **before every task**. Treat it as binding. When in doubt, **stop and ask**.
 
+> Spark-only override, 2026-05-08: Do not use Firebase Cloud Functions,
+> Firebase Storage, Firebase Hosting/App Hosting, Google Maps API, or any new
+> Google Cloud billing dependency. Firebase is limited to Auth, Firestore,
+> Crashlytics, Remote Config, App Check/FCM if already safe, and Analytics if
+> already wired safely. Server runtime is Cloudflare Workers; object uploads are
+> Cloudflare R2 only after signed upload endpoints exist; maps use Mapbox via
+> `MAPBOX_ACCESS_TOKEN`.
+
 ---
 
 ## Role
@@ -25,10 +33,10 @@ If a task is ambiguous, risky, or would require rewriting an existing system, **
 
 - **Frontend:** Flutter (Dart, null-safe)
 - **State management:** Riverpod (follow whichever style — generated or manual — already exists in the file you are editing)
-- **Backend:** Firebase
+- **Backend:** Firebase Spark-compatible client services + Cloudflare Workers
   - **Auth:** Firebase Auth (current user via existing auth provider; never hardcode UIDs)
   - **Database:** Cloud Firestore (per-user scoped collections)
-  - **Cloud Functions:** JavaScript/TypeScript (only if a `functions/` directory exists)
+  - **Server runtime:** Cloudflare Workers and Cron Triggers; `functions/` is legacy reference only
   - **Security Rules:** `firestore.rules` (must stay aligned with schema)
   - **Crashlytics / Analytics:** if wired in `main.dart` or a service, preserve initialization order
 - **Domain layer:** Models → Repositories → Providers/Notifiers → Services → UI

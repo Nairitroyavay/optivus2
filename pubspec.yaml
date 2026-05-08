@@ -25,7 +25,6 @@ dependencies:
   firebase_app_check: any
   firebase_crashlytics: any
   firebase_remote_config: any
-  firebase_storage: any
   go_router: ^17.1.0
   firebase_auth: any
   cloud_firestore: any
@@ -34,7 +33,6 @@ dependencies:
   audio_session: ^0.1.22
   path_provider: ^2.1.5
   geolocator: ^14.0.2
-  google_maps_flutter: ^2.17.0
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   image_picker: ^1.1.2

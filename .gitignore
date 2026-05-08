@@ -52,4 +52,4 @@ firebase_options.dart
 # Cloudflare Worker local secrets
 workers/coach-reply-worker/.dev.vars
 workers/coach-reply-worker/.env
-workers/coach-reply-worker/node_modules/
+workers/*/node_modules/

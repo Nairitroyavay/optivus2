@@ -8,6 +8,13 @@
 
 ---
 
+> Spark-only override, 2026-05-08: this production design predates the
+> billing-risk cleanup. Firebase Cloud Functions, Firebase Storage, Firebase
+> Hosting/App Hosting, Google Maps API, and new Google Cloud billing services
+> are not active architecture. Use Firebase Auth/Firestore plus Cloudflare
+> Workers/Cron/R2 and Mapbox where server runtime, object storage, or maps are
+> needed.
+
 ## 1. System overview
 
 ### 1.1 What this document is

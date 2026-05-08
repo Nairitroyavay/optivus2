@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart' as ll;
 
+import 'package:optivus2/core/config/map_config.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/activity_split_model.dart';
@@ -24,7 +25,6 @@ class ActivityRouteReviewScreen extends ConsumerStatefulWidget {
 class _ActivityRouteReviewScreenState
     extends ConsumerState<ActivityRouteReviewScreen> {
   final _mapController = fm.MapController();
-  bool _satellite = false;
   bool _fitQueued = false;
   String? _eventActivityId;
 
@@ -77,27 +77,27 @@ class _ActivityRouteReviewScreenState
 
           return Stack(
             children: [
-              fm.FlutterMap(
-                mapController: _mapController,
-                options: fm.MapOptions(
-                  initialCenter: center,
-                  initialZoom: 15,
-                  interactionOptions: const fm.InteractionOptions(
-                    flags: fm.InteractiveFlag.all,
+              if (MapConfig.hasMapboxAccessToken)
+                fm.FlutterMap(
+                  mapController: _mapController,
+                  options: fm.MapOptions(
+                    initialCenter: center,
+                    initialZoom: 15,
+                    interactionOptions: const fm.InteractionOptions(
+                      flags: fm.InteractiveFlag.all,
+                    ),
                   ),
-                ),
-                children: [
-                  fm.TileLayer(
-                    urlTemplate: _satellite
-                        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/'
-                            'World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.example.optivus',
-                  ),
-                  fm.PolylineLayer(polylines: _polylines(points)),
-                  fm.MarkerLayer(markers: _markers(points, splits)),
-                ],
-              ),
+                  children: [
+                    fm.TileLayer(
+                      urlTemplate: MapConfig.mapboxTileUrl,
+                      userAgentPackageName: 'com.example.optivus',
+                    ),
+                    fm.PolylineLayer(polylines: _polylines(points)),
+                    fm.MarkerLayer(markers: _markers(points, splits)),
+                  ],
+                )
+              else
+                const _RouteMapUnavailableSurface(),
               SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
@@ -115,37 +115,33 @@ class _ActivityRouteReviewScreenState
                   ),
                 ),
               ),
-              Positioned(
-                right: 14,
-                top: MediaQuery.of(context).padding.top + 82,
-                child: Column(
-                  children: [
-                    _RoundMapButton(
-                      icon: Icons.center_focus_strong_rounded,
-                      onTap: () => _fitRoute(points),
-                    ),
-                    _RoundMapButton(
-                      icon: Icons.add_rounded,
-                      onTap: () => _mapController.move(
-                        _mapController.camera.center,
-                        (_mapController.camera.zoom + 1).clamp(3, 20),
+              if (MapConfig.hasMapboxAccessToken)
+                Positioned(
+                  right: 14,
+                  top: MediaQuery.of(context).padding.top + 82,
+                  child: Column(
+                    children: [
+                      _RoundMapButton(
+                        icon: Icons.center_focus_strong_rounded,
+                        onTap: () => _fitRoute(points),
                       ),
-                    ),
-                    _RoundMapButton(
-                      icon: Icons.remove_rounded,
-                      onTap: () => _mapController.move(
-                        _mapController.camera.center,
-                        (_mapController.camera.zoom - 1).clamp(3, 20),
+                      _RoundMapButton(
+                        icon: Icons.add_rounded,
+                        onTap: () => _mapController.move(
+                          _mapController.camera.center,
+                          (_mapController.camera.zoom + 1).clamp(3, 20),
+                        ),
                       ),
-                    ),
-                    _RoundMapButton(
-                      icon: Icons.layers_rounded,
-                      active: _satellite,
-                      onTap: () => setState(() => _satellite = !_satellite),
-                    ),
-                  ],
+                      _RoundMapButton(
+                        icon: Icons.remove_rounded,
+                        onTap: () => _mapController.move(
+                          _mapController.camera.center,
+                          (_mapController.camera.zoom - 1).clamp(3, 20),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               Positioned(
                 left: 14,
                 right: 14,
@@ -175,6 +171,7 @@ class _ActivityRouteReviewScreenState
   }
 
   void _queueFit(List<RoutePointModel> points) {
+    if (!MapConfig.hasMapboxAccessToken) return;
     if (_fitQueued) return;
     _fitQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -310,6 +307,53 @@ class _RouteTitleChip extends StatelessWidget {
   }
 }
 
+class _RouteMapUnavailableSurface extends StatelessWidget {
+  const _RouteMapUnavailableSurface();
+
+  @override
+  Widget build(BuildContext context) {
+    return LiquidBg(
+      colors: const [Color(0xFF1D2430), Color(0xFF10131A)],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: LiquidCard(
+            frosted: true,
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.map_outlined, color: kBlue, size: 42),
+                const SizedBox(height: 12),
+                const Text(
+                  'Map is not configured yet.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: kInk,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Set MAPBOX_ACCESS_TOKEN to view saved routes. Activity stats remain available.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: kSub.withValues(alpha: 0.72),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RouteStatsPanel extends StatelessWidget {
   final FitnessActivityModel activity;
   final int pointCount;
@@ -385,12 +429,10 @@ class _RouteStat extends StatelessWidget {
 class _RoundMapButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  final bool active;
 
   const _RoundMapButton({
     required this.icon,
     required this.onTap,
-    this.active = false,
   });
 
   @override
@@ -398,7 +440,7 @@ class _RoundMapButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: active ? kBlue : kWhite.withValues(alpha: 0.86),
+        color: kWhite.withValues(alpha: 0.86),
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -406,7 +448,7 @@ class _RoundMapButton extends StatelessWidget {
           child: SizedBox(
             width: 46,
             height: 46,
-            child: Icon(icon, color: active ? kWhite : kInk),
+            child: Icon(icon, color: kInk),
           ),
         ),
       ),

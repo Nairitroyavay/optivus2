@@ -6,6 +6,13 @@
 > Do **not** treat Optivus as a fresh project: extend existing code, preserve completed work,
 > only refactor where a task explicitly says the contract is broken.
 
+> Spark-only override, 2026-05-08: Firebase Cloud Functions, Firebase Storage,
+> Firebase Hosting/App Hosting, Google Maps API, and new Google Cloud billing
+> services are prohibited. Use Firebase only for Auth, Firestore, Crashlytics,
+> Remote Config, App Check/FCM if already safe, and Analytics if already wired
+> safely. Use Cloudflare Workers/Cron/R2 and Mapbox for server runtime, object
+> storage, and maps.
+
 ---
 
 ## 1. Short Summary (read this first)
@@ -39,7 +46,7 @@ This roadmap was originally written for Firebase Cloud Functions. Because Fireba
 
 ### What changes
 
-- Firebase remains the app platform for Auth, Firestore, Storage, Remote Config, Crashlytics, App Check, FCM tokens, and client SDK reads/writes.
+- Firebase remains the app platform for Auth, Firestore, Remote Config, Crashlytics, App Check, FCM tokens, and client SDK reads/writes. Firebase Storage is inactive; use Cloudflare R2 only after signed upload endpoints exist.
 - Cloudflare Workers are the server runtime for AI calls, server-only secrets, routine import, routine suggestions, safety routing, export/delete, notification dispatch, scheduled maintenance, and weekly summaries.
 - Cloudflare Cron Triggers replace scheduled Firebase Functions.
 - Flutter calls Workers using HTTPS with `Authorization: Bearer <Firebase ID token>`, following the existing `COACH_REPLY_ENDPOINT` pattern in `lib/services/gemini_service.dart`.

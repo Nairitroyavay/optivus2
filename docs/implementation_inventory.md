@@ -2,15 +2,20 @@
 
 Generated for Task 0.1. Refreshed 2026-05-04 to reflect codebase state after reviewing every file under `lib/` plus `functions/index.js` and `functions/jobs/*.js`.
 
+> Spark-only override, 2026-05-08: this inventory contains legacy Cloud
+> Functions references. Treat `functions/` as Spark-inactive reference only.
+> Active backend work must use Cloudflare Workers. Do not use Firebase Storage,
+> Firebase Hosting/App Hosting, Google Maps API, or Google Cloud billing paths.
+
 This inventory is descriptive only. It does not authorize runtime changes. The current app is partially built and should be extended, not rewritten.
 
 ## Summary
 
-- The app has a working Flutter shell, Firebase initialization, routing, auth screens, onboarding pages (0–10), six-tab home shell, routine timeline, basic task/habit/streak/routine services, notification service, coach/AI files, and Cloud Functions jobs.
+- The app has a working Flutter shell, Firebase initialization, routing, auth screens, onboarding pages (0–10), six-tab home shell, routine timeline, basic task/habit/streak/routine services, notification service, coach/AI files, and legacy Cloud Functions reference jobs.
 - Several new screens have been added since the initial inventory: streak detail + heatmap, habit editor, habit detail, tracker variant stubs for 10 habit types, supplement setup (with Text AI mode), comeback modal, and a routine settings hub screen.
 - The app is not production-complete. Most core surfaces exist, but many features are partial because service contracts, Firestore schemas, events, backend jobs, AI behavior, notifications, and verification are incomplete.
 - Firestore remains the V1 source of truth. Do not migrate to Postgres for V1.
-- AI provider calls must stay behind Cloud Functions/backend-controlled paths. Flutter must not expose AI secrets.
+- AI provider calls must stay behind Cloudflare Worker/backend-controlled paths. Flutter must not expose AI secrets.
 
 ## File Sizes — Current Snapshot (2026-05-04)
 

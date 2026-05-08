@@ -4,6 +4,11 @@
 > Scope: Tasks 1.1 → 5.3 as defined in `todo_V1_(fixed)_All_Features.md`
 > Constraint: Read-only audit — no Dart or JS files modified.
 
+> Spark-only override, 2026-05-08: legacy findings that mention Cloud
+> Functions, Firebase Storage, Firebase Hosting/App Hosting, Google Maps API,
+> or Google Cloud billing are not implementation guidance. Use Cloudflare
+> Workers/Cron/R2 and Mapbox only where those capabilities are needed.
+
 ---
 
 ## Task 1.1 — Auth lifecycle + root user schema

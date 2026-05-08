@@ -1,23 +1,24 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:optivus2/core/config/feature_flags.dart';
+import 'package:optivus2/services/r2_upload_service.dart';
 
 class ImageUploadService {
   static const int maxUploadBytes = 1000 * 1000;
   static const String jpegMimeType = 'image/jpeg';
 
   final FirebaseAuth _auth;
-  final FirebaseStorage _storage;
+  final R2UploadService _r2UploadService;
   final ImagePicker _imagePicker;
 
   ImageUploadService({
     FirebaseAuth? auth,
-    FirebaseStorage? storage,
+    R2UploadService? r2UploadService,
     ImagePicker? imagePicker,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _storage = storage ?? FirebaseStorage.instance,
+        _r2UploadService = r2UploadService ?? R2UploadService(auth: auth),
         _imagePicker = imagePicker ?? ImagePicker();
 
   Future<XFile?> pickImage(ImageSource source) {
@@ -44,39 +45,17 @@ class ImageUploadService {
     XFile pickedFile, {
     required String routineType,
   }) async {
-    final uid = _requireUid();
+    _requireUid();
+    if (!FeatureFlags.enableR2Uploads) {
+      throw StateError('Image uploads are coming soon.');
+    }
     final originalBytes = await pickedFile.readAsBytes();
     final compressedBytes = await compressToJpegUnderLimit(originalBytes);
-    final safeRoutineType = _safePathSegment(routineType);
-    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final path = 'users/$uid/uploads/$safeRoutineType/$timestamp.jpg';
-    final ref = _storage.ref().child(path);
-
-    late final TaskSnapshot snapshot;
-    late final String downloadUrl;
-    try {
-      snapshot = await ref.putData(
-        compressedBytes,
-        SettableMetadata(
-          contentType: jpegMimeType,
-          customMetadata: {
-            'uid': uid,
-            'routineType': safeRoutineType,
-          },
-        ),
-      );
-      downloadUrl = await snapshot.ref.getDownloadURL();
-    } catch (_) {
-      await _deleteIfPresent(ref);
-      rethrow;
-    }
-
-    return {
-      'path': snapshot.ref.fullPath,
-      'sizeBytes': compressedBytes.length,
-      'mimeType': jpegMimeType,
-      'downloadUrl': downloadUrl,
-    };
+    return _r2UploadService.uploadBytes(
+      bytes: compressedBytes,
+      routineType: routineType,
+      contentType: jpegMimeType,
+    );
   }
 
   Future<Uint8List> compressToJpegUnderLimit(Uint8List bytes) {
@@ -84,19 +63,13 @@ class ImageUploadService {
   }
 
   Future<void> deleteUpload(String path) async {
-    final uid = _requireUid();
-    final expectedPrefix = 'users/$uid/uploads/';
-    if (!path.startsWith(expectedPrefix)) {
-      throw ArgumentError.value(path, 'path', 'Upload is not owned by $uid.');
-    }
-    await _deleteIfPresent(_storage.ref().child(path));
+    _requireUid();
+    await _r2UploadService.deleteUploadedMetadata({'path': path});
   }
 
   Future<void> deleteUploadedMetadata(Map<String, dynamic>? metadata) async {
-    final path = metadata?['path'];
-    if (path is String && path.isNotEmpty) {
-      await deleteUpload(path);
-    }
+    _requireUid();
+    await _r2UploadService.deleteUploadedMetadata(metadata);
   }
 
   String _requireUid() {
@@ -105,24 +78,6 @@ class ImageUploadService {
       throw StateError('A signed-in user is required to upload images.');
     }
     return uid;
-  }
-
-  static String _safePathSegment(String value) {
-    final normalized = value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9_-]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .replaceAll(RegExp(r'^_|_$'), '');
-    return normalized.isEmpty ? 'routine' : normalized;
-  }
-
-  static Future<void> _deleteIfPresent(Reference ref) async {
-    try {
-      await ref.delete();
-    } on FirebaseException catch (e) {
-      if (e.code != 'object-not-found') rethrow;
-    }
   }
 }
 

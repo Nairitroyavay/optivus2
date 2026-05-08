@@ -1,5 +1,9 @@
 # Meditation Audio Licenses
 
+> Spark-only override, 2026-05-08: any Firebase Storage paths in this document
+> are legacy location notes only. App audio should be bundled or served from a
+> non-Firebase-Storage path that does not add Google Cloud billing risk.
+
 All tracks listed here were selected from Pixabay and were shown as free for use under the Pixabay Content License at the time of selection.
 
 Usage inside Optivus:

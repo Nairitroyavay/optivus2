@@ -2,6 +2,11 @@
 
 Generated for Task 0.1. Refreshed 2026-05-04 to cover all 7 OPTIVUS docs and reflect current codebase state.
 
+> Spark-only override, 2026-05-08: rows mentioning Cloud Functions or Firebase
+> Storage are legacy and must be implemented with Cloudflare Workers, Cloudflare
+> Cron Triggers, and Cloudflare R2 when needed. Do not use Google Maps API,
+> Firebase Hosting/App Hosting, or new Google Cloud billing paths.
+
 Status meanings:
 
 - `implemented`: usable path exists now, though it may still need production hardening.

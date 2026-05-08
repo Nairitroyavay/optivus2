@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
@@ -821,6 +822,10 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
 
   Future<void> _showImportOptions() async {
     if (_isImportingPhoto) return;
+    if (!FeatureFlags.classTimetableImageImportReady) {
+      _showImageImportComingSoon();
+      return;
+    }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -843,6 +848,15 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
     );
     if (source == null) return;
     await _pickUploadAndImportPhoto(source);
+  }
+
+  void _showImageImportComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+            'Timetable photo import is coming soon. Add classes manually.'),
+      ),
+    );
   }
 
   Future<void> _pickUploadAndImportPhoto(ImageSource source) async {
@@ -1362,10 +1376,12 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _photoImportError ??
-                    (_isImportingPhoto
-                        ? 'Uploading and reading timetable...'
-                        : 'Pick a timetable photo to extract weekly classes.'),
+                !FeatureFlags.classTimetableImageImportReady
+                    ? 'Photo OCR is coming soon. Manual class setup still works.'
+                    : _photoImportError ??
+                        (_isImportingPhoto
+                            ? 'Uploading and reading timetable...'
+                            : 'Pick a timetable photo to extract weekly classes.'),
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -1412,7 +1428,11 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.document_scanner_rounded),
-        label: Text(_isImportingPhoto ? 'Reading' : 'Photo OCR'),
+        label: Text(_isImportingPhoto
+            ? 'Reading'
+            : FeatureFlags.classTimetableImageImportReady
+                ? 'Photo OCR'
+                : 'Coming soon'),
       ),
       body: LiquidBg(
         child: Stack(children: [

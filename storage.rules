@@ -1,3 +1,6 @@
+// Spark-only architecture note:
+// Firebase Storage is intentionally inactive for Optivus. This file is kept
+// only as legacy reference and is not referenced by firebase.json.
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {

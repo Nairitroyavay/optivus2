@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart' as fm;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:latlong2/latlong.dart' as ll;
 
 import 'package:optivus2/controllers/active_activity_controller.dart';
+import 'package:optivus2/core/config/map_config.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/fitness_activity_model.dart';
@@ -15,27 +15,11 @@ import 'package:optivus2/models/route_point_model.dart';
 import 'package:optivus2/views/fitness/activity_pause_bottom_sheet.dart';
 import 'package:optivus2/views/fitness/finish_activity_confirmation_sheet.dart';
 
-// TODO: Enable Google Maps after GOOGLE_MAPS_API_KEY is configured.
-const _googleMapsApiKeyConfigured =
-    bool.fromEnvironment('GOOGLE_MAPS_API_KEY_CONFIGURED');
-const _mapTilerApiKeyFromDefine = String.fromEnvironment('MAPTILER_API_KEY');
-
-// Temporary local-development fallback. Do not commit a real key here.
-// Prefer: flutter run --dart-define=MAPTILER_API_KEY=...
-const _sourceMapTilerApiKey = '';
-
-String get _mapTilerApiKey => _mapTilerApiKeyFromDefine.trim().isNotEmpty
-    ? _mapTilerApiKeyFromDefine.trim()
-    : _sourceMapTilerApiKey.trim();
-
-bool get _mapTilerApiKeyConfigured => _mapTilerApiKey.isNotEmpty;
-
-enum _LiveMapProvider { googleMaps, mapTiler, none }
+enum _LiveMapProvider { mapbox, none }
 
 _LiveMapProvider get _liveMapProvider {
-  if (_googleMapsApiKeyConfigured) return _LiveMapProvider.googleMaps;
-  if (_mapTilerApiKeyConfigured) return _LiveMapProvider.mapTiler;
-  return _LiveMapProvider.mapTiler;
+  if (MapConfig.hasMapboxAccessToken) return _LiveMapProvider.mapbox;
+  return _LiveMapProvider.none;
 }
 
 class LiveActivityTrackingScreen extends ConsumerStatefulWidget {
@@ -111,13 +95,7 @@ class _LiveActivityTrackingScreenState
             Positioned.fill(
               child: isGps
                   ? switch (mapProvider) {
-                      _LiveMapProvider.googleMaps => _LiveGoogleMap(
-                          route: route,
-                          lastPoint: lastPoint,
-                          mapType: mapState.mapType,
-                          controlsLocked: mapState.controlsLocked,
-                        ),
-                      _LiveMapProvider.mapTiler => _LiveMapTilerMap(
+                      _LiveMapProvider.mapbox => _LiveMapboxMap(
                           route: route,
                           lastPoint: lastPoint,
                           controlsLocked: mapState.controlsLocked,
@@ -143,7 +121,7 @@ class _LiveActivityTrackingScreenState
                 child: _MapControls(
                   lastPoint: lastPoint,
                   controlsLocked: mapState.controlsLocked,
-                  supportsMapType: mapProvider == _LiveMapProvider.googleMaps,
+                  supportsMapType: false,
                 ),
               ),
             Positioned(
@@ -263,115 +241,22 @@ class _LiveActivityTrackingScreenState
   }
 }
 
-class _LiveGoogleMap extends ConsumerWidget {
-  final List<RoutePointModel> route;
-  final RoutePointModel? lastPoint;
-  final MapType mapType;
-  final bool controlsLocked;
-
-  const _LiveGoogleMap({
-    required this.route,
-    required this.lastPoint,
-    required this.mapType,
-    required this.controlsLocked,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final initial = lastPoint == null
-        ? const LatLng(20.5937, 78.9629)
-        : LatLng(lastPoint!.latitude, lastPoint!.longitude);
-    final markers = <Marker>{
-      if (route.isNotEmpty)
-        Marker(
-          markerId: const MarkerId('start'),
-          position: LatLng(route.first.latitude, route.first.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueGreen,
-          ),
-        ),
-      if (lastPoint != null)
-        Marker(
-          markerId: const MarkerId('current'),
-          position: LatLng(lastPoint!.latitude, lastPoint!.longitude),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        ),
-    };
-    final polylines = _routePolylines(route);
-
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(target: initial, zoom: 16),
-      mapType: mapType,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      compassEnabled: true,
-      rotateGesturesEnabled: !controlsLocked,
-      scrollGesturesEnabled: !controlsLocked,
-      tiltGesturesEnabled: !controlsLocked,
-      zoomGesturesEnabled: !controlsLocked,
-      markers: markers,
-      polylines: polylines,
-      onMapCreated: ref.read(fitnessMapControllerProvider.notifier).attach,
-      onCameraMoveStarted: ref
-          .read(fitnessMapControllerProvider.notifier)
-          .handleCameraMoveStarted,
-    );
-  }
-
-  Set<Polyline> _routePolylines(List<RoutePointModel> points) {
-    final polylines = <Polyline>{};
-    var segment = <LatLng>[];
-    var segmentIndex = 0;
-
-    void flushSegment() {
-      if (segment.length < 2) {
-        segment = [];
-        return;
-      }
-      polylines.add(
-        Polyline(
-          polylineId: PolylineId('live_route_$segmentIndex'),
-          points: segment,
-          color: kBlue,
-          width: 6,
-          jointType: JointType.round,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-        ),
-      );
-      segmentIndex += 1;
-      segment = [];
-    }
-
-    for (final point in points) {
-      if (point.isPausePoint) {
-        flushSegment();
-      }
-      segment.add(LatLng(point.latitude, point.longitude));
-    }
-    flushSegment();
-
-    return polylines;
-  }
-}
-
-class _LiveMapTilerMap extends ConsumerStatefulWidget {
+class _LiveMapboxMap extends ConsumerStatefulWidget {
   final List<RoutePointModel> route;
   final RoutePointModel? lastPoint;
   final bool controlsLocked;
 
-  const _LiveMapTilerMap({
+  const _LiveMapboxMap({
     required this.route,
     required this.lastPoint,
     required this.controlsLocked,
   });
 
   @override
-  ConsumerState<_LiveMapTilerMap> createState() => _LiveMapTilerMapState();
+  ConsumerState<_LiveMapboxMap> createState() => _LiveMapboxMapState();
 }
 
-class _LiveMapTilerMapState extends ConsumerState<_LiveMapTilerMap> {
+class _LiveMapboxMapState extends ConsumerState<_LiveMapboxMap> {
   final _controller = fm.MapController();
 
   @override
@@ -412,19 +297,16 @@ class _LiveMapTilerMapState extends ConsumerState<_LiveMapTilerMap> {
       ),
       children: [
         fm.TileLayer(
-          urlTemplate: _mapTilerApiKeyConfigured
-              ? 'https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=$_mapTilerApiKey'
-              : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          urlTemplate: MapConfig.mapboxTileUrl,
           userAgentPackageName: 'com.example.optivus',
         ),
-        fm.PolylineLayer(polylines: _mapTilerPolylines(widget.route)),
-        fm.MarkerLayer(
-            markers: _mapTilerMarkers(widget.route, widget.lastPoint)),
+        fm.PolylineLayer(polylines: _mapboxPolylines(widget.route)),
+        fm.MarkerLayer(markers: _mapboxMarkers(widget.route, widget.lastPoint)),
       ],
     );
   }
 
-  List<fm.Polyline> _mapTilerPolylines(List<RoutePointModel> points) {
+  List<fm.Polyline> _mapboxPolylines(List<RoutePointModel> points) {
     final polylines = <fm.Polyline>[];
     var segment = <ll.LatLng>[];
 
@@ -450,7 +332,7 @@ class _LiveMapTilerMapState extends ConsumerState<_LiveMapTilerMap> {
     return polylines;
   }
 
-  List<fm.Marker> _mapTilerMarkers(
+  List<fm.Marker> _mapboxMarkers(
     List<RoutePointModel> route,
     RoutePointModel? lastPoint,
   ) {

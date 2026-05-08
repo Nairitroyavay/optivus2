@@ -1,12 +1,12 @@
 {
   "name": "optivus-functions",
-  "description": "Cloud Functions for Optivus",
+  "description": "Legacy Spark-inactive Cloud Functions reference for Optivus",
   "scripts": {
-    "serve": "firebase emulators:start --only functions",
-    "shell": "firebase functions:shell",
+    "serve": "node -e \"console.error('Legacy Firebase Functions are Spark-inactive. Use Cloudflare Workers instead.'); process.exit(1)\"",
+    "shell": "node -e \"console.error('Legacy Firebase Functions shell is disabled for Spark-only architecture.'); process.exit(1)\"",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log",
+    "deploy": "node -e \"console.error('Firebase Functions deploy is disabled. Do not deploy Blaze-only Functions.'); process.exit(1)\"",
+    "logs": "node -e \"console.error('Firebase Functions logs are disabled for Spark-only architecture.'); process.exit(1)\"",
     "test": "mocha 'test/**/*.test.js' --exit --timeout 10000"
   },
   "engines": {

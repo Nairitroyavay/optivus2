@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/providers.dart';
@@ -791,6 +792,10 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
 
   Future<void> _showImportOptions() async {
     if (_isImportingPhoto) return;
+    if (!FeatureFlags.hostelMessImageImportReady) {
+      _showImageImportComingSoon();
+      return;
+    }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -813,6 +818,14 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     );
     if (source == null) return;
     await _pickUploadAndImportMessPhoto(source);
+  }
+
+  void _showImageImportComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Mess photo import is coming soon. Add meals manually.'),
+      ),
+    );
   }
 
   Future<void> _pickUploadAndImportMessPhoto(ImageSource source) async {
@@ -1364,9 +1377,11 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showImportOptions,
+        onPressed: _isImportingPhoto ? null : _showImportOptions,
         icon: const Icon(Icons.auto_awesome_rounded),
-        label: const Text('AI / Menu'),
+        label: Text(FeatureFlags.hostelMessImageImportReady
+            ? 'AI / Menu'
+            : 'Coming soon'),
       ),
       body: LiquidBg(
         child: Stack(children: [
