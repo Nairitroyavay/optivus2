@@ -2,7 +2,6 @@
 
 import 'dart:convert';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +10,12 @@ import 'package:optivus2/services/event_service.dart';
 
 const String _coachReplyEndpoint =
     String.fromEnvironment('COACH_REPLY_ENDPOINT');
+const String _aiGenerateEndpoint =
+    String.fromEnvironment('AI_GENERATE_ENDPOINT');
+const String _localRunDartDefines = 'Required local run flags:\n'
+    '--dart-define=COACH_REPLY_ENDPOINT=https://...\n'
+    '--dart-define=AI_GENERATE_ENDPOINT=https://...\n'
+    '--dart-define=ROUTINE_IMPORT_ENDPOINT=https://...';
 
 class CoachReplyResult {
   final String text;
@@ -65,46 +70,20 @@ class GeminiService {
     required String text,
     required String mode,
   }) async {
-    if (_coachReplyEndpoint.isEmpty) {
-      throw Exception(
-        'COACH_REPLY_ENDPOINT is not configured. Pass '
-        '--dart-define=COACH_REPLY_ENDPOINT=https://...',
-      );
-    }
-
-    final user = FirebaseAuth.instance.currentUser;
-    final idToken = await user?.getIdToken();
-    if (idToken == null || idToken.isEmpty) {
-      throw Exception('Cannot call coach reply endpoint without auth token');
-    }
-
-    final response = await http.post(
-      Uri.parse(_coachReplyEndpoint),
-      headers: {
-        'Authorization': 'Bearer $idToken',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
+    final decoded = await _postAuthenticatedJson(
+      endpoint: _coachReplyEndpoint,
+      dartDefineName: 'COACH_REPLY_ENDPOINT',
+      endpointLabel: 'Coach reply endpoint',
+      payload: {
         'userId': userId,
         'threadId': threadId,
         'text': text,
         'mode': mode,
-      }),
+      },
     );
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Coach reply endpoint failed: ${response.statusCode} ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map) {
-      throw Exception('Coach reply endpoint returned invalid JSON');
-    }
-
     final result = CoachReplyResult.fromMap(
-      Map<String, dynamic>.from(decoded),
+      decoded,
     );
     if (result.text.isEmpty) {
       throw Exception('Empty coach reply from endpoint');
@@ -112,20 +91,24 @@ class GeminiService {
     return result;
   }
 
-  /// Single-shot text generation via Firebase Cloud Functions
+  /// Single-shot text generation via the Cloudflare `aiGenerate` endpoint.
   Future<String> generate({
     required String systemPrompt,
     required String userMessage,
     List<Map<String, dynamic>>? history,
   }) async {
-    final callable = FirebaseFunctions.instance.httpsCallable('aiGenerate');
-    final response = await callable.call({
-      'systemPrompt': systemPrompt,
-      'userMessage': userMessage,
-      if (history != null) 'history': history,
-    });
+    final decoded = await _postAuthenticatedJson(
+      endpoint: _aiGenerateEndpoint,
+      dartDefineName: 'AI_GENERATE_ENDPOINT',
+      endpointLabel: 'AI generation endpoint',
+      payload: {
+        'systemPrompt': systemPrompt,
+        'userMessage': userMessage,
+        if (history != null) 'history': history,
+      },
+    );
 
-    final text = response.data['text'] as String?;
+    final text = decoded['text'] as String?;
     if (text != null) {
       return text.trim();
     } else {
@@ -143,7 +126,7 @@ class GeminiService {
 
   /// Rule-triggered generation with full context payload.
   ///
-  /// The Cloud Function receives the [contextPayload] (onboarding data,
+  /// The Worker receives the [contextPayload] (onboarding data,
   /// today's tasks, streaks, rule intent, etc.) and builds an enriched
   /// system prompt server-side.  The LLM generates text — it does NOT
   /// decide whether to speak; that decision was already made by the rule
@@ -158,15 +141,19 @@ class GeminiService {
       'intent=${contextPayload['ruleIntent'] ?? "unknown"}',
     );
 
-    final callable = FirebaseFunctions.instance.httpsCallable('aiGenerate');
-    final response = await callable.call({
-      'contextPayload': {
-        ...contextPayload,
-        'rulePrompt': rulePrompt,
+    final decoded = await _postAuthenticatedJson(
+      endpoint: _aiGenerateEndpoint,
+      dartDefineName: 'AI_GENERATE_ENDPOINT',
+      endpointLabel: 'AI generation endpoint',
+      payload: {
+        'contextPayload': {
+          ...contextPayload,
+          'rulePrompt': rulePrompt,
+        },
       },
-    });
+    );
 
-    final text = response.data['text'] as String?;
+    final text = decoded['text'] as String?;
     if (text != null) {
       return text.trim();
     } else {
@@ -188,6 +175,47 @@ class GeminiService {
       threadId: threadId,
       mode: mode,
     );
+  }
+
+  Future<Map<String, dynamic>> _postAuthenticatedJson({
+    required String endpoint,
+    required String dartDefineName,
+    required String endpointLabel,
+    required Map<String, dynamic> payload,
+  }) async {
+    if (endpoint.isEmpty) {
+      throw Exception(
+        '$dartDefineName is not configured. $_localRunDartDefines',
+      );
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    final idToken = await user?.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Cannot call $endpointLabel without auth token');
+    }
+
+    final response = await http.post(
+      Uri.parse(endpoint),
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        '$endpointLabel failed: ${response.statusCode} ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception('$endpointLabel returned invalid JSON');
+    }
+
+    return Map<String, dynamic>.from(decoded);
   }
 }
 

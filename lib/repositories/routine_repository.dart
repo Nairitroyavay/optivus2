@@ -1,8 +1,18 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 import '../services/firestore_service.dart';
 import '../providers/routine_provider.dart'; // RoutineState lives here
+
+const String _routineImportEndpoint =
+    String.fromEnvironment('ROUTINE_IMPORT_ENDPOINT');
+const String _localRunDartDefines = 'Required local run flags:\n'
+    '--dart-define=COACH_REPLY_ENDPOINT=https://...\n'
+    '--dart-define=AI_GENERATE_ENDPOINT=https://...\n'
+    '--dart-define=ROUTINE_IMPORT_ENDPOINT=https://...';
 
 /// Persists and loads the full RoutineState to/from Firestore, and provides
 /// the low-level read/merge helpers used by the routine task materialiser.
@@ -75,7 +85,7 @@ class RoutineRepository {
     });
   }
 
-  /// Ask the Task 8.5 routine import endpoint to parse text/image input into
+  /// Ask the routine import Worker endpoint to parse text/image input into
   /// routine templates without committing them. The setup screens present the
   /// returned items for review before calling [saveRoutineTemplates].
   Future<List<Map<String, dynamic>>> previewRoutineImport({
@@ -84,18 +94,52 @@ class RoutineRepository {
     String? sourceText,
     Map<String, dynamic>? imageMetadata,
   }) async {
-    final callable = FirebaseFunctions.instance.httpsCallable('routineImport');
-    final response = await callable.call({
-      'routineType': routineType,
-      'mode': mode,
-      'commit': false,
-      if (sourceText != null && sourceText.trim().isNotEmpty)
-        'sourceText': sourceText.trim(),
-      if (imageMetadata != null) 'imageMetadata': imageMetadata,
-    });
-    final data = response.data;
-    if (data is! Map) return const [];
+    if (_routineImportEndpoint.isEmpty) {
+      throw Exception(
+        'ROUTINE_IMPORT_ENDPOINT is not configured. $_localRunDartDefines',
+      );
+    }
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Cannot call routine import endpoint without auth token');
+    }
+
+    final idToken = await user.getIdToken();
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Cannot call routine import endpoint without auth token');
+    }
+
+    final response = await http.post(
+      Uri.parse(_routineImportEndpoint),
+      headers: {
+        'Authorization': 'Bearer $idToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'userId': user.uid,
+        'routineType': routineType,
+        'mode': mode,
+        'commit': false,
+        if (sourceText != null && sourceText.trim().isNotEmpty)
+          'sourceText': sourceText.trim(),
+        if (imageMetadata != null) 'imageMetadata': imageMetadata,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Routine import endpoint failed: '
+        '${response.statusCode} ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception('Routine import endpoint returned invalid JSON');
+    }
+
+    final data = Map<String, dynamic>.from(decoded);
     final raw = data['templates'] ?? data['items'] ?? data['blocks'];
     if (raw is! List) return const [];
     return raw

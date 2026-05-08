@@ -1,0 +1,10 @@
+name = "optivus-ai-gateway"
+main = "src/index.js"
+compatibility_date = "2026-05-08"
+
+[vars]
+GEMINI_MODEL = "gemini-1.5-flash"
+
+# Configure FIREBASE_PROJECT_ID as a Worker variable or secret.
+# Store GEMINI_API_KEY only as a Wrangler secret:
+# wrangler secret put GEMINI_API_KEY

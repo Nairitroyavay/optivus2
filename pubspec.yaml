@@ -30,7 +30,6 @@ dependencies:
   firebase_auth: any
   cloud_firestore: any
   flutter_spinkit: ^5.2.2
-  cloud_functions: ^6.2.0
   just_audio: ^0.9.42
   audio_session: ^0.1.22
   path_provider: ^2.1.5
