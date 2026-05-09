@@ -17,6 +17,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../core/constants/event_names.dart';
 import '../models/coach_rule.dart';
 import '../models/context_snapshot.dart';
 import '../models/event_model.dart';
@@ -31,10 +32,14 @@ class RuleEngineService {
   static const Rule ruleSmokingPattern4Cigs = Rule(
     id: 'rule_smoking_pattern_4_cigs',
     description: 'User logged 4th cigarette today; pattern emerging.',
-    event: 'bad_habit_slip_logged',
+    event: EventNames.badHabitSlipLogged,
     conditions: [
-      RuleCondition(field: 'metadata.habit', op: 'eq', value: 'cigarettes'),
-      RuleCondition(field: 'metadata.count_today', op: 'gte', value: 4),
+      RuleCondition(
+        field: 'metadata.habitName',
+        op: 'in',
+        value: ['Smoking', 'smoking', 'Cigarettes', 'cigarettes'],
+      ),
+      RuleCondition(field: 'metadata.countTodayAfter', op: 'gte', value: 4),
     ],
     priority: 1,
     cooldownSeconds: 7200,
@@ -57,7 +62,7 @@ class RuleEngineService {
   static const Rule ruleMissedGymOneOff = Rule(
     id: 'rule_missed_gym_one_off',
     description: 'User missed one gym session without a larger pattern.',
-    event: 'routine_window_missed',
+    event: EventNames.routineWindowMissed,
     conditions: [
       RuleCondition(field: 'metadata.routine', op: 'eq', value: 'gym'),
       RuleCondition(field: 'metadata.completion', op: 'eq', value: 0),
@@ -85,7 +90,7 @@ class RuleEngineService {
     id: 'rule_missed_task_first',
     description:
         'User abandoned their first task of the day with no completed tasks yet.',
-    event: 'task_abandoned',
+    event: EventNames.taskAbandoned,
     conditions: [
       RuleCondition(field: 'tasksAbandonedToday', op: 'eq', value: 1),
       RuleCondition(field: 'tasksCompletedToday', op: 'eq', value: 0),
@@ -111,7 +116,7 @@ class RuleEngineService {
   static const Rule ruleMissedTask = Rule(
     id: 'rule_missed_task',
     description: 'User missed a task today (generic, ≥1 completed elsewhere).',
-    event: 'task_abandoned',
+    event: EventNames.taskAbandoned,
     conditions: [
       RuleCondition(field: 'tasksAbandonedToday', op: 'gte', value: 1),
       RuleCondition(field: 'tasksCompletedToday', op: 'gte', value: 1),
@@ -138,7 +143,7 @@ class RuleEngineService {
   static const Rule ruleMissedTaskPattern = Rule(
     id: 'rule_missed_task_pattern',
     description: 'User has abandoned ≥2 tasks today — pattern emerging.',
-    event: 'task_abandoned',
+    event: EventNames.taskAbandoned,
     conditions: [
       RuleCondition(field: 'tasksAbandonedToday', op: 'gte', value: 2),
     ],
@@ -164,7 +169,7 @@ class RuleEngineService {
   static const Rule ruleMultipleSlips = Rule(
     id: 'rule_multiple_slips',
     description: 'User had ≥2 habit slips today — early intervention.',
-    event: 'bad_habit_slip_logged',
+    event: EventNames.badHabitSlipLogged,
     conditions: [
       RuleCondition(field: 'badHabitSlipsToday', op: 'gte', value: 2),
     ],
@@ -189,7 +194,7 @@ class RuleEngineService {
   static const Rule ruleMultipleSlipsCritical = Rule(
     id: 'rule_multiple_slips_critical',
     description: 'User had ≥3 slips today — crisis-level intervention.',
-    event: 'bad_habit_slip_logged',
+    event: EventNames.badHabitSlipLogged,
     conditions: [
       RuleCondition(field: 'badHabitSlipsToday', op: 'gte', value: 3),
     ],
@@ -218,7 +223,7 @@ class RuleEngineService {
   static const Rule ruleStreakMilestone = Rule(
     id: 'rule_streak_milestone',
     description: 'User hit a streak milestone (generic).',
-    event: 'streak_milestone_reached',
+    event: EventNames.streakMilestoneReached,
     conditions: [
       RuleCondition(field: 'longestActiveStreak', op: 'gt', value: 0),
     ],
@@ -242,7 +247,7 @@ class RuleEngineService {
   static const Rule ruleStreakMilestone7 = Rule(
     id: 'rule_streak_milestone_7',
     description: 'User completed a 7-day streak — one full week.',
-    event: 'streak_milestone_reached',
+    event: EventNames.streakMilestoneReached,
     conditions: [
       RuleCondition(field: 'longestActiveStreak', op: 'gte', value: 7),
     ],
@@ -267,7 +272,7 @@ class RuleEngineService {
   static const Rule ruleStreakMilestone30 = Rule(
     id: 'rule_streak_milestone_30',
     description: 'User completed a 30-day streak — a full month.',
-    event: 'streak_milestone_reached',
+    event: EventNames.streakMilestoneReached,
     conditions: [
       RuleCondition(field: 'longestActiveStreak', op: 'gte', value: 30),
     ],
@@ -292,7 +297,7 @@ class RuleEngineService {
   static const Rule ruleGhostReturn = Rule(
     id: 'rule_ghost_return',
     description: 'User returned after being inactive (short gap < 7 days).',
-    event: 'comeback_initiated',
+    event: EventNames.comebackInitiated,
     conditions: [
       RuleCondition(field: 'daysSinceLastActive', op: 'gte', value: 2),
       RuleCondition(field: 'daysSinceLastActive', op: 'lt', value: 7),
@@ -317,7 +322,7 @@ class RuleEngineService {
   static const Rule ruleGhostReturnLong = Rule(
     id: 'rule_ghost_return_long',
     description: 'User returned after 7+ days of inactivity.',
-    event: 'comeback_initiated',
+    event: EventNames.comebackInitiated,
     conditions: [
       RuleCondition(field: 'daysSinceLastActive', op: 'gte', value: 7),
     ],
@@ -345,7 +350,7 @@ class RuleEngineService {
     id: 'rule_end_of_day_strong',
     description:
         'User closed the day with mission score ≥ 70 and ≥1 task done.',
-    event: 'routine_day_summarized',
+    event: EventNames.routineDaySummarized,
     conditions: [
       RuleCondition(field: 'missionScore', op: 'gte', value: 70),
       RuleCondition(field: 'tasksCompletedToday', op: 'gte', value: 1),
@@ -371,7 +376,7 @@ class RuleEngineService {
   static const Rule ruleEndOfDayRough = Rule(
     id: 'rule_end_of_day_rough',
     description: 'User closed the day with mission score < 40 — a hard day.',
-    event: 'routine_day_summarized',
+    event: EventNames.routineDaySummarized,
     conditions: [
       RuleCondition(field: 'missionScore', op: 'lt', value: 40),
     ],
@@ -397,7 +402,7 @@ class RuleEngineService {
     id: 'rule_end_of_day_summary',
     description:
         'User completed their day (generic, no strong/rough qualifier).',
-    event: 'routine_day_summarized',
+    event: EventNames.routineDaySummarized,
     conditions: [],
     priority: 4,
     cooldownSeconds: 43200,
@@ -419,7 +424,7 @@ class RuleEngineService {
   static const Rule ruleScreenTimeSecondCrossing = Rule(
     id: 'rule_screen_time_second_crossing',
     description: 'User crossed a screen-time cap for the second time today.',
-    event: 'bad_habit_slip_logged',
+    event: EventNames.badHabitSlipLogged,
     conditions: [
       RuleCondition(field: 'metadata.crossingCount', op: 'eq', value: 2),
     ],

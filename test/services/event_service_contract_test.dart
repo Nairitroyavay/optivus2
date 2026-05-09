@@ -259,6 +259,16 @@ void main() {
   });
 
   group('EventPayloadValidator', () {
+    test('registers validators for every canonical event name', () {
+      for (final eventName in EventNames.all) {
+        expect(
+          EventPayloadValidator.hasRule(eventName),
+          isTrue,
+          reason: '$eventName must be registered in EventPayloadValidator',
+        );
+      }
+    });
+
     test('accepts routine template events after constants registration', () {
       final payload = {
         'templateId': 'template_1',
@@ -288,61 +298,163 @@ void main() {
       );
     });
 
+    test('accepts Task 1.5 focus event payloads from emitters', () {
+      final cases = <String, Map<String, dynamic>>{
+        EventNames.routineWindowMissed: {
+          'routine': 'gym',
+          'completion': 0,
+        },
+        EventNames.routineBlockCompleted: {
+          'taskId': 'task_1',
+          'routineType': 'fixed_schedule',
+          'routineId': 'routine_1',
+          'date': '2026-05-09',
+        },
+        EventNames.screenTimeSynced: {
+          'logId': 'screen_2026_05_09',
+          'totalMinutes': 45,
+        },
+        EventNames.coachMessageSent: {
+          'turnId': 'msg_user_1',
+        },
+        EventNames.coachReplied: {
+          'turnId': 'msg_coach_1',
+        },
+        EventNames.suggestionGenerated: {
+          'suggestionId': 'suggestion_1',
+        },
+        EventNames.notificationMissed: {
+          'notifId': 'notif_1',
+          'category': 'routine',
+          'status': 'missed',
+        },
+        EventNames.comebackInitiated: {
+          'uid': 'test_uid_123',
+          'gapDays': 3,
+        },
+        EventNames.comebackPathChosen: {
+          'path': 'gentle',
+          'gapDays': 3,
+        },
+        EventNames.fitnessActivityCompleted: {
+          'activityId': 'activity_1',
+          'activityType': 'running',
+        },
+        EventNames.badHabitSlipLogged: {
+          'packageName': 'com.example.app',
+          'habitName': 'Example App',
+          'logId': 'screen_time_com_example_app_daily_2026_05_09',
+          'screenTimeLogId': 'daily_2026_05_09',
+          'crossingCount': 2,
+          'triggerTag': 'cap_crossed',
+        },
+      };
+
+      for (final entry in cases.entries) {
+        expect(
+          EventPayloadValidator.isValid(entry.key, entry.value),
+          isTrue,
+          reason: '${entry.key} should accept ${entry.value}',
+        );
+      }
+    });
+
     test('rejects unknown events', () {
       expect(EventPayloadValidator.isValid('unknown_event', {}), isFalse);
+    });
+
+    test('rejects malformed routine window missed payloads', () {
+      final result = EventPayloadValidator.validate(
+        EventNames.routineWindowMissed,
+        {'routine': 'gym'},
+      );
+
+      expect(result.isValid, isFalse);
+      expect(
+        result.message,
+        contains('completion or completionPct or completion_pct'),
+      );
+    });
+
+    test('rejects malformed bad habit slip payloads', () {
+      final result = EventPayloadValidator.validate(
+        EventNames.badHabitSlipLogged,
+        {'logId': 'slip_1'},
+      );
+
+      expect(result.isValid, isFalse);
+      expect(
+        result.message,
+        contains(
+          'habitId or habit_id or packageName or package_name or '
+          'screenTimeLogId or screen_time_log_id',
+        ),
+      );
     });
   });
 
   group('EventPayloadValidator (Strict Rules)', () {
     test('accepts valid payload with default priority', () {
       expect(
-        EventPayloadValidator.isValid(EventNames.accountDeleted, {'uid': '123', 'priority': 'high'}),
+        EventPayloadValidator.isValid(
+            EventNames.accountDeleted, {'uid': '123', 'priority': 'high'}),
         isTrue,
       );
       expect(
-        EventPayloadValidator.isValid(EventNames.screenTimeSynced, {'logId': 'log1', 'totalMinutes': 45}),
+        EventPayloadValidator.isValid(
+            EventNames.screenTimeSynced, {'logId': 'log1', 'totalMinutes': 45}),
         isTrue,
       );
       expect(
-        EventPayloadValidator.isValid(EventNames.slipLogDismissed, {'logId': 'log1', 'habitId': 'h1'}),
+        EventPayloadValidator.isValid(
+            EventNames.slipLogDismissed, {'logId': 'log1', 'habitId': 'h1'}),
         isTrue,
       );
       expect(
-        EventPayloadValidator.isValid(EventNames.badDayDetected, {'date': '2023-10-10'}),
+        EventPayloadValidator.isValid(
+            EventNames.badDayDetected, {'date': '2023-10-10'}),
         isTrue,
       );
       expect(
-        EventPayloadValidator.isValid(EventNames.weeklyInsightReady, {'insightId': 'w1'}),
+        EventPayloadValidator.isValid(
+            EventNames.weeklyInsightReady, {'insightId': 'w1'}),
         isTrue,
       );
       expect(
-        EventPayloadValidator.isValid(EventNames.comebackPathChosen, {'path': 'gentle'}),
+        EventPayloadValidator.isValid(
+            EventNames.comebackPathChosen, {'path': 'gentle'}),
         isTrue,
       );
       expect(
-        EventPayloadValidator.isValid(EventNames.notificationMissed, {'notifId': 'n1'}),
+        EventPayloadValidator.isValid(
+            EventNames.notificationMissed, {'notifId': 'n1'}),
         isTrue,
       );
       expect(
-        EventPayloadValidator.isValid(EventNames.coachReEnabled, {'reason': 'user_tapped'}),
+        EventPayloadValidator.isValid(
+            EventNames.coachReEnabled, {'reason': 'user_tapped'}),
         isTrue,
       );
     });
 
     test('rejects payload with missing fields', () {
-      final result = EventPayloadValidator.validate(EventNames.screenTimeSynced, {'logId': 'log1'});
+      final result = EventPayloadValidator.validate(
+          EventNames.screenTimeSynced, {'logId': 'log1'});
       expect(result.isValid, isFalse);
       expect(result.message, contains('missing totalMinutes or total_minutes'));
     });
 
     test('rejects payload with wrong type', () {
-      final result = EventPayloadValidator.validate(EventNames.screenTimeSynced, {'logId': 'log1', 'totalMinutes': 'not_an_int'});
+      final result = EventPayloadValidator.validate(EventNames.screenTimeSynced,
+          {'logId': 'log1', 'totalMinutes': 'not_an_int'});
       expect(result.isValid, isFalse);
       expect(result.message, contains('wrong type for totalMinutes'));
     });
 
     test('rejects unknown fields in debug mode', () {
-      final result = EventPayloadValidator.validate(EventNames.comebackPathChosen, {'path': 'gentle', 'unknown_field': 123});
+      final result = EventPayloadValidator.validate(
+          EventNames.comebackPathChosen,
+          {'path': 'gentle', 'unknown_field': 123});
       // In tests, kDebugMode is true
       expect(result.isValid, isFalse);
       expect(result.message, contains('Unknown fields in payload'));

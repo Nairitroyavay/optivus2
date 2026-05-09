@@ -450,7 +450,7 @@ Firebase Auth ID token and `http` package.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -549,10 +549,10 @@ Firestore schema and event tests.
 
 #### Done Criteria
 
-- [ ] No emitted event is missing from validator.
-- [ ] Rule engine references only canonical events.
-- [ ] Payload names are consistent.
-- [ ] Tests cover unknown and malformed events.
+- [x] No emitted event is missing from validator.
+- [x] Rule engine references only canonical events.
+- [x] Payload names are consistent.
+- [x] Tests cover unknown and malformed events.
 
 ### Task 1.6 — Harden Firestore schema, rules, indexes, and data ownership
 

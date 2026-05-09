@@ -48,6 +48,9 @@ class EventPayloadValidator {
   static bool isValid(String eventName, Map<String, dynamic> payload) =>
       validate(eventName, payload).isValid;
 
+  @visibleForTesting
+  static bool hasRule(String eventName) => _rules.containsKey(eventName);
+
   static void logFailure(EventPayloadValidationResult result) {
     if (result.isValid) return;
     debugPrint('[EventPayloadValidator] ${result.message}');
@@ -110,7 +113,7 @@ class EventPayloadValidator {
     EventNames.habitPaused: _habitRule,
     EventNames.habitResumed: _habitRule,
     EventNames.goodHabitLogged: _habitLogRule,
-    EventNames.badHabitSlipLogged: _habitLogRule,
+    EventNames.badHabitSlipLogged: _badHabitSlipRule,
     EventNames.habitLogDeleted: _EventRule.any([
       ['habitId', 'habit_id'],
       ['logId', 'log_id'],
@@ -142,21 +145,23 @@ class EventPayloadValidator {
     EventNames.streakResumed: _streakRule,
     EventNames.routineBlockCompleted: _EventRule.any([
       ['routineType', 'routine_type'],
-      ['blockId', 'block_id'],
+      ['blockId', 'block_id', 'taskId', 'task_id', 'routineId', 'routine_id'],
     ]),
     EventNames.routineDaySummarized: _EventRule.any([
       ['date'],
+    ]),
+    EventNames.routineWindowMissed: _EventRule.any([
+      ['routine', 'routineType', 'routine_type'],
+      ['completion', 'completionPct', 'completion_pct'],
     ]),
     EventNames.routineTemplateCreated: _routineTemplateRule,
     EventNames.routineTemplateUpdated: _routineTemplateRule,
     EventNames.routineTemplateDeleted: _routineTemplateRule,
     EventNames.coachMessageSent: _EventRule.any([
-      ['turnId', 'turn_id'],
-      ['text'],
+      ['turnId', 'turn_id', 'text'],
     ]),
     EventNames.coachReplied: _EventRule.any([
-      ['turnId', 'turn_id'],
-      ['text'],
+      ['turnId', 'turn_id', 'text'],
     ]),
     EventNames.coachReEnabled: _StrictEventRule(
       requiredAny: [
@@ -293,6 +298,18 @@ class EventPayloadValidator {
 
   static final _habitLogRule = _EventRule.any([
     ['habitId', 'habit_id'],
+    ['logId', 'log_id', 'occurredAt', 'ts'],
+  ]);
+
+  static final _badHabitSlipRule = _EventRule.any([
+    [
+      'habitId',
+      'habit_id',
+      'packageName',
+      'package_name',
+      'screenTimeLogId',
+      'screen_time_log_id',
+    ],
     ['logId', 'log_id', 'occurredAt', 'ts'],
   ]);
 

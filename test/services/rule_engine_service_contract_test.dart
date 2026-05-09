@@ -19,7 +19,95 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/models/context_snapshot.dart';
+import 'package:optivus2/models/event_model.dart';
+import 'package:optivus2/services/rule_engine_service.dart';
+
+EventModel _event(
+  String eventName, {
+  Map<String, dynamic> payload = const {},
+}) {
+  return EventModel(
+    eventId: 'event_1',
+    eventName: eventName,
+    uid: 'test_uid_123',
+    timestamp: DateTime.utc(2026, 5, 9),
+    source: 'test',
+    payload: payload,
+    deviceId: 'test_device',
+  );
+}
+
 void main() {
+  group('RuleEngineService — event contract', () {
+    test('all rule input events are canonical EventNames values', () {
+      for (final rule in RuleEngineService.rules) {
+        expect(
+          rule.event == '*' || EventNames.all.contains(rule.event),
+          isTrue,
+          reason: '${rule.id} references non-canonical event ${rule.event}',
+        );
+      }
+    });
+
+    test('missed gym rule uses the canonical routine window missed event', () {
+      expect(
+        RuleEngineService.ruleMissedGymOneOff.event,
+        EventNames.routineWindowMissed,
+      );
+    });
+  });
+
+  group('RuleEngineService.evaluate — focused contract', () {
+    test('fires smoking pattern rule from current habit slip payload fields',
+        () {
+      final rule = RuleEngineService().evaluate(
+        const ContextSnapshot(),
+        _event(
+          EventNames.badHabitSlipLogged,
+          payload: {
+            'habitName': 'Smoking',
+            'countTodayAfter': 4,
+          },
+        ),
+      );
+
+      expect(rule, isNotNull);
+      expect(rule!.id, 'rule_smoking_pattern_4_cigs');
+      expect(rule.event, EventNames.badHabitSlipLogged);
+    });
+
+    test('fires critical slips rule for canonical bad habit slip event', () {
+      final rule = RuleEngineService().evaluate(
+        const ContextSnapshot(
+          badHabitSlipsToday: 3,
+          userState: 'slipping',
+        ),
+        _event(EventNames.badHabitSlipLogged),
+      );
+
+      expect(rule, isNotNull);
+      expect(rule!.id, 'rule_multiple_slips_critical');
+      expect(rule.aiIntent, 'crisis_intervention_slips');
+      expect(rule.priority, 1);
+    });
+
+    test('fires screen time crossing rule from event metadata payload', () {
+      final rule = RuleEngineService().evaluate(
+        const ContextSnapshot(),
+        _event(
+          EventNames.badHabitSlipLogged,
+          payload: {'crossingCount': 2},
+        ),
+      );
+
+      expect(rule, isNotNull);
+      expect(rule!.id, 'rule_screen_time_second_crossing');
+      expect(rule.event, EventNames.badHabitSlipLogged);
+    });
+  });
+
   // ── evaluate — output shape ──────────────────────────────────────────────────
 
   group('RuleEngineService.evaluate — output shape', () {
