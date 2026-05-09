@@ -11,6 +11,7 @@ final goalRepositoryProvider = Provider<GoalRepository>((ref) {
   return GoalRepository(
     ref.read(firestoreServiceProvider),
     eventService: ref.read(eventServiceProvider),
+    featureFlags: ref.watch(appFeatureFlagsProvider),
   );
 });
 

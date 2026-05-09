@@ -496,7 +496,8 @@ class ActiveActivityController extends StateNotifier<ActiveActivityState> {
       final eventService = _fitnessEventService;
       if (aiCoachService != null) {
         unawaited(
-          aiCoachService.generateAndSaveFeedback(activity).then((_) {
+          aiCoachService.generateAndSaveFeedback(activity).then((feedback) {
+            if (feedback.isEmpty) return null;
             return eventService?.emitAiFeedbackGenerated(
               activityId: activity.activityId,
               activityType: activity.activityType.toJson(),

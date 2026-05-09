@@ -229,7 +229,7 @@ Flutter SDK, Node/npm for Worker tests, Android Gradle toolchain.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -256,7 +256,10 @@ Backend, R2, Mapbox, AI, and risky trackers must fail closed with manual fallbac
 
 #### Gap
 
-Feature flags and kill switches are split between compile-time constants and Remote Config. AI defaults are not uniformly fail-closed for Play Store release.
+Resolved 2026-05-09: shared client config now centralizes dart-define
+endpoints, compile-time feature flags, Remote Config kill switches, R2
+endpoints, and Mapbox token state. Risky AI/R2/image features default off and
+require both Remote Config and endpoint/compile gates before use.
 
 #### Spec source
 
@@ -328,10 +331,10 @@ Firebase Remote Config SDK, dart-define values, existing provider graph.
 
 #### Done Criteria
 
-- [ ] All risky features have explicit off states.
-- [ ] Release defaults do not require paid Google services.
-- [ ] Missing Cloudflare endpoints do not crash manual flows.
-- [ ] Flags are documented in QA matrix.
+- [x] All risky features have explicit off states.
+- [x] Release defaults do not require paid Google services.
+- [x] Missing Cloudflare endpoints do not crash manual flows.
+- [x] Flags are documented in QA matrix.
 
 ### Task 1.4 — Create a Cloudflare API service contract in Flutter
 

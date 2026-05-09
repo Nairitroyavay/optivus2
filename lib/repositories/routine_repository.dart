@@ -3,12 +3,11 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:optivus2/core/config/app_config.dart';
 
 import '../services/firestore_service.dart';
 import '../providers/routine_provider.dart'; // RoutineState lives here
 
-const String _routineImportEndpoint =
-    String.fromEnvironment('ROUTINE_IMPORT_ENDPOINT');
 const String _localRunDartDefines = 'Required local run flags:\n'
     '--dart-define=COACH_REPLY_ENDPOINT=https://...\n'
     '--dart-define=AI_GENERATE_ENDPOINT=https://...\n'
@@ -21,8 +20,15 @@ const String _localRunDartDefines = 'Required local run flags:\n'
 /// Routine-derived tasks live at: `/users/{uid}/tasks/{taskId}`
 class RoutineRepository {
   final FirestoreService _service;
+  final AppBuildConfig _buildConfig;
+  final AppFeatureFlags? _featureFlags;
 
-  RoutineRepository(this._service);
+  RoutineRepository(
+    this._service, {
+    AppBuildConfig? buildConfig,
+    AppFeatureFlags? featureFlags,
+  })  : _buildConfig = buildConfig ?? AppBuildConfig.current,
+        _featureFlags = featureFlags;
 
   /// Save the entire routine state as a single Firestore document.
   Future<void> saveRoutine(RoutineState state) async {
@@ -94,7 +100,12 @@ class RoutineRepository {
     String? sourceText,
     Map<String, dynamic>? imageMetadata,
   }) async {
-    if (_routineImportEndpoint.isEmpty) {
+    final endpoint = _buildConfig.cloudflare.normalizedRoutineImportEndpoint;
+    final flags = _featureFlags;
+    if (flags != null && !flags.routineImportWorkerReady) {
+      throw Exception('Routine import AI is disabled. Use manual entry.');
+    }
+    if (endpoint.isEmpty) {
       throw Exception(
         'ROUTINE_IMPORT_ENDPOINT is not configured. $_localRunDartDefines',
       );
@@ -111,7 +122,7 @@ class RoutineRepository {
     }
 
     final response = await http.post(
-      Uri.parse(_routineImportEndpoint),
+      Uri.parse(endpoint),
       headers: {
         'Authorization': 'Bearer $idToken',
         'Content-Type': 'application/json',

@@ -34,6 +34,7 @@ class _ActivityRouteReviewScreenState
     final pointsAsync =
         ref.watch(activityRoutePointsProvider(widget.activityId));
     final splitsAsync = ref.watch(activitySplitsProvider(widget.activityId));
+    final mapboxReady = ref.watch(appFeatureFlagsProvider).mapboxMapsReady;
 
     return Scaffold(
       backgroundColor: const Color(0xFF10131A),
@@ -77,7 +78,7 @@ class _ActivityRouteReviewScreenState
 
           return Stack(
             children: [
-              if (MapConfig.hasMapboxAccessToken)
+              if (mapboxReady)
                 fm.FlutterMap(
                   mapController: _mapController,
                   options: fm.MapOptions(
@@ -115,7 +116,7 @@ class _ActivityRouteReviewScreenState
                   ),
                 ),
               ),
-              if (MapConfig.hasMapboxAccessToken)
+              if (mapboxReady)
                 Positioned(
                   right: 14,
                   top: MediaQuery.of(context).padding.top + 82,
@@ -171,7 +172,7 @@ class _ActivityRouteReviewScreenState
   }
 
   void _queueFit(List<RoutePointModel> points) {
-    if (!MapConfig.hasMapboxAccessToken) return;
+    if (!ref.read(appFeatureFlagsProvider).mapboxMapsReady) return;
     if (_fitQueued) return;
     _fitQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {

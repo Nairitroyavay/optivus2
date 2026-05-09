@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
@@ -822,7 +821,7 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
 
   Future<void> _showImportOptions() async {
     if (_isImportingPhoto) return;
-    if (!FeatureFlags.classTimetableImageImportReady) {
+    if (!ref.read(appFeatureFlagsProvider).classTimetableImageImportReady) {
       _showImageImportComingSoon();
       return;
     }
@@ -1376,7 +1375,9 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                !FeatureFlags.classTimetableImageImportReady
+                !ref
+                        .watch(appFeatureFlagsProvider)
+                        .classTimetableImageImportReady
                     ? 'Photo OCR is coming soon. Manual class setup still works.'
                     : _photoImportError ??
                         (_isImportingPhoto
@@ -1430,7 +1431,7 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
             : const Icon(Icons.document_scanner_rounded),
         label: Text(_isImportingPhoto
             ? 'Reading'
-            : FeatureFlags.classTimetableImageImportReady
+            : ref.watch(appFeatureFlagsProvider).classTimetableImageImportReady
                 ? 'Photo OCR'
                 : 'Coming soon'),
       ),

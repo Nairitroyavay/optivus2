@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
@@ -1017,7 +1016,7 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
 
   Future<void> _pickSkinCarePhoto() async {
     if (_isUploadingPhoto || _isGenerating) return;
-    if (!FeatureFlags.skinProductImageImportReady) {
+    if (!ref.read(appFeatureFlagsProvider).skinProductImageImportReady) {
       _showPhotoAiComingSoon();
       return;
     }
@@ -1592,7 +1591,9 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                                           ? Icons.add_a_photo_rounded
                                           : Icons.check_circle_rounded),
                                   label: Text(_photoImportMetadata == null
-                                      ? FeatureFlags.skinProductImageImportReady
+                                      ? ref
+                                              .watch(appFeatureFlagsProvider)
+                                              .skinProductImageImportReady
                                           ? 'Add product photo'
                                           : 'Coming soon'
                                       : _photoUploadLabel(
@@ -1624,7 +1625,9 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                               ),
                             ),
                           ],
-                          if (!FeatureFlags.skinProductImageImportReady) ...[
+                          if (!ref
+                              .watch(appFeatureFlagsProvider)
+                              .skinProductImageImportReady) ...[
                             const SizedBox(height: 8),
                             const Text(
                               'Photo AI is coming soon. Use Text AI or manual setup for now.',

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:optivus2/core/config/app_config.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/models/context_snapshot.dart';
 import 'package:optivus2/services/task_service.dart';
@@ -107,16 +108,19 @@ class CoachService {
   final StreakService _streakService;
   final HabitService _habitService;
   final UserRepository _userRepo;
+  final AppFeatureFlags? _featureFlags;
 
   CoachService({
     required TaskService taskService,
     required StreakService streakService,
     required HabitService habitService,
     required UserRepository userRepo,
+    AppFeatureFlags? featureFlags,
   })  : _taskService = taskService,
         _streakService = streakService,
         _habitService = habitService,
-        _userRepo = userRepo;
+        _userRepo = userRepo,
+        _featureFlags = featureFlags;
 
   String get _uid {
     final user = FirebaseAuth.instance.currentUser;
@@ -232,6 +236,9 @@ class CoachService {
     String threadId = mainThreadId,
   }) async {
     final uid = _uid;
+    if (!(_featureFlags?.aiCoachMessagesReady ?? false)) {
+      throw StateError('AI coach replies are disabled.');
+    }
     final result = await GeminiService().coachReply(
       userId: uid,
       threadId: threadId,
@@ -339,6 +346,9 @@ Return only the final coach message text, with no JSON or markdown.''';
     String threadId = 'main_thread',
     String mode = 'chat',
   }) async {
+    if (!(_featureFlags?.aiCoachMessagesReady ?? false)) {
+      throw StateError('AI coach replies are disabled.');
+    }
     final systemPrompt = await generateSystemPrompt(coachName, tone);
     return GeminiService().startChat(
       systemPrompt,
@@ -348,10 +358,10 @@ Return only the final coach message text, with no JSON or markdown.''';
     );
   }
 
-  /// Builds a structured context payload for the Cloud Function.
+  /// Builds a structured context payload for the Cloudflare Worker.
   ///
   /// Reads onboarding, today's tasks, habits, and streaks from Firestore
-  /// and returns a map that the Cloud Function uses to build an enriched
+  /// and returns a map that the Worker uses to build an enriched
   /// system prompt.  Called by [EventOrchestrator] after the rule engine
   /// has already decided to speak — this method does NOT decide whether
   /// to speak.

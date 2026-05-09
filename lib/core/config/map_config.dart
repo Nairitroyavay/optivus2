@@ -1,14 +1,13 @@
+import 'package:optivus2/core/config/app_config.dart';
+
 class MapConfig {
   const MapConfig._();
 
-  static const String _mapboxAccessToken = String.fromEnvironment(
-    'MAPBOX_ACCESS_TOKEN',
-  );
+  static const _config = AppBuildConfig.current;
 
-  static String get mapboxAccessToken => _mapboxAccessToken.trim();
+  static String get mapboxAccessToken => _config.mapbox.normalizedAccessToken;
 
   static bool get hasMapboxAccessToken => mapboxAccessToken.isNotEmpty;
 
-  static String get mapboxTileUrl =>
-      'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=$mapboxAccessToken';
+  static String get mapboxTileUrl => _config.mapbox.tileUrl;
 }

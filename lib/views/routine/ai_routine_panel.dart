@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'package:optivus2/services/gemini_service.dart';
 
@@ -110,6 +111,15 @@ class _AiRoutinePanelState extends ConsumerState<AiRoutinePanel>
   // ── AI call ───────────────────────────────────────────────────────────────
 
   Future<void> _fetchSuggestions() async {
+    if (!ref.read(appFeatureFlagsProvider).aiRoutineSuggestionsReady) {
+      setState(() {
+        _loading = false;
+        _suggestions = [];
+        _suggestionError = 'Suggestions are unavailable right now.';
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _suggestions = [];
@@ -177,6 +187,12 @@ Give 3-5 suggestions. Be specific about times. Keep titles under 8 words.''',
 
   Future<void> _sendUserMessage(String message) async {
     if (message.trim().isEmpty) return;
+    if (!ref.read(appFeatureFlagsProvider).aiRoutineSuggestionsReady) {
+      setState(() {
+        _suggestionError = 'Could not process that request.';
+      });
+      return;
+    }
     _inputCtrl.clear();
     setState(() {
       _loading = true;

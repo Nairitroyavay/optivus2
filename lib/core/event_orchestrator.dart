@@ -18,6 +18,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/config/app_config.dart';
 import '../core/constants/event_names.dart';
 import '../models/context_snapshot.dart';
 import '../models/event_model.dart';
@@ -40,6 +41,7 @@ class EventOrchestrator {
   final RuleEngineService _ruleEngineService;
   final GeminiService _geminiService;
   final CoachService _coachService;
+  final AppFeatureFlags _featureFlags;
   final FirebaseAuth _auth;
 
   StreamSubscription<Event>? _subscription;
@@ -51,6 +53,7 @@ class EventOrchestrator {
     required HabitService habitService,
     required NotificationService notificationService,
     required CoachService coachService,
+    required AppFeatureFlags featureFlags,
     StateAggregatorService? stateAggregatorService,
     RuleEngineService? ruleEngineService,
     GeminiService? geminiService,
@@ -60,6 +63,7 @@ class EventOrchestrator {
         _habitService = habitService,
         _notificationService = notificationService,
         _coachService = coachService,
+        _featureFlags = featureFlags,
         _stateAggregatorService =
             stateAggregatorService ?? StateAggregatorService(),
         _ruleEngineService = ruleEngineService ?? RuleEngineService(),
@@ -146,6 +150,12 @@ class EventOrchestrator {
             }
           }
 
+          if (decision == 'spoke' &&
+              rule != null &&
+              !_featureFlags.aiCoachMessagesReady) {
+            decision = 'dropped_ai_disabled';
+          }
+
           if (decision == 'spoke' && rule != null) {
             final budgetDecision =
                 await _notificationService.reserveNotificationSlot(
@@ -166,7 +176,7 @@ class EventOrchestrator {
           if (decision == 'spoke' && rule != null) {
             // Rule has decided to speak and budget has been reserved before the LLM call.
             debugPrint('[Coach] Rule selected: ${rule.id} — '
-                'building context payload before Cloud Function call.');
+                'building context payload before Cloudflare Worker call.');
 
             final contextPayload = await _coachService.buildContextPayload(
               uid: uid,
@@ -175,7 +185,7 @@ class EventOrchestrator {
             );
 
             debugPrint('[Coach] Context payload built — '
-                'calling Cloud Function (aiGenerate) for text generation.');
+                'calling Cloudflare Worker (aiGenerate) for text generation.');
 
             String coachMessage;
             try {
@@ -184,7 +194,7 @@ class EventOrchestrator {
                 contextPayload: contextPayload,
               );
             } catch (e) {
-              debugPrint('[Coach] Cloud Function failed: $e — '
+              debugPrint('[Coach] Cloudflare Worker failed: $e — '
                   'using fallback message.');
               coachMessage = rule.fallbackMessage;
             }
@@ -414,7 +424,7 @@ class EventOrchestrator {
             'activityId=${event.payload['activityId']}');
         // Stats update and AI feedback are handled asynchronously.
         // The actual stats/goal update is done by FitnessStatsService
-        // and the Cloud Function safety-net.
+        // and the server-side safety net.
         break;
 
       case EventNames.fitnessGoalCompleted:

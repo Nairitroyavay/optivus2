@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../core/config/feature_flags.dart';
+import '../../../core/providers.dart';
 import '../../../services/image_upload_service.dart';
 
-class PhotoPickerButton extends StatefulWidget {
+class PhotoPickerButton extends ConsumerStatefulWidget {
   final String routineType;
   final Map<String, dynamic>? initialMetadata;
   final ValueChanged<Map<String, dynamic>?> onChanged;
@@ -25,18 +26,23 @@ class PhotoPickerButton extends StatefulWidget {
   });
 
   @override
-  State<PhotoPickerButton> createState() => _PhotoPickerButtonState();
+  ConsumerState<PhotoPickerButton> createState() => _PhotoPickerButtonState();
 }
 
-class _PhotoPickerButtonState extends State<PhotoPickerButton> {
-  late final ImageUploadService _uploadService;
+class _PhotoPickerButtonState extends ConsumerState<PhotoPickerButton> {
+  ImageUploadService? _uploadService;
   Map<String, dynamic>? _metadata;
   bool _isBusy = false;
+
+  ImageUploadService get _service =>
+      widget.uploadService ??
+      (_uploadService ??= ImageUploadService(
+        featureFlags: ref.read(appFeatureFlagsProvider),
+      ));
 
   @override
   void initState() {
     super.initState();
-    _uploadService = widget.uploadService ?? ImageUploadService();
     _metadata = widget.initialMetadata;
   }
 
@@ -81,11 +87,11 @@ class _PhotoPickerButtonState extends State<PhotoPickerButton> {
   }
 
   bool get _uploadsEnabled {
+    final flags = ref.read(appFeatureFlagsProvider);
     if (widget.routineType == 'profile') {
-      return FeatureFlags.enableR2Uploads &&
-          FeatureFlags.enableProfileImageUpload;
+      return flags.profileImageUploadReady;
     }
-    return FeatureFlags.enableR2Uploads;
+    return flags.r2UploadsReady;
   }
 
   void _showComingSoon() {
@@ -98,7 +104,7 @@ class _PhotoPickerButtonState extends State<PhotoPickerButton> {
     final previousMetadata = _metadata;
     setState(() => _isBusy = true);
     try {
-      final metadata = await _uploadService.pickCompressAndUpload(
+      final metadata = await _service.pickCompressAndUpload(
         source: source,
         routineType: widget.routineType,
       );
@@ -121,7 +127,7 @@ class _PhotoPickerButtonState extends State<PhotoPickerButton> {
 
   Future<void> _deleteMetadataQuietly(Map<String, dynamic> metadata) async {
     try {
-      await _uploadService.deleteUploadedMetadata(metadata);
+      await _service.deleteUploadedMetadata(metadata);
     } catch (_) {
       // Best-effort cleanup for replaced draft uploads.
     }
@@ -134,7 +140,7 @@ class _PhotoPickerButtonState extends State<PhotoPickerButton> {
     setState(() => _isBusy = true);
     try {
       if (widget.deleteOnClear) {
-        await _uploadService.deleteUploadedMetadata(metadata);
+        await _service.deleteUploadedMetadata(metadata);
       }
       if (!mounted) return;
 

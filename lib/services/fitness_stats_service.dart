@@ -6,7 +6,7 @@
 // Period keys: daily_YYYY-MM-DD, weekly_YYYY-Www, monthly_YYYY-MM
 //
 // Stats are updated atomically after each activity completion.
-// Cloud Functions provide a safety-net re-aggregation for missed writes.
+// Server-side jobs can provide a safety-net re-aggregation for missed writes.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -109,7 +109,7 @@ class FitnessStatsService {
 
   /// Client-side completion side effects for immediate UI feedback.
   ///
-  /// Cloud Functions also run this as a safety net. This method marks the
+  /// Server-side jobs can also run this as a safety net. This method marks the
   /// activity with `statsProcessedAt` in the same batch so the backend trigger
   /// can skip already-processed completions.
   Future<void> updateCompletionAggregatesAfterActivityCompleted(
@@ -281,7 +281,7 @@ class FitnessStatsService {
   Stream<FitnessStatsModel?> watchMonthlyStats(DateTime date) =>
       watchStats(monthlyKey(date));
 
-  // ── Full re-aggregation (for Cloud Functions safety-net) ─────────────────
+  // ── Full re-aggregation (for server-side safety net) ─────────────────────
 
   /// Re-aggregates stats for a daily period from scratch by querying
   /// all completed activities in that date range.

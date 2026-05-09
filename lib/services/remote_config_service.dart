@@ -8,6 +8,18 @@ class RemoteConfigKeys {
   static const aiCoachMessagesEnabled = 'ai_coach_messages_enabled';
   static const aiRoutineSuggestionsEnabled = 'ai_routine_suggestions_enabled';
   static const aiIdentityScoringEnabled = 'ai_identity_scoring_enabled';
+  static const fitnessAiFeedbackEnabled = 'fitness_ai_feedback_enabled';
+  static const routineImportWorkerEnabled = 'routine_import_worker_enabled';
+  static const r2UploadsEnabled = 'r2_uploads_enabled';
+  static const profileImageUploadEnabled = 'profile_image_upload_enabled';
+  static const imageRoutineImportEnabled = 'image_routine_import_enabled';
+  static const classTimetableImageImportEnabled =
+      'class_timetable_image_import_enabled';
+  static const hostelMessImageImportEnabled =
+      'hostel_mess_image_import_enabled';
+  static const skinProductImageImportEnabled =
+      'skin_product_image_import_enabled';
+  static const mapboxMapsEnabled = 'mapbox_maps_enabled';
   static const quietDayModeDefault = 'quiet_day_mode_default';
   static const quietDayStartHour = 'quiet_day_start_hour';
   static const quietDayEndHour = 'quiet_day_end_hour';
@@ -16,10 +28,19 @@ class RemoteConfigKeys {
 const Map<String, Object> remoteConfigDefaults = {
   RemoteConfigKeys.coachEnabled: true,
   RemoteConfigKeys.notificationBudgetDefault: 3,
-  RemoteConfigKeys.aiFeaturesEnabled: true,
-  RemoteConfigKeys.aiCoachMessagesEnabled: true,
-  RemoteConfigKeys.aiRoutineSuggestionsEnabled: true,
-  RemoteConfigKeys.aiIdentityScoringEnabled: true,
+  RemoteConfigKeys.aiFeaturesEnabled: false,
+  RemoteConfigKeys.aiCoachMessagesEnabled: false,
+  RemoteConfigKeys.aiRoutineSuggestionsEnabled: false,
+  RemoteConfigKeys.aiIdentityScoringEnabled: false,
+  RemoteConfigKeys.fitnessAiFeedbackEnabled: false,
+  RemoteConfigKeys.routineImportWorkerEnabled: false,
+  RemoteConfigKeys.r2UploadsEnabled: false,
+  RemoteConfigKeys.profileImageUploadEnabled: false,
+  RemoteConfigKeys.imageRoutineImportEnabled: false,
+  RemoteConfigKeys.classTimetableImageImportEnabled: false,
+  RemoteConfigKeys.hostelMessImageImportEnabled: false,
+  RemoteConfigKeys.skinProductImageImportEnabled: false,
+  RemoteConfigKeys.mapboxMapsEnabled: true,
   RemoteConfigKeys.quietDayModeDefault: false,
   RemoteConfigKeys.quietDayStartHour: 22,
   RemoteConfigKeys.quietDayEndHour: 7,
@@ -32,6 +53,15 @@ class AppRemoteConfig {
   final bool aiCoachMessagesEnabled;
   final bool aiRoutineSuggestionsEnabled;
   final bool aiIdentityScoringEnabled;
+  final bool fitnessAiFeedbackEnabled;
+  final bool routineImportWorkerEnabled;
+  final bool r2UploadsEnabled;
+  final bool profileImageUploadEnabled;
+  final bool imageRoutineImportEnabled;
+  final bool classTimetableImageImportEnabled;
+  final bool hostelMessImageImportEnabled;
+  final bool skinProductImageImportEnabled;
+  final bool mapboxMapsEnabled;
   final bool quietDayModeDefault;
   final int quietDayStartHour;
   final int quietDayEndHour;
@@ -43,6 +73,15 @@ class AppRemoteConfig {
     required this.aiCoachMessagesEnabled,
     required this.aiRoutineSuggestionsEnabled,
     required this.aiIdentityScoringEnabled,
+    required this.fitnessAiFeedbackEnabled,
+    required this.routineImportWorkerEnabled,
+    required this.r2UploadsEnabled,
+    required this.profileImageUploadEnabled,
+    required this.imageRoutineImportEnabled,
+    required this.classTimetableImageImportEnabled,
+    required this.hostelMessImageImportEnabled,
+    required this.skinProductImageImportEnabled,
+    required this.mapboxMapsEnabled,
     required this.quietDayModeDefault,
     required this.quietDayStartHour,
     required this.quietDayEndHour,
@@ -51,10 +90,19 @@ class AppRemoteConfig {
   factory AppRemoteConfig.defaults() => const AppRemoteConfig(
         coachEnabled: true,
         notificationBudgetDefault: 3,
-        aiFeaturesEnabled: true,
-        aiCoachMessagesEnabled: true,
-        aiRoutineSuggestionsEnabled: true,
-        aiIdentityScoringEnabled: true,
+        aiFeaturesEnabled: false,
+        aiCoachMessagesEnabled: false,
+        aiRoutineSuggestionsEnabled: false,
+        aiIdentityScoringEnabled: false,
+        fitnessAiFeedbackEnabled: false,
+        routineImportWorkerEnabled: false,
+        r2UploadsEnabled: false,
+        profileImageUploadEnabled: false,
+        imageRoutineImportEnabled: false,
+        classTimetableImageImportEnabled: false,
+        hostelMessImageImportEnabled: false,
+        skinProductImageImportEnabled: false,
+        mapboxMapsEnabled: true,
         quietDayModeDefault: false,
         quietDayStartHour: 22,
         quietDayEndHour: 7,
@@ -73,6 +121,23 @@ class AppRemoteConfig {
           remoteConfig.getBool(RemoteConfigKeys.aiRoutineSuggestionsEnabled),
       aiIdentityScoringEnabled:
           remoteConfig.getBool(RemoteConfigKeys.aiIdentityScoringEnabled),
+      fitnessAiFeedbackEnabled:
+          remoteConfig.getBool(RemoteConfigKeys.fitnessAiFeedbackEnabled),
+      routineImportWorkerEnabled:
+          remoteConfig.getBool(RemoteConfigKeys.routineImportWorkerEnabled),
+      r2UploadsEnabled: remoteConfig.getBool(RemoteConfigKeys.r2UploadsEnabled),
+      profileImageUploadEnabled:
+          remoteConfig.getBool(RemoteConfigKeys.profileImageUploadEnabled),
+      imageRoutineImportEnabled:
+          remoteConfig.getBool(RemoteConfigKeys.imageRoutineImportEnabled),
+      classTimetableImageImportEnabled: remoteConfig
+          .getBool(RemoteConfigKeys.classTimetableImageImportEnabled),
+      hostelMessImageImportEnabled:
+          remoteConfig.getBool(RemoteConfigKeys.hostelMessImageImportEnabled),
+      skinProductImageImportEnabled:
+          remoteConfig.getBool(RemoteConfigKeys.skinProductImageImportEnabled),
+      mapboxMapsEnabled:
+          remoteConfig.getBool(RemoteConfigKeys.mapboxMapsEnabled),
       quietDayModeDefault:
           remoteConfig.getBool(RemoteConfigKeys.quietDayModeDefault),
       quietDayStartHour:
@@ -89,6 +154,18 @@ class AppRemoteConfig {
         RemoteConfigKeys.aiRoutineSuggestionsEnabled:
             aiRoutineSuggestionsEnabled,
         RemoteConfigKeys.aiIdentityScoringEnabled: aiIdentityScoringEnabled,
+        RemoteConfigKeys.fitnessAiFeedbackEnabled: fitnessAiFeedbackEnabled,
+        RemoteConfigKeys.routineImportWorkerEnabled: routineImportWorkerEnabled,
+        RemoteConfigKeys.r2UploadsEnabled: r2UploadsEnabled,
+        RemoteConfigKeys.profileImageUploadEnabled: profileImageUploadEnabled,
+        RemoteConfigKeys.imageRoutineImportEnabled: imageRoutineImportEnabled,
+        RemoteConfigKeys.classTimetableImageImportEnabled:
+            classTimetableImageImportEnabled,
+        RemoteConfigKeys.hostelMessImageImportEnabled:
+            hostelMessImageImportEnabled,
+        RemoteConfigKeys.skinProductImageImportEnabled:
+            skinProductImageImportEnabled,
+        RemoteConfigKeys.mapboxMapsEnabled: mapboxMapsEnabled,
         RemoteConfigKeys.quietDayModeDefault: quietDayModeDefault,
         RemoteConfigKeys.quietDayStartHour: quietDayStartHour,
         RemoteConfigKeys.quietDayEndHour: quietDayEndHour,
@@ -97,7 +174,8 @@ class AppRemoteConfig {
 
 class RemoteConfigService {
   final FirebaseRemoteConfig? _injectedRemoteConfig;
-  late final FirebaseRemoteConfig _remoteConfig = _injectedRemoteConfig ?? FirebaseRemoteConfig.instance;
+  late final FirebaseRemoteConfig _remoteConfig =
+      _injectedRemoteConfig ?? FirebaseRemoteConfig.instance;
   AppRemoteConfig _current = AppRemoteConfig.defaults();
 
   RemoteConfigService({FirebaseRemoteConfig? remoteConfig})

@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:optivus2/core/config/app_config.dart';
 import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/services/r2_upload_service.dart';
 
@@ -12,14 +13,17 @@ class ImageUploadService {
   final FirebaseAuth _auth;
   final R2UploadService _r2UploadService;
   final ImagePicker _imagePicker;
+  final AppFeatureFlags? _featureFlags;
 
   ImageUploadService({
     FirebaseAuth? auth,
     R2UploadService? r2UploadService,
     ImagePicker? imagePicker,
+    AppFeatureFlags? featureFlags,
   })  : _auth = auth ?? FirebaseAuth.instance,
         _r2UploadService = r2UploadService ?? R2UploadService(auth: auth),
-        _imagePicker = imagePicker ?? ImagePicker();
+        _imagePicker = imagePicker ?? ImagePicker(),
+        _featureFlags = featureFlags;
 
   Future<XFile?> pickImage(ImageSource source) {
     return _imagePicker.pickImage(
@@ -46,7 +50,7 @@ class ImageUploadService {
     required String routineType,
   }) async {
     _requireUid();
-    if (!FeatureFlags.enableR2Uploads) {
+    if (!(_featureFlags?.r2UploadsReady ?? FeatureFlags.enableR2Uploads)) {
       throw StateError('Image uploads are coming soon.');
     }
     final originalBytes = await pickedFile.readAsBytes();

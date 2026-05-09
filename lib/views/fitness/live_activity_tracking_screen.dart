@@ -17,8 +17,8 @@ import 'package:optivus2/views/fitness/finish_activity_confirmation_sheet.dart';
 
 enum _LiveMapProvider { mapbox, none }
 
-_LiveMapProvider get _liveMapProvider {
-  if (MapConfig.hasMapboxAccessToken) return _LiveMapProvider.mapbox;
+_LiveMapProvider _liveMapProvider({required bool mapboxReady}) {
+  if (mapboxReady) return _LiveMapProvider.mapbox;
   return _LiveMapProvider.none;
 }
 
@@ -36,6 +36,7 @@ class _LiveActivityTrackingScreenState
   Widget build(BuildContext context) {
     final active = ref.watch(activeActivityControllerProvider);
     final mapState = ref.watch(fitnessMapControllerProvider);
+    final mapboxReady = ref.watch(appFeatureFlagsProvider).mapboxMapsReady;
     final activity = active.activity;
 
     if (activity == null) {
@@ -83,7 +84,9 @@ class _LiveActivityTrackingScreenState
     _followLastPoint(lastPoint);
 
     final isGps = activity.isGpsActivity;
-    final mapProvider = isGps ? _liveMapProvider : _LiveMapProvider.none;
+    final mapProvider = isGps
+        ? _liveMapProvider(mapboxReady: mapboxReady)
+        : _LiveMapProvider.none;
     final showMapControls = mapProvider != _LiveMapProvider.none;
 
     return PopScope(

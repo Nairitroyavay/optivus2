@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:optivus2/core/config/app_config.dart';
 import 'package:optivus2/services/firestore_service.dart';
 import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/services/streak_service.dart';
@@ -55,6 +56,17 @@ final remoteConfigServiceProvider = Provider<RemoteConfigService>(
 /// reaching into Firebase directly.
 final appRemoteConfigProvider = Provider<AppRemoteConfig>(
   (_) => AppRemoteConfig.defaults(),
+);
+
+final appBuildConfigProvider = Provider<AppBuildConfig>(
+  (_) => AppBuildConfig.current,
+);
+
+final appFeatureFlagsProvider = Provider<AppFeatureFlags>(
+  (ref) => AppFeatureFlags.fromConfig(
+    build: ref.watch(appBuildConfigProvider),
+    remote: ref.watch(appRemoteConfigProvider),
+  ),
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +134,7 @@ final eventOrchestratorProvider = Provider<EventOrchestrator>((ref) {
     habitService: ref.read(habitServiceProvider),
     notificationService: ref.read(notificationServiceProvider),
     coachService: ref.read(coachServiceProvider),
+    featureFlags: ref.watch(appFeatureFlagsProvider),
   );
   orchestrator.init();
   ref.onDispose(orchestrator.dispose);
@@ -144,6 +157,7 @@ final coachServiceProvider = Provider<CoachService>(
     streakService: ref.read(streakServiceProvider),
     habitService: ref.read(habitServiceProvider),
     userRepo: ref.read(userRepositoryProvider),
+    featureFlags: ref.watch(appFeatureFlagsProvider),
   ),
 );
 
@@ -154,7 +168,11 @@ final userRepositoryProvider = Provider<UserRepository>(
 
 /// Routine state persistence (save / load RoutineState).
 final routineRepositoryProvider = Provider<RoutineRepository>(
-  (ref) => RoutineRepository(ref.read(firestoreServiceProvider)),
+  (ref) => RoutineRepository(
+    ref.read(firestoreServiceProvider),
+    buildConfig: ref.watch(appBuildConfigProvider),
+    featureFlags: ref.watch(appFeatureFlagsProvider),
+  ),
 );
 
 /// Real-time stream of today's Firestore-backed tasks.
@@ -480,6 +498,7 @@ final fitnessEventServiceProvider = Provider<FitnessEventService>((ref) {
 final fitnessAiCoachServiceProvider = Provider<FitnessAICoachService>((ref) {
   return FitnessAICoachService(
     firestoreService: ref.read(firestoreServiceProvider),
+    featureFlags: ref.watch(appFeatureFlagsProvider),
   );
 });
 

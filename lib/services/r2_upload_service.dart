@@ -3,30 +3,34 @@ import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:optivus2/core/config/app_config.dart';
 
 class R2UploadService {
-  static const String signedUploadEndpoint = String.fromEnvironment(
-    'R2_SIGNED_UPLOAD_ENDPOINT',
-  );
-  static const String deleteUploadEndpoint = String.fromEnvironment(
-    'R2_DELETE_UPLOAD_ENDPOINT',
-  );
-
   final FirebaseAuth _auth;
   final http.Client _client;
+  final R2EndpointConfig _config;
 
   R2UploadService({
     FirebaseAuth? auth,
     http.Client? client,
+    R2EndpointConfig? config,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _client = client ?? http.Client();
+        _client = client ?? http.Client(),
+        _config = config ?? AppBuildConfig.current.r2;
+
+  static String get signedUploadEndpoint =>
+      AppBuildConfig.current.r2.normalizedSignedUploadEndpoint;
+
+  static String get deleteUploadEndpoint =>
+      AppBuildConfig.current.r2.normalizedDeleteUploadEndpoint;
 
   Future<Map<String, dynamic>> uploadBytes({
     required Uint8List bytes,
     required String routineType,
     required String contentType,
   }) async {
-    if (signedUploadEndpoint.trim().isEmpty) {
+    final signedEndpoint = _config.normalizedSignedUploadEndpoint;
+    if (signedEndpoint.isEmpty) {
       throw StateError('Cloudflare R2 upload endpoint is not configured.');
     }
 
@@ -42,7 +46,7 @@ class R2UploadService {
     final objectKey = 'users/$uid/uploads/$safeRoutineType/$timestamp.jpg';
 
     final signedResponse = await _client.post(
-      Uri.parse(signedUploadEndpoint),
+      Uri.parse(signedEndpoint),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
@@ -93,13 +97,14 @@ class R2UploadService {
     final objectKey = metadata?['objectKey']?.toString() ??
         metadata?['path']?.toString() ??
         '';
-    if (objectKey.isEmpty || deleteUploadEndpoint.trim().isEmpty) return;
+    final deleteEndpoint = _config.normalizedDeleteUploadEndpoint;
+    if (objectKey.isEmpty || deleteEndpoint.isEmpty) return;
 
     final user = _auth.currentUser;
     if (user == null) return;
     final token = await user.getIdToken();
     await _client.post(
-      Uri.parse(deleteUploadEndpoint),
+      Uri.parse(deleteEndpoint),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',

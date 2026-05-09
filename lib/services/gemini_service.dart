@@ -5,13 +5,10 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:optivus2/core/config/app_config.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/services/event_service.dart';
 
-const String _coachReplyEndpoint =
-    String.fromEnvironment('COACH_REPLY_ENDPOINT');
-const String _aiGenerateEndpoint =
-    String.fromEnvironment('AI_GENERATE_ENDPOINT');
 const String _localRunDartDefines = 'Required local run flags:\n'
     '--dart-define=COACH_REPLY_ENDPOINT=https://...\n'
     '--dart-define=AI_GENERATE_ENDPOINT=https://...\n'
@@ -53,12 +50,17 @@ class CoachReplyResult {
 class GeminiService {
   // Singleton instance
   static final GeminiService _instance = GeminiService._internal();
+  final AppBuildConfig _buildConfig;
 
   factory GeminiService() {
     return _instance;
   }
 
-  GeminiService._internal();
+  GeminiService._internal() : _buildConfig = AppBuildConfig.current;
+
+  GeminiService.forConfig({
+    required AppBuildConfig buildConfig,
+  }) : _buildConfig = buildConfig;
 
   /// Interactive coach reply via the Cloudflare `coachReply` endpoint.
   ///
@@ -71,7 +73,7 @@ class GeminiService {
     required String mode,
   }) async {
     final decoded = await _postAuthenticatedJson(
-      endpoint: _coachReplyEndpoint,
+      endpoint: _buildConfig.cloudflare.normalizedCoachReplyEndpoint,
       dartDefineName: 'COACH_REPLY_ENDPOINT',
       endpointLabel: 'Coach reply endpoint',
       payload: {
@@ -98,7 +100,7 @@ class GeminiService {
     List<Map<String, dynamic>>? history,
   }) async {
     final decoded = await _postAuthenticatedJson(
-      endpoint: _aiGenerateEndpoint,
+      endpoint: _buildConfig.cloudflare.normalizedAiGenerateEndpoint,
       dartDefineName: 'AI_GENERATE_ENDPOINT',
       endpointLabel: 'AI generation endpoint',
       payload: {
@@ -142,7 +144,7 @@ class GeminiService {
     );
 
     final decoded = await _postAuthenticatedJson(
-      endpoint: _aiGenerateEndpoint,
+      endpoint: _buildConfig.cloudflare.normalizedAiGenerateEndpoint,
       dartDefineName: 'AI_GENERATE_ENDPOINT',
       endpointLabel: 'AI generation endpoint',
       payload: {

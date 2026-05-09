@@ -1,19 +1,12 @@
-import 'dart:convert';
 import 'dart:ui';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
-import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'package:optivus2/services/image_upload_service.dart';
 import 'package:image_picker/image_picker.dart';
-
-const String _eatingRoutineImportEndpoint =
-    String.fromEnvironment('ROUTINE_IMPORT_ENDPOINT');
 
 String _formatTimeFromStart(double hoursFrom6AM) {
   int totalMinutes = ((hoursFrom6AM + 6) * 60).round();
@@ -792,7 +785,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
 
   Future<void> _showImportOptions() async {
     if (_isImportingPhoto) return;
-    if (!FeatureFlags.hostelMessImageImportReady) {
+    if (!ref.read(appFeatureFlagsProvider).hostelMessImageImportReady) {
       _showImageImportComingSoon();
       return;
     }
@@ -905,66 +898,14 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     required String storagePath,
     required Map<String, dynamic> imageMetadata,
   }) async {
-    if (_eatingRoutineImportEndpoint.isEmpty) {
-      throw Exception('ROUTINE_IMPORT_ENDPOINT is not configured.');
-    }
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      throw Exception('Cannot call routine import endpoint without auth token');
-    }
-    final idToken = await user.getIdToken();
-    if (idToken == null || idToken.isEmpty) {
-      throw Exception('Cannot call routine import endpoint without auth token');
-    }
-
-    final response = await http.post(
-      Uri.parse(_eatingRoutineImportEndpoint),
-      headers: {
-        'Authorization': 'Bearer $idToken',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'userId': user.uid,
-        'routineType': 'eating',
-        'mode': 'eating_mess_photo',
-        'commit': false,
+    return ref.read(routineRepositoryProvider).previewRoutineImport(
+      routineType: 'eating',
+      mode: 'eating_mess_photo',
+      imageMetadata: {
+        ...imageMetadata,
         'storagePath': storagePath,
-        'imageMetadata': imageMetadata,
-      }),
+      },
     );
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Routine import endpoint failed: '
-        '${response.statusCode} ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map) {
-      throw Exception('Routine import endpoint returned invalid JSON');
-    }
-
-    final data = Map<String, dynamic>.from(decoded);
-    final raw = data['weeklyGrid'] ?? data['templates'] ?? data['items'];
-    if (raw is! List) return const [];
-    final suggestionIds = data['suggestionIds'] is List
-        ? (data['suggestionIds'] as List)
-            .map((item) => item.toString())
-            .toList()
-        : const <String>[];
-    final templates = <Map<String, dynamic>>[];
-    for (var i = 0; i < raw.length; i++) {
-      final item = raw[i];
-      if (item is! Map) continue;
-      final template = Map<String, dynamic>.from(item);
-      if (i < suggestionIds.length && suggestionIds[i].trim().isNotEmpty) {
-        template['_suggestionId'] = suggestionIds[i].trim();
-      }
-      templates.add(template);
-    }
-    return templates;
   }
 
   Future<void> _deleteUploadedImageQuietly(
@@ -1379,9 +1320,10 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isImportingPhoto ? null : _showImportOptions,
         icon: const Icon(Icons.auto_awesome_rounded),
-        label: Text(FeatureFlags.hostelMessImageImportReady
-            ? 'AI / Menu'
-            : 'Coming soon'),
+        label: Text(
+            ref.watch(appFeatureFlagsProvider).hostelMessImageImportReady
+                ? 'AI / Menu'
+                : 'Coming soon'),
       ),
       body: LiquidBg(
         child: Stack(children: [

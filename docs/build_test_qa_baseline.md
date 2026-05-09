@@ -73,6 +73,29 @@ work when AI, R2, and Mapbox flags are missing.
 | Skin product image import | `ENABLE_SKIN_PRODUCT_IMAGE_IMPORT` | false |
 | AI coach Worker | `ENABLE_AI_COACH_WORKER` | false |
 
+## Remote Config Kill Switches
+
+These Remote Config defaults are intentionally release-safe. A Worker-backed
+feature is available only when its dart-define endpoint/compile flag and its
+Remote Config kill switch are both enabled.
+
+| Key | Default baseline |
+| --- | --- |
+| `coach_enabled` | true |
+| `ai_features_enabled` | false |
+| `ai_coach_messages_enabled` | false |
+| `ai_routine_suggestions_enabled` | false |
+| `ai_identity_scoring_enabled` | false |
+| `fitness_ai_feedback_enabled` | false |
+| `routine_import_worker_enabled` | false |
+| `r2_uploads_enabled` | false |
+| `profile_image_upload_enabled` | false |
+| `image_routine_import_enabled` | false |
+| `class_timetable_image_import_enabled` | false |
+| `hostel_mess_image_import_enabled` | false |
+| `skin_product_image_import_enabled` | false |
+| `mapbox_maps_enabled` | true, but still requires `MAPBOX_ACCESS_TOKEN` |
+
 ## Current Skipped Flutter Tests
 
 `flutter test` currently reports 155 skipped tests. They are intentional

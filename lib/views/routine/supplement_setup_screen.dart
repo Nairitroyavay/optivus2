@@ -184,12 +184,17 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
   Future<List<Map<String, dynamic>>> _previewSupplementTemplates(
     String sourceText,
   ) async {
-    final generated =
-        await ref.read(routineRepositoryProvider).previewRoutineImport(
-              routineType: 'supplements',
-              mode: 'supplement_text',
-              sourceText: sourceText,
-            );
+    List<Map<String, dynamic>> generated = const [];
+    try {
+      generated =
+          await ref.read(routineRepositoryProvider).previewRoutineImport(
+                routineType: 'supplements',
+                mode: 'supplement_text',
+                sourceText: sourceText,
+              );
+    } catch (e) {
+      debugPrint('[SupplementSetup] routineImport preview failed: $e');
+    }
     return generated.isNotEmpty
         ? generated.map(_normalizeSupplementTemplate).toList()
         : _supplementsFromText(sourceText)

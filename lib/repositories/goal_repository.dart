@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/config/app_config.dart';
 import '../core/constants/event_names.dart';
 import '../models/goal_model.dart';
 import '../services/event_service.dart';
@@ -53,13 +54,16 @@ class GoalRepository {
   final FirestoreService _service;
   final EventService? _eventService;
   final GeminiService _geminiService;
+  final AppFeatureFlags? _featureFlags;
 
   GoalRepository(
     this._service, {
     EventService? eventService,
     GeminiService? geminiService,
+    AppFeatureFlags? featureFlags,
   })  : _eventService = eventService,
-        _geminiService = geminiService ?? GeminiService();
+        _geminiService = geminiService ?? GeminiService(),
+        _featureFlags = featureFlags;
 
   Future<List<GoalModel>> getGoals() => _service.getGoals();
 
@@ -368,6 +372,9 @@ Return 2 short sentences. No markdown. No shame or judgment.
 ''';
 
     try {
+      if (!(_featureFlags?.aiIdentitySummariesReady ?? false)) {
+        throw StateError('AI identity summaries are disabled.');
+      }
       final body = await _geminiService.generate(
         systemPrompt:
             'You write kind, concise identity reflection cards for Optivus.',
