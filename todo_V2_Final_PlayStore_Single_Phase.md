@@ -558,7 +558,7 @@ Firestore schema and event tests.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -656,16 +656,26 @@ Firestore rules/index deploy is allowed only as `firebase deploy --only firestor
 - Automated: rules/schema tests if available; `flutter test` for affected services.
 - Manual: review each service query against indexes and rules.
 
+#### Verified completion
+
+- Completed on 2026-05-09.
+- Verified with `python3 scripts/spark_guardrail_scan.py`.
+- Verified with `flutter analyze`.
+- Verified with `flutter test test/services/firestore_schema_contract_test.dart`.
+- Verified with `flutter test`.
+- Verified with `flutter build appbundle --release`.
+- No Firebase deploy was performed.
+
 #### Estimate
 
 1 day
 
 #### Done Criteria
 
-- [ ] Active Firestore comments are Spark-only.
-- [ ] Schema docs match service constants.
-- [ ] Indexes match current queries.
-- [ ] Export/delete request paths are explicit and safe.
+- [x] Active Firestore comments are Spark-only.
+- [x] Schema docs match service constants.
+- [x] Indexes match current queries.
+- [x] Export/delete request paths are explicit and safe.
 
 ### Task 1.7 — Fill core model contract gaps
 

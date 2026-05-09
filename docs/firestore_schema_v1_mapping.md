@@ -15,6 +15,7 @@ All user-owned application data is scoped under `/users/{uid}`. Clients must nev
 | `/users/{uid}/tasks/{taskId}` | Materialized scheduled task docs |
 | `/users/{uid}/task_outcomes/{taskId}` | Completed/abandoned task outcome summaries |
 | `/users/{uid}/habits/{habitId}` | Habit definitions |
+| `/users/{uid}/habits/{habitId}/logs/{date}/items/{itemId}` | Legacy habit log item copy, derived from canonical `habit_logs` |
 | `/users/{uid}/habit_logs/{logId}` | Canonical habit log entries |
 | `/users/{uid}/streaks/{streakId}` | Habit streak state |
 | `/users/{uid}/goals/{goalId}` | Goal definitions |
@@ -26,6 +27,7 @@ All user-owned application data is scoped under `/users/{uid}`. Clients must nev
 | `/users/{uid}/suggestions/{suggestionId}` | Deterministic or AI-generated suggestions |
 | `/users/{uid}/coach_messages/{messageId}` | Coach conversation messages |
 | `/users/{uid}/coach_speak_log/{logId}` | Coach/rule decision audit |
+| `/users/{uid}/coach_chats/{chatId}/turns/{turnId}` | Legacy fallback coach turns |
 | `/users/{uid}/ai_context_snapshots/{snapshotId}` | Aggregated AI context snapshots |
 | `/users/{uid}/dailySummaries/{date}` | Daily rollups keyed by `YYYY-MM-DD` |
 | `/users/{uid}/weeklySummaries/{weekKey}` | Weekly rollups keyed by `YYYY-Www` |
@@ -33,6 +35,15 @@ All user-owned application data is scoped under `/users/{uid}`. Clients must nev
 | `/users/{uid}/data_exports/{exportId}` | User data export requests |
 | `/users/{uid}/deletion_requests/{requestId}` | Account deletion requests |
 | `/users/{uid}/usage/{monthKey}` | Monthly usage counters keyed by `YYYY-MM` |
+| `/users/{uid}/screenTimeRaw/{logId}` | Raw daily screen-time imports |
+| `/users/{uid}/money_saved/{date}` | Money-saved daily aggregates and manual deposits |
+| `/users/{uid}/money_savings_goals/{goalId}` | Money-saved tracker goals |
+| `/users/{uid}/fitnessActivities/{activityId}` | Fitness activity state and summary metrics |
+| `/users/{uid}/fitnessActivities/{activityId}/routePoints/{pointId}` | Route polyline points; numeric GPS metadata only |
+| `/users/{uid}/fitnessActivities/{activityId}/splits/{splitId}` | Activity split/lap summaries |
+| `/users/{uid}/fitnessActivities/{activityId}/heartRateSamples/{sampleId}` | Optional heart-rate samples |
+| `/users/{uid}/fitnessStats/{periodKey}` | Daily/weekly/monthly fitness aggregates |
+| `/users/{uid}/fitnessGoals/{goalId}` | Fitness goals |
 
 ## Routine Current
 
@@ -198,6 +209,41 @@ Event envelope:
 
 Events are create-only from clients. Both event collections receive the same envelope in one transaction or batch.
 
+`timestamp` is the canonical event time field. New queries and indexes use `timestamp`. Any `ts`-only legacy event documents require a backfill before they appear in new aggregator queries.
+
+## R2 Metadata
+
+Image/file bytes are not stored in Firestore. Upload flows use Cloudflare R2 through Worker-issued signed URLs and persist only small metadata maps, for example:
+
+```js
+{
+  imageMetadata: {
+    objectKey: "users/{uid}/uploads/classes/1710000000000.jpg",
+    path: "users/{uid}/uploads/classes/1710000000000.jpg",
+    sizeBytes: 245000,
+    mimeType: "image/jpeg",
+    provider: "cloudflare_r2"
+  }
+}
+```
+
+Do not store base64, raw bytes, audio blobs, image blobs, or data URLs in Firestore. `firestore.rules` deny common top-level blob/base64 field names for client writes, and deny the same first-level keys inside event payloads. Rules do not recursively inspect every nested map, so model/service code must keep nested metadata maps to object keys and small descriptors only.
+
+## Account Export and Deletion Requests
+
+Paths:
+
+| Path | Client access | Required create fields |
+| --- | --- | --- |
+| `/users/{uid}/data_exports/{exportId}` | Owner read/create only; no update/delete | `uid`, `requestedAt`, `status`, `schemaVersion` |
+| `/users/{uid}/deletion_requests/{requestId}` | Owner read/create only; no update/delete | `uid`, `requestedAt`, `status`, `schemaVersion` |
+
+Allowed client-created statuses are `requested` and `pending`. Clients cannot write export result objects, deletion completion markers, or large file/blob fields to these request documents.
+
+Client-side cleanup is best-effort only. The app may delete rules-allowed user data collections, including known nested fitness, coach, and legacy habit log copies, but it must skip append-only/request collections: `events`, `events_recent`, `data_exports`, and `deletion_requests`. Full account deletion is a later account lifecycle task started by creating a `deletion_requests` document.
+
+Legacy habit log item copies are exported and deleted through their canonical `/users/{uid}/habit_logs/{logId}` rows, using `habitId` and `occurredAt` to locate `/users/{uid}/habits/{habitId}/logs/{date}/items/{logId}`. Orphaned legacy nested item docs with no canonical `habit_logs` row are not discoverable by the client SDK and require the later account lifecycle worker/backfill.
+
 ## Rules Summary
 
 Rules live in `firestore.rules`.
@@ -205,11 +251,16 @@ Rules live in `firestore.rules`.
 | Scope | Client access |
 | --- | --- |
 | `/users/{uid}` | Owner read/create/update/delete; root update cannot alter `uid`, `createdAt`, or `schemaVersion` |
-| `/users/{uid}/{collection}/{doc...}` | Owner read/write for user-owned app data when an optional `uid` field matches `{uid}` |
+| `/users/{uid}/{knownCollection}/{doc}` | Owner read/write for whitelisted top-level user-owned app data when an optional `uid` field matches `{uid}` |
 | `/users/{uid}/events/{eventId}` | Owner read/create only; envelope is required; `eventId` and `uid` must match |
 | `/users/{uid}/events_recent/{eventId}` | Same as `events` |
-| `/users/{uid}/data_exports/{exportId}` | Owner read/create only |
-| `/users/{uid}/deletion_requests/{requestId}` | Owner read/create only |
+| `/users/{uid}/data_exports/{exportId}` | Owner read/create only; constrained request schema |
+| `/users/{uid}/deletion_requests/{requestId}` | Owner read/create only; constrained request schema |
+| `/users/{uid}/fitnessActivities/{activityId}/routePoints/{pointId}` | Owner read/create/update/delete; no blob/base64 fields |
+| `/users/{uid}/fitnessActivities/{activityId}/splits/{splitId}` | Owner read/create/update/delete; no blob/base64 fields |
+| `/users/{uid}/fitnessActivities/{activityId}/heartRateSamples/{sampleId}` | Owner read/create/update/delete; no blob/base64 fields |
+| `/users/{uid}/habits/{habitId}/logs/{date}/items/{itemId}` | Owner read/create/update/delete; no blob/base64 fields |
+| `/users/{uid}/coach_chats/{chatId}/turns/{turnId}` | Owner read/create/update/delete; no blob/base64 fields |
 | `/app_config/{doc}` | Authenticated read only |
 | `/crisis_handoffs/{doc}` | Client access denied |
 
@@ -244,13 +295,13 @@ Indexes live in `firestore.indexes.json`.
 | Fields | Query |
 | --- | --- |
 | `status ASC`, `createdAt DESC` | Fetch pending/accepted suggestions ordered newest first |
+| `status ASC`, `targetSurface ASC` | Fetch pending suggestions for a specific UI surface |
 
 ### coach_messages
 
 | Fields | Query |
 | --- | --- |
 | `sessionId ASC`, `createdAt ASC` | Load all messages in a coach session in chronological order |
-| `threadId ASC`, `ts DESC` | Load messages in a thread ordered newest first (used by thread-view UI) |
 | `createdAt DESC` | Global feed of coach messages newest first |
 
 ### scheduled_notifications
@@ -260,12 +311,20 @@ Indexes live in `firestore.indexes.json`.
 | `status ASC`, `scheduledFor ASC` | Legacy: fetch pending notifications by legacy `scheduledFor` field |
 | `status ASC`, `fireAt ASC` | Fetch pending notifications by `fireAt` (v1 field, used by notification dispatcher) |
 | `state ASC`, `fireAt ASC` | Fetch pending notifications by `state` (runtime field written alongside `status` during migration) |
+| `taskId ASC`, `status ASC` | Cancel pending notifications associated with a task |
+| `routineTemplateId ASC`, `scheduledDate ASC`, `scheduledTime ASC`, `category ASC`, `status ASC` | Detect duplicate pending routine notifications |
 
 ### notificationLog
 
 | Fields | Query |
 | --- | --- |
-| `notifId ASC`, `ts DESC` | Fetch delivery/tap/suppression audit entries for a notification, newest first |
+| `timestamp DESC` | Notification center feed newest first |
+
+### dailySummaries
+
+| Fields | Query |
+| --- | --- |
+| `date DESC` | Fetch recent daily summaries newest first |
 
 ### weeklySummaries
 
@@ -278,8 +337,18 @@ Indexes live in `firestore.indexes.json`.
 | Collection group | Fields | Query |
 | --- | --- | --- |
 | `habits` | `type ASC`, `createdAt ASC` | Fetch habits by type in creation order |
+| `habits` | `trackerType ASC`, `state ASC` | Fetch active tracker-specific habits |
 | `habit_logs` | `habitId ASC`, `occurredAt ASC` | Habit history oldest-first for streak calculation |
 | `habit_logs` | `habitId ASC`, `occurredAt DESC` | Habit history newest-first for display |
 | `habit_logs` | `occurredAt DESC` | Global log feed newest first |
+| `habit_logs` | `logType ASC`, `occurredAt ASC` | Fetch slip logs for a day |
+| `habit_logs` | `habitId ASC`, `logType ASC`, `occurredAt ASC` | Fetch typed logs for one habit in a day |
 | `streaks` | `habitId ASC`, `lastHitDate DESC` | Current streak state per habit |
+| `streaks` | `state ASC`, `pauseReason ASC` | Fetch paused ghost streaks for cleanup |
 | `coach_speak_log` | `decision ASC`, `createdAt DESC` | Filter coach decisions by outcome, newest first |
+
+### fitnessActivities
+
+| Fields | Query |
+| --- | --- |
+| `status ASC`, `completedAt ASC` | Recompute daily fitness stats from completed activities |

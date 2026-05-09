@@ -29,6 +29,7 @@ class FirestoreService {
   static const String kSuggestions = 'suggestions';
   static const String kCoachMessages = 'coach_messages';
   static const String kCoachSpeakLog = 'coach_speak_log';
+  static const String kCoachChats = 'coach_chats';
   static const String kAiContextSnapshots = 'ai_context_snapshots';
   static const String kDailySummaries = 'dailySummaries';
   static const String kWeeklySummaries = 'weeklySummaries';
@@ -36,11 +37,20 @@ class FirestoreService {
   static const String kDataExports = 'data_exports';
   static const String kDeletionRequests = 'deletion_requests';
   static const String kUsage = 'usage';
+  static const String kScreenTimeRaw = 'screenTimeRaw';
+  static const String kMoneySaved = 'money_saved';
+  static const String kMoneySavingsGoals = 'money_savings_goals';
 
   // ── Fitness engine ─────────────────────────────────────────────────────────
   static const String kFitnessActivities = 'fitnessActivities';
   static const String kFitnessStats = 'fitnessStats';
   static const String kFitnessGoals = 'fitnessGoals';
+  static const String kFitnessRoutePoints = 'routePoints';
+  static const String kFitnessSplits = 'splits';
+  static const String kFitnessHeartRateSamples = 'heartRateSamples';
+  static const String kHabitLegacyLogs = 'logs';
+  static const String kHabitLegacyItems = 'items';
+  static const String kCoachChatTurns = 'turns';
 
   // ── All user-owned top-level collection IDs ────────────────────────────────
   // Keep in sync with the documented schema paths and with Firestore Rules.
@@ -62,6 +72,7 @@ class FirestoreService {
     kSuggestions,
     kCoachMessages,
     kCoachSpeakLog,
+    kCoachChats,
     kAiContextSnapshots,
     kDailySummaries,
     kWeeklySummaries,
@@ -69,12 +80,23 @@ class FirestoreService {
     kDataExports,
     kDeletionRequests,
     kUsage,
+    kScreenTimeRaw,
+    kMoneySaved,
+    kMoneySavingsGoals,
     kFitnessActivities,
     kFitnessStats,
     kFitnessGoals,
   ];
 
+  static const List<String> clientRestrictedCollectionIds = [
+    kEvents,
+    kEventsRecent,
+    kDataExports,
+    kDeletionRequests,
+  ];
+
   static const int _deleteBatchSize = 400;
+  static const int _nestedParentDeleteBatchSize = 200;
 
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
@@ -299,6 +321,25 @@ class FirestoreService {
 
   // ── Account Export & Deletion ─────────────────────────────────────────────
 
+  List<String> get clientDeletableCollectionIds => userOwnedCollectionIds
+      .where((collectionId) =>
+          !clientRestrictedCollectionIds.contains(collectionId))
+      .toList(growable: false);
+
+  Future<String> requestAccountDeletion({String? reason}) async {
+    final currentUid = uid;
+    final requestId = 'delete_${DateTime.now().toUtc().microsecondsSinceEpoch}';
+    await userSubdocument(kDeletionRequests, requestId).set({
+      'requestId': requestId,
+      'uid': currentUid,
+      'requestedAt': FieldValue.serverTimestamp(),
+      'status': 'requested',
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      'schemaVersion': 1,
+    });
+    return requestId;
+  }
+
   Future<String> exportUserData() async {
     final currentUid = uid;
     final exportData = <String, dynamic>{
@@ -316,35 +357,229 @@ class FirestoreService {
     };
 
     for (final collectionId in userOwnedCollectionIds) {
-      final snap = await userDoc
-          .collection(collectionId)
-          .orderBy(FieldPath.documentId)
-          .get();
-
-      exportData['collections'][collectionId] = snap.docs
-          .map(
-            (doc) => {
-              'id': doc.id,
-              'path': doc.reference.path,
-              'data': _toJsonValue(doc.data()),
-            },
-          )
-          .toList();
+      exportData['collections'][collectionId] =
+          await _exportCollectionDocuments(
+        collectionId,
+        userDoc.collection(collectionId),
+      );
     }
 
     return const JsonEncoder.withIndent('  ').convert(exportData);
   }
 
+  /// Best-effort client cleanup for data that rules allow clients to delete.
+  ///
+  /// This is not full account deletion. Append-only audit/request collections
+  /// are intentionally skipped because Firestore Rules deny client deletion.
+  /// Full account deletion is handled by a later account lifecycle flow that
+  /// starts with [requestAccountDeletion].
   Future<void> deleteUserOwnedData() async {
-    for (final collectionId in userOwnedCollectionIds) {
-      await _deleteCollectionDocuments(userDoc.collection(collectionId));
+    for (final collectionId in clientDeletableCollectionIds) {
+      await _deleteCollectionDocuments(
+        collectionId,
+        userDoc.collection(collectionId),
+      );
     }
-    await userDoc.delete();
   }
 
+  @Deprecated(
+    'Use requestAccountDeletion for account deletion, or '
+    'deleteUserOwnedData for best-effort client cleanup. This helper is not '
+    'full account deletion.',
+  )
   Future<void> deleteAllUserData() => deleteUserOwnedData();
 
+  Future<List<Map<String, dynamic>>> _exportCollectionDocuments(
+    String collectionId,
+    CollectionReference<Map<String, dynamic>> collection,
+  ) async {
+    final snap = await collection.orderBy(FieldPath.documentId).get();
+    final docs = <Map<String, dynamic>>[];
+
+    for (final doc in snap.docs) {
+      final nested = await _exportKnownNestedSubcollections(
+        collectionId,
+        doc.reference,
+      );
+      docs.add({
+        'id': doc.id,
+        'path': doc.reference.path,
+        'data': _toJsonValue(doc.data()),
+        if (nested.isNotEmpty) 'subcollections': nested,
+      });
+    }
+
+    return docs;
+  }
+
+  Future<Map<String, dynamic>> _exportKnownNestedSubcollections(
+    String collectionId,
+    DocumentReference<Map<String, dynamic>> parent,
+  ) async {
+    final nested = <String, dynamic>{};
+
+    if (collectionId == kFitnessActivities) {
+      for (final subcollectionId in [
+        kFitnessRoutePoints,
+        kFitnessSplits,
+        kFitnessHeartRateSamples,
+      ]) {
+        nested[subcollectionId] = await _exportSubcollectionDocuments(
+          parent.collection(subcollectionId),
+        );
+      }
+    } else if (collectionId == kCoachChats) {
+      nested[kCoachChatTurns] = await _exportSubcollectionDocuments(
+        parent.collection(kCoachChatTurns),
+      );
+    } else if (collectionId == kHabits) {
+      nested[kHabitLegacyLogs] = await _exportHabitLegacyLogs(parent);
+    }
+
+    nested.removeWhere((_, value) => value is List && value.isEmpty);
+    return nested;
+  }
+
+  Future<List<Map<String, dynamic>>> _exportHabitLegacyLogs(
+    DocumentReference<Map<String, dynamic>> habitRef,
+  ) async {
+    final canonicalLogs = await userCollection(kHabitLogs)
+        .where('habitId', isEqualTo: habitRef.id)
+        .get();
+    final byDate = <String, List<Map<String, dynamic>>>{};
+
+    for (final logDoc in canonicalLogs.docs) {
+      final dateKey = _dateKeyFromValue(logDoc.data()['occurredAt']);
+      if (dateKey == null) continue;
+
+      final itemRef = habitRef
+          .collection(kHabitLegacyLogs)
+          .doc(dateKey)
+          .collection(kHabitLegacyItems)
+          .doc(logDoc.id);
+      final itemDoc = await itemRef.get();
+      if (!itemDoc.exists) continue;
+
+      byDate.putIfAbsent(dateKey, () => <Map<String, dynamic>>[]).add({
+        'id': itemDoc.id,
+        'path': itemDoc.reference.path,
+        'data': _toJsonValue(itemDoc.data()),
+      });
+    }
+
+    final entries = byDate.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return entries
+        .map(
+          (entry) => {
+            'id': entry.key,
+            'path': habitRef.collection(kHabitLegacyLogs).doc(entry.key).path,
+            'subcollections': {
+              kHabitLegacyItems: entry.value,
+            },
+          },
+        )
+        .toList();
+  }
+
+  Future<void> _deleteHabitLegacyLogs(
+    DocumentReference<Map<String, dynamic>> habitRef,
+  ) async {
+    final canonicalLogs = await userCollection(kHabitLogs)
+        .where('habitId', isEqualTo: habitRef.id)
+        .get();
+
+    for (var start = 0;
+        start < canonicalLogs.docs.length;
+        start += _nestedParentDeleteBatchSize) {
+      final batch = _db.batch();
+      final dateDocsDeletedInBatch = <String>{};
+      for (final logDoc in canonicalLogs.docs
+          .skip(start)
+          .take(_nestedParentDeleteBatchSize)) {
+        final dateKey = _dateKeyFromValue(logDoc.data()['occurredAt']);
+        if (dateKey == null) continue;
+        final logDateRef = habitRef.collection(kHabitLegacyLogs).doc(dateKey);
+        batch.delete(
+          logDateRef.collection(kHabitLegacyItems).doc(logDoc.id),
+        );
+        if (dateDocsDeletedInBatch.add(dateKey)) {
+          batch.delete(logDateRef);
+        }
+      }
+      await batch.commit();
+    }
+  }
+
+  String? _dateKeyFromValue(Object? value) {
+    DateTime? date;
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
+    } else if (value is String) {
+      date = DateTime.tryParse(value);
+    }
+    if (date == null) return null;
+    return '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<List<Map<String, dynamic>>> _exportSubcollectionDocuments(
+    CollectionReference<Map<String, dynamic>> collection,
+  ) async {
+    final snap = await collection.orderBy(FieldPath.documentId).get();
+    return snap.docs
+        .map(
+          (doc) => {
+            'id': doc.id,
+            'path': doc.reference.path,
+            'data': _toJsonValue(doc.data()),
+          },
+        )
+        .toList();
+  }
+
   Future<void> _deleteCollectionDocuments(
+    String collectionId,
+    CollectionReference<Map<String, dynamic>> collection,
+  ) async {
+    while (true) {
+      final snap = await collection.limit(_deleteBatchSize).get();
+      if (snap.docs.isEmpty) return;
+
+      final batch = _db.batch();
+      for (final doc in snap.docs) {
+        await _deleteKnownNestedSubcollections(collectionId, doc.reference);
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      if (snap.docs.length < _deleteBatchSize) return;
+    }
+  }
+
+  Future<void> _deleteKnownNestedSubcollections(
+    String collectionId,
+    DocumentReference<Map<String, dynamic>> parent,
+  ) async {
+    if (collectionId == kFitnessActivities) {
+      for (final subcollectionId in [
+        kFitnessRoutePoints,
+        kFitnessSplits,
+        kFitnessHeartRateSamples,
+      ]) {
+        await _deleteNestedSubcollection(parent.collection(subcollectionId));
+      }
+    } else if (collectionId == kCoachChats) {
+      await _deleteNestedSubcollection(parent.collection(kCoachChatTurns));
+    } else if (collectionId == kHabits) {
+      await _deleteHabitLegacyLogs(parent);
+    }
+  }
+
+  Future<void> _deleteNestedSubcollection(
     CollectionReference<Map<String, dynamic>> collection,
   ) async {
     while (true) {

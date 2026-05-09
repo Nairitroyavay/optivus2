@@ -99,11 +99,36 @@
       ]
     },
     {
+      "collectionGroup": "habit_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "logType",    "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "habit_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "habitId",    "order": "ASCENDING" },
+        { "fieldPath": "logType",    "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "streaks",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "habitId",     "order": "ASCENDING" },
         { "fieldPath": "lastHitDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "streaks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "state",       "order": "ASCENDING" },
+        { "fieldPath": "pauseReason", "order": "ASCENDING" }
       ]
     },
     {
@@ -154,14 +179,6 @@
       ]
     },
     {
-      "collectionGroup": "coach_messages",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "threadId", "order": "ASCENDING" },
-        { "fieldPath": "ts",       "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "scheduled_notifications",
       "queryScope": "COLLECTION",
       "fields": [
@@ -170,11 +187,36 @@
       ]
     },
     {
+      "collectionGroup": "scheduled_notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "taskId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "scheduled_notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "routineTemplateId", "order": "ASCENDING" },
+        { "fieldPath": "scheduledDate",     "order": "ASCENDING" },
+        { "fieldPath": "scheduledTime",     "order": "ASCENDING" },
+        { "fieldPath": "category",          "order": "ASCENDING" },
+        { "fieldPath": "status",            "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "notificationLog",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "notifId", "order": "ASCENDING" },
-        { "fieldPath": "ts",      "order": "DESCENDING" }
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "dailySummaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "date", "order": "DESCENDING" }
       ]
     },
     {
@@ -198,6 +240,30 @@
       "fields": [
         { "fieldPath": "parentRoutine", "order": "ASCENDING" },
         { "fieldPath": "plannedStart",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "suggestions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",        "order": "ASCENDING" },
+        { "fieldPath": "targetSurface", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "habits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "trackerType", "order": "ASCENDING" },
+        { "fieldPath": "state",       "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "fitnessActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "completedAt", "order": "ASCENDING" }
       ]
     }
   ],

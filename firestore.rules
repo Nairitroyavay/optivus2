@@ -10,8 +10,86 @@ service cloud.firestore {
       return !('uid' in request.resource.data) || request.resource.data.uid == userId;
     }
 
+    function hasNoForbiddenBlobFields() {
+      return !request.resource.data.keys().hasAny([
+        'base64',
+        'imageBase64',
+        'audioBase64',
+        'blob',
+        'bytes',
+        'rawBytes',
+        'fileBytes',
+        'dataUrl',
+        'imageData',
+        'audioData'
+      ]);
+    }
+
+    function hasNoForbiddenEventPayloadFields() {
+      return request.resource.data.payload is map
+        && !request.resource.data.payload.keys().hasAny([
+          'base64',
+          'imageBase64',
+          'audioBase64',
+          'blob',
+          'bytes',
+          'rawBytes',
+          'fileBytes',
+          'dataUrl',
+          'imageData',
+          'audioData'
+        ]);
+    }
+
+    function isKnownUserCollection(collectionId) {
+      return collectionId in [
+        'profile',
+        'onboarding',
+        'routine',
+        'tasks',
+        'task_outcomes',
+        'habits',
+        'habit_logs',
+        'streaks',
+        'goals',
+        'identity_profile',
+        'events',
+        'events_recent',
+        'scheduled_notifications',
+        'notificationLog',
+        'suggestions',
+        'coach_messages',
+        'coach_speak_log',
+        'coach_chats',
+        'ai_context_snapshots',
+        'dailySummaries',
+        'weeklySummaries',
+        'devices',
+        'data_exports',
+        'deletion_requests',
+        'usage',
+        'screenTimeRaw',
+        'money_saved',
+        'money_savings_goals',
+        'fitnessActivities',
+        'fitnessStats',
+        'fitnessGoals'
+      ];
+    }
+
+    function isRestrictedUserCollection(collectionId) {
+      return collectionId in [
+        'events',
+        'events_recent',
+        'deletion_requests',
+        'data_exports'
+      ];
+    }
+
     function eventEnvelopeIsValid(userId) {
       return request.resource.data.uid == userId
+        && hasNoForbiddenBlobFields()
+        && hasNoForbiddenEventPayloadFields()
         && request.resource.data.keys().hasAll([
           'eventId',
           'eventName',
@@ -26,6 +104,52 @@ service cloud.firestore {
         ]);
     }
 
+    function exportRequestIsValid(userId, exportId) {
+      return request.resource.data.keys().hasOnly([
+          'exportId',
+          'uid',
+          'requestedAt',
+          'status',
+          'format',
+          'schemaVersion'
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'requestedAt',
+          'status',
+          'schemaVersion'
+        ])
+        && request.resource.data.uid == userId
+        && (!('exportId' in request.resource.data) || request.resource.data.exportId == exportId)
+        && request.resource.data.requestedAt is timestamp
+        && request.resource.data.status in ['requested', 'pending']
+        && request.resource.data.schemaVersion == 1
+        && hasNoForbiddenBlobFields();
+    }
+
+    function deletionRequestIsValid(userId, requestId) {
+      return request.resource.data.keys().hasOnly([
+          'requestId',
+          'uid',
+          'requestedAt',
+          'status',
+          'reason',
+          'schemaVersion'
+        ])
+        && request.resource.data.keys().hasAll([
+          'uid',
+          'requestedAt',
+          'status',
+          'schemaVersion'
+        ])
+        && request.resource.data.uid == userId
+        && (!('requestId' in request.resource.data) || request.resource.data.requestId == requestId)
+        && request.resource.data.requestedAt is timestamp
+        && request.resource.data.status in ['requested', 'pending']
+        && request.resource.data.schemaVersion == 1
+        && hasNoForbiddenBlobFields();
+    }
+
     function rootServerFieldsUnchanged() {
       return !request.resource.data.diff(resource.data).affectedKeys()
         .hasAny(['uid', 'createdAt', 'schemaVersion']);
@@ -34,31 +158,57 @@ service cloud.firestore {
     match /users/{userId} {
       // Root user document
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && hasValidOptionalUid(userId);
+      allow create: if isOwner(userId)
+        && hasValidOptionalUid(userId)
+        && hasNoForbiddenBlobFields();
       allow update: if isOwner(userId)
         && hasValidOptionalUid(userId)
+        && hasNoForbiddenBlobFields()
         && rootServerFieldsUnchanged();
       allow delete: if isOwner(userId);
 
-      // General subcollections — owner full access.
+      // Known user-owned subcollections — owner access.
       // Collections with tighter rules are carved out and matched below.
-      match /{collectionId}/{document=**} {
+      match /{collectionId}/{docId} {
         allow read: if isOwner(userId)
-          && !(collectionId in [
-            'events', 'events_recent',
-            'deletion_requests', 'data_exports'
-          ]);
+          && isKnownUserCollection(collectionId)
+          && !isRestrictedUserCollection(collectionId);
+        allow create, update: if isOwner(userId)
+          && isKnownUserCollection(collectionId)
+          && hasValidOptionalUid(userId)
+          && hasNoForbiddenBlobFields()
+          && !isRestrictedUserCollection(collectionId);
+        allow delete: if isOwner(userId)
+          && isKnownUserCollection(collectionId)
+          && !isRestrictedUserCollection(collectionId);
+      }
+
+      // ── Legacy habit nested logs ─────────────────────────────────────────
+      // Current habit logging dual-writes a canonical /habit_logs document
+      // plus this legacy item copy for backward-compatible tracker screens.
+      match /habits/{habitId}/logs/{logDate} {
+        allow read: if isOwner(userId);
         allow create, update: if isOwner(userId)
           && hasValidOptionalUid(userId)
-          && !(collectionId in [
-            'events', 'events_recent',
-            'deletion_requests', 'data_exports'
-          ]);
-        allow delete: if isOwner(userId)
-          && !(collectionId in [
-            'events', 'events_recent',
-            'deletion_requests', 'data_exports'
-          ]);
+          && hasNoForbiddenBlobFields();
+        allow delete: if isOwner(userId);
+
+        match /items/{itemId} {
+          allow read: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && hasValidOptionalUid(userId)
+            && hasNoForbiddenBlobFields();
+          allow delete: if isOwner(userId);
+        }
+      }
+
+      // ── Legacy coach chat fallback ───────────────────────────────────────
+      match /coach_chats/{chatId}/turns/{turnId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && hasValidOptionalUid(userId)
+          && hasNoForbiddenBlobFields();
+        allow delete: if isOwner(userId);
       }
 
       // ── Events (append-only audit log) ─────────────────────────────────
@@ -72,7 +222,7 @@ service cloud.firestore {
       }
 
       // ── events_recent (trimmed fast-access cache) ───────────────────────
-      // Same immutability contract as /events; trimming is done by Cloud Functions.
+      // Same immutability contract as /events; Spark clients only append.
       match /events_recent/{eventId} {
         allow read:   if isOwner(userId);
         allow create: if isOwner(userId)
@@ -84,42 +234,67 @@ service cloud.firestore {
       // ── Deletion requests (client creates once; admin SDK finalises) ────
       match /deletion_requests/{requestId} {
         allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && hasValidOptionalUid(userId);
+        allow create: if isOwner(userId)
+          && deletionRequestIsValid(userId, requestId);
         allow update, delete: if false;
       }
 
       // ── Data export requests (client triggers; system writes result) ────
       match /data_exports/{exportId} {
         allow read: if isOwner(userId);
-        allow create: if isOwner(userId) && hasValidOptionalUid(userId);
+        allow create: if isOwner(userId)
+          && exportRequestIsValid(userId, exportId);
         allow update, delete: if false;
       }
 
       // ── Fitness Activities & subcollections ─────────────────────────────
-      // Explicit rules for documentation and future backend-only restriction.
+      // Explicit rules for route data and future backend-only restriction.
       match /fitnessActivities/{activityId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && hasValidOptionalUid(userId)
+          && hasNoForbiddenBlobFields();
+        allow delete: if isOwner(userId);
 
         match /routePoints/{pointId} {
-          allow read, write: if isOwner(userId);
+          allow read: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && hasValidOptionalUid(userId)
+            && hasNoForbiddenBlobFields();
+          allow delete: if isOwner(userId);
         }
         match /splits/{splitId} {
-          allow read, write: if isOwner(userId);
+          allow read: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && hasValidOptionalUid(userId)
+            && hasNoForbiddenBlobFields();
+          allow delete: if isOwner(userId);
         }
         match /heartRateSamples/{sampleId} {
-          allow read, write: if isOwner(userId);
+          allow read: if isOwner(userId);
+          allow create, update: if isOwner(userId)
+            && hasValidOptionalUid(userId)
+            && hasNoForbiddenBlobFields();
+          allow delete: if isOwner(userId);
         }
       }
 
       // ── Fitness Stats (may become backend-only writes in future) ────────
       match /fitnessStats/{statId} {
         allow read: if isOwner(userId);
-        allow write: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && hasValidOptionalUid(userId)
+          && hasNoForbiddenBlobFields();
+        allow delete: if isOwner(userId);
       }
 
       // ── Fitness Goals ───────────────────────────────────────────────────
       match /fitnessGoals/{goalId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && hasValidOptionalUid(userId)
+          && hasNoForbiddenBlobFields();
+        allow delete: if isOwner(userId);
       }
     }
 

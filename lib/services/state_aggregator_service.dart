@@ -2,7 +2,7 @@
 //
 // Aggregates Firestore state into a single ContextSnapshot.
 // Collections (all under /users/{uid}/):
-//   events_recent   — today's events filtered by ts
+//   events_recent   — today's events filtered by timestamp
 //   streaks         — active streaks (state == active)
 //   dailySummaries  — today's summary doc (written at day-close)
 //   profile/main    — lastCoachMessageAt, budget, lastActiveDate
@@ -39,8 +39,9 @@ class StateAggregatorService {
       // [0] events_recent — today's window
       userRef
           .collection('events_recent')
-          .where('ts', isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart))
-          .where('ts', isLessThan: Timestamp.fromDate(tomorrowStart))
+          .where('timestamp',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(todayStart))
+          .where('timestamp', isLessThan: Timestamp.fromDate(tomorrowStart))
           .get(),
       // [1] streaks — active only
       userRef
