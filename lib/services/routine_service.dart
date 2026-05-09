@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/constants/event_names.dart';
 import '../models/day_summary_model.dart';
+import '../models/suggestion_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
 import 'event_service.dart';
@@ -451,7 +452,8 @@ class RoutineService {
           .map(_normalizeTag)
           .any((tag) => identities.contains(tag));
       final weight = aligned ? 1.0 : 0.5;
-      maxPossibleValue += 1.0; // denominator = full task count; weight only penalises numerator
+      maxPossibleValue +=
+          1.0; // denominator = full task count; weight only penalises numerator
       if (task.state == TaskState.completed) {
         if (aligned) {
           alignedCompletedValue += weight;
@@ -923,7 +925,6 @@ class RoutineService {
     required int gapDays,
     required DateTime now,
   }) {
-    final ts = Timestamp.fromDate(now);
     final ideas = [
       (
         title: 'Pick one tiny anchor',
@@ -941,19 +942,18 @@ class RoutineService {
 
     return [
       for (var i = 0; i < suggestionIds.length; i++)
-        {
-          'suggestionId': suggestionIds[i],
-          'title': ideas[i].title,
-          'body': ideas[i].body,
-          'reason': ideas[i].body,
-          'category': 'comeback_restart',
-          'status': 'generated',
-          'source': 'comeback_modal',
-          'gapDays': gapDays,
-          'createdAt': ts,
-          'updatedAt': ts,
-          'schemaVersion': 1,
-        },
+        SuggestionModel(
+          suggestionId: suggestionIds[i],
+          title: ideas[i].title,
+          body: ideas[i].body,
+          reason: ideas[i].body,
+          category: 'comeback_restart',
+          status: 'generated',
+          source: 'comeback_modal',
+          gapDays: gapDays,
+          createdAt: now,
+          updatedAt: now,
+        ).toMap(),
     ];
   }
 }

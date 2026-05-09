@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:optivus2/models/routine_template_model.dart';
 
 class RoutineReviewScreen extends StatefulWidget {
   final String title;
@@ -60,7 +61,10 @@ class _RoutineReviewScreenState extends State<RoutineReviewScreen> {
     template['notes'] = template['notes']?.toString() ?? '';
     template['reminderEnabled'] = template['reminderEnabled'] == true;
     template['isActive'] = template['isActive'] ?? true;
-    return template;
+    return RoutineTemplateModel.fromMap(
+      template,
+      fallbackRoutineType: widget.routineType,
+    ).toMap();
   }
 
   static String _repeatRule(Map<String, dynamic> template) {

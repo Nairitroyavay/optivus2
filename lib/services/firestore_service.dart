@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/account_lifecycle_request_model.dart';
 import '../models/task_model.dart';
 import '../models/goal_model.dart';
 
@@ -329,14 +330,15 @@ class FirestoreService {
   Future<String> requestAccountDeletion({String? reason}) async {
     final currentUid = uid;
     final requestId = 'delete_${DateTime.now().toUtc().microsecondsSinceEpoch}';
-    await userSubdocument(kDeletionRequests, requestId).set({
-      'requestId': requestId,
-      'uid': currentUid,
-      'requestedAt': FieldValue.serverTimestamp(),
-      'status': 'requested',
-      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
-      'schemaVersion': 1,
-    });
+    final request = AccountLifecycleRequestModel(
+      requestId: requestId,
+      uid: currentUid,
+      type: AccountLifecycleRequestType.deletion,
+      status: 'requested',
+      reason: reason?.trim() ?? '',
+      schemaVersion: 1,
+    ).toClientCreateMap(requestedAtOverride: FieldValue.serverTimestamp());
+    await userSubdocument(kDeletionRequests, requestId).set(request);
     return requestId;
   }
 

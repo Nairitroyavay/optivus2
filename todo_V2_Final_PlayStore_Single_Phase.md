@@ -681,7 +681,7 @@ Firestore rules/index deploy is allowed only as `firebase deploy --only firestor
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -782,9 +782,9 @@ Event and Firestore schema alignment.
 
 #### Done Criteria
 
-- [ ] Raw map contracts are reduced at critical boundaries.
-- [ ] Backward compatibility is preserved.
-- [ ] Serialization tests cover missing/legacy fields.
+- [x] Raw map contracts are reduced at critical boundaries.
+- [x] Backward compatibility is preserved.
+- [x] Serialization tests cover missing/legacy fields.
 
 ### Task 1.8 — Reconcile routine template schema and materialization
 

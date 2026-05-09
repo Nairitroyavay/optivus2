@@ -2331,10 +2331,11 @@ class _AiInsightCard extends ConsumerWidget {
         if (suggestions.isEmpty) return const SizedBox.shrink();
 
         final suggestion = suggestions.first;
-        final id = suggestion['id'] as String? ?? '';
-        final title = suggestion['title'] as String? ?? 'AI Insight';
-        final body = suggestion['body'] as String? ?? '';
-        final reason = suggestion['reason'] as String?;
+        final id = suggestion.suggestionId;
+        final title =
+            suggestion.title.isEmpty ? 'AI Insight' : suggestion.title;
+        final body = suggestion.body;
+        final reason = suggestion.reason.isEmpty ? null : suggestion.reason;
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),

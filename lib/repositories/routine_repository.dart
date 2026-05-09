@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:optivus2/core/config/app_config.dart';
+import 'package:optivus2/models/routine_import_preview_model.dart';
+import 'package:optivus2/models/routine_template_model.dart';
 import 'package:optivus2/services/cloudflare_api_service.dart';
 
 import '../services/firestore_service.dart';
@@ -68,6 +70,14 @@ class RoutineRepository {
     List<Map<String, dynamic>> templates, {
     Map<String, dynamic>? importMetadata,
   }) async {
+    final normalizedTemplates = templates
+        .map(
+          (template) => RoutineTemplateModel.fromMap(
+            template,
+            fallbackRoutineType: routineType,
+          ).toMap(),
+        )
+        .toList(growable: false);
     final existing = await _service.getRoutine() ?? <String, dynamic>{};
     final existingTemplates = existing['templates'] is Map
         ? Map<String, dynamic>.from(existing['templates'] as Map)
@@ -80,14 +90,14 @@ class RoutineRepository {
       ...existing,
       'templates': {
         ...existingTemplates,
-        routineType: templates,
+        routineType: normalizedTemplates,
       },
       if (importMetadata != null)
         'imports': {
           ...existingImports,
           routineType: importMetadata,
         },
-      '${_setupFlagFor(routineType)}SetUp': templates.isNotEmpty,
+      '${_setupFlagFor(routineType)}SetUp': normalizedTemplates.isNotEmpty,
     });
   }
 
@@ -129,24 +139,11 @@ class RoutineRepository {
       },
     );
 
-    final raw = data['templates'] ?? data['items'] ?? data['blocks'];
-    if (raw is! List) return const [];
-    final suggestionIds = data['suggestionIds'] is List
-        ? (data['suggestionIds'] as List)
-            .map((item) => item.toString())
-            .toList()
-        : const <String>[];
-    final templates = <Map<String, dynamic>>[];
-    for (var i = 0; i < raw.length; i++) {
-      final item = raw[i];
-      if (item is! Map) continue;
-      final template = Map<String, dynamic>.from(item);
-      if (i < suggestionIds.length && suggestionIds[i].trim().isNotEmpty) {
-        template['_suggestionId'] = suggestionIds[i].trim();
-      }
-      templates.add(template);
-    }
-    return templates;
+    return RoutineImportPreviewModel.fromMap(
+      data,
+      routineType: routineType,
+      mode: mode,
+    ).templateMaps;
   }
 
   Future<void> saveScheduledNotification(

@@ -9,6 +9,7 @@ import '../../services/firestore_service.dart';
 import '../../providers/goal_provider.dart';
 import '../../providers/identity_provider.dart';
 import '../../models/goal_model.dart';
+import '../../models/suggestion_model.dart';
 import '../goals/identity_card.dart';
 import '../goals/today_identity_push_card.dart';
 import '../goals/milestones_strip.dart';
@@ -18,8 +19,7 @@ import '../goals/milestones_strip.dart';
 // Follows the exact trackerSuggestionsProvider pattern.
 // ═════════════════════════════════════════════════════════════════════════════
 
-final goalsSuggestionsProvider =
-    StreamProvider<List<Map<String, dynamic>>>((ref) {
+final goalsSuggestionsProvider = StreamProvider<List<SuggestionModel>>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value(const []);
   return FirebaseFirestore.instance
@@ -31,7 +31,7 @@ final goalsSuggestionsProvider =
       .limit(1)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => <String, dynamic>{'id': d.id, ...d.data()})
+          .map((d) => SuggestionModel.fromMap(d.data(), fallbackId: d.id))
           .toList());
 });
 
@@ -40,8 +40,7 @@ final goalsSuggestionsProvider =
 // Reads /users/{uid}/profile/main — the canonical profile doc.
 // ═════════════════════════════════════════════════════════════════════════════
 
-final goalsProfileProvider =
-    StreamProvider<Map<String, dynamic>?>((ref) {
+final goalsProfileProvider = StreamProvider<Map<String, dynamic>?>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value(null);
   return FirebaseFirestore.instance
@@ -334,9 +333,10 @@ class _GoalsAiInsightCard extends ConsumerWidget {
         if (suggestions.isEmpty) return const SizedBox.shrink();
 
         final suggestion = suggestions.first;
-        final title = suggestion['title'] as String? ?? 'AI Insight';
-        final body = suggestion['body'] as String? ?? '';
-        final reason = suggestion['reason'] as String?;
+        final title =
+            suggestion.title.isEmpty ? 'AI Insight' : suggestion.title;
+        final body = suggestion.body;
+        final reason = suggestion.reason.isEmpty ? null : suggestion.reason;
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),

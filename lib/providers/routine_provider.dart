@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/routine_template_model.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/services/task_service.dart';
@@ -693,8 +694,14 @@ class RoutineState {
   Map<String, dynamic> toMap() {
     final templates = <String, dynamic>{
       for (final entry in routineTemplates.entries)
-        entry.key:
-            entry.value.map((e) => Map<String, dynamic>.from(e)).toList(),
+        entry.key: entry.value
+            .map(
+              (e) => RoutineTemplateModel.fromMap(
+                e,
+                fallbackRoutineType: entry.key,
+              ).toMap(),
+            )
+            .toList(),
       'fixed_schedule': fixedScheduleTemplates.map((e) => e.toMap()).toList(),
     };
 
@@ -730,7 +737,12 @@ class RoutineState {
         if (entry.value is List)
           entry.key: (entry.value as List)
               .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
+              .map(
+                (item) => RoutineTemplateModel.fromMap(
+                  Map<String, dynamic>.from(item),
+                  fallbackRoutineType: entry.key.toString(),
+                ).toMap(),
+              )
               .toList(),
     };
     return RoutineState(

@@ -11,6 +11,7 @@ import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/core/utils/uuid_generator.dart';
 import 'package:optivus2/models/fitness_activity_model.dart';
+import 'package:optivus2/models/suggestion_model.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'add_task_sheet.dart';
@@ -762,19 +763,19 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   Future<void> _saveSuggestion(AiSuggestion suggestion) async {
     final now = DateTime.now();
     await ref.read(firestoreServiceProvider).saveSuggestion(
-      suggestion.id,
-      {
-        'suggestionId': suggestion.id,
-        'title': suggestion.title,
-        'reason': suggestion.reason,
-        'emoji': suggestion.emoji,
-        'action': suggestion.action.name,
-        'status': 'generated',
-        'source': 'routine_ai_panel',
-        'createdAt': Timestamp.fromDate(now),
-        'updatedAt': Timestamp.fromDate(now),
-      },
-    );
+          suggestion.id,
+          SuggestionModel(
+            suggestionId: suggestion.id,
+            title: suggestion.title,
+            reason: suggestion.reason,
+            emoji: suggestion.emoji,
+            action: suggestion.action.name,
+            status: 'generated',
+            source: 'routine_ai_panel',
+            createdAt: now,
+            updatedAt: now,
+          ).toMap(),
+        );
     await ref.read(eventServiceProvider).emit(
       eventName: EventNames.suggestionGenerated,
       source: 'routine_ai_panel',

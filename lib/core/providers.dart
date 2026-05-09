@@ -16,6 +16,7 @@ import 'package:optivus2/models/habit_log_model.dart';
 import 'package:optivus2/models/streak_model.dart';
 import 'package:optivus2/models/day_summary_model.dart';
 import 'package:optivus2/models/screen_time_log_model.dart';
+import 'package:optivus2/models/suggestion_model.dart';
 import 'package:optivus2/services/routine_service.dart';
 import 'package:optivus2/services/coach_service.dart';
 import 'package:optivus2/services/state_aggregator_service.dart';
@@ -337,11 +338,8 @@ final screenTimeLogProvider = StreamProvider<ScreenTimeLogModel?>((ref) {
 
 /// Real-time stream of pending AI suggestions targeted at the tracker surface.
 ///
-/// Returns raw maps because the Suggestion model does not exist yet (Task 11.1).
-/// Each map includes the document ID under the 'id' key.
 /// Limited to 1 doc — the tracker only shows one insight card at a time.
-final trackerSuggestionsProvider =
-    StreamProvider<List<Map<String, dynamic>>>((ref) {
+final trackerSuggestionsProvider = StreamProvider<List<SuggestionModel>>((ref) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return Stream.value(const []);
 
@@ -354,7 +352,7 @@ final trackerSuggestionsProvider =
       .limit(1)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => <String, dynamic>{'id': d.id, ...d.data()})
+          .map((d) => SuggestionModel.fromMap(d.data(), fallbackId: d.id))
           .toList());
 });
 
