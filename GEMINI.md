@@ -149,17 +149,19 @@ When implementing:
 
 ---
 
-## Cloud Functions Rules
+## Cloudflare Worker Rules
 
-Apply only if a `functions/` directory exists.
+`functions/` is legacy Spark-inactive reference code only. Do not add Firebase
+Functions, deploy Firebase Functions, or route new backend work there.
 
-- Functions must be **idempotent** — safe to run twice with the same input. Use deterministic doc IDs or dedupe via a marker field.
-- **Do not duplicate events.** Check for an existing event before writing one.
-- **Safe retries:** Firebase will retry; design for it.
-- **Structured logs** (`functions.logger.info({ event, uid, entityId })`) — no `console.log` of objects in production.
-- **Validate input** at the function boundary. Reject malformed payloads with a clear error.
-- **Do not break deployed triggers.** Renaming an exported function unregisters the old trigger. If a rename is required, deploy both names temporarily or coordinate with the user.
-- Mention emulator commands when relevant: `firebase emulators:start --only functions,firestore`. Run `npm test` / `npm run lint` in `functions/` after edits.
+- Backend and AI calls must use Cloudflare Workers or Cloudflare Cron Triggers.
+- Flutter sends a Firebase ID token with `Authorization: Bearer <token>`.
+- Workers verify the token before doing user-scoped work.
+- AI provider keys, R2 secrets, and Firebase service-account credentials live only in Worker secrets.
+- Worker endpoints should be preview-only unless a task explicitly requires a secure server-side write.
+- Validate input at the Worker boundary and reject malformed payloads with clear errors.
+- Keep Worker writes idempotent where retries or duplicate requests are possible.
+- Run the Worker package's documented tests after Worker edits.
 
 ---
 
@@ -246,8 +248,9 @@ Run (or, when sandboxed, instruct the user to run) these after every change. Rep
 - **Dart/Flutter analyzer:** `flutter analyze`
 - **Tests:** `flutter test` (run targeted tests when feasible: `flutter test test/path/to/file_test.dart`)
 - **Debug build (when widget tree or native deps changed):** `flutter build apk --debug`
-- **Cloud Functions:** in `functions/`, run `npm run lint` and `npm test`
-- **Emulator (when backend or rules changed):** `firebase emulators:start --only firestore,functions,auth`
+- **Spark guardrail:** `python3 scripts/spark_guardrail_scan.py`
+- **Workers:** run the relevant Worker package tests after Worker edits
+- **Emulator (when Firestore rules changed):** `firebase emulators:start --only firestore,auth`
 
 If any command fails, **fix the issue or report it explicitly**. Do not paraphrase or fabricate results.
 

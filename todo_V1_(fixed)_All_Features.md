@@ -1,6 +1,14 @@
 # Optivus V1 (Fixed) — All Features Master TODO
 
-> **Source of truth.** This file is the full, beginner-friendly implementation roadmap for Optivus.
+> **Superseded by `todo_V2_Final_PlayStore_Single_Phase.md`, 2026-05-09.**
+> Historical reference only.
+> Do not implement from V1.
+> Do not revive Firebase Functions, Firebase Storage, Google Maps, Firebase
+> Hosting/App Hosting, or Google Cloud billing paths from this file.
+> `todo_V2_Final_PlayStore_Single_Phase.md` is the only active roadmap.
+
+> **Superseded historical text.** The paragraph below was written before V2 became the active source of truth.
+> This file is the full, beginner-friendly implementation roadmap for Optivus.
 > Every task is copy-paste ready for Gemini CLI / Antigravity, references `.gemini/GEMINI.md`,
 > and starts in planning mode. The 7 OPTIVUS Docs are the product source of truth — User Flow first.
 > Do **not** treat Optivus as a fresh project: extend existing code, preserve completed work,

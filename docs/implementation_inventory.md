@@ -379,13 +379,22 @@ Files ≥ 1 KB are listed below with byte count. Files > 1 KB are flagged for pe
 - Shows absence detection summary and a list of suggestion rows the user can pick to restart.
 - Status: partial. UI shell exists; auto-trigger from the inactivity job and `SuggestionService` integration are missing.
 
-## Cloud Functions
+## Legacy Firebase Functions Reference
+
+> Spark-only status: `functions/` is inactive legacy reference code and is
+> queued for removal after equivalent Cloudflare Worker/Cron coverage exists.
+> Do not deploy it, add new handlers to it, or port Worker logic back into
+> Firebase Functions.
 
 ### `functions/index.js`
 
-- Contains `aiGenerate` callable (enforces App Check token).
-- Exports scheduled jobs: `scheduledDayClose`, `scheduledInactivityCheck`, `scheduledMorningBrief`, `scheduledMiddayPulse`.
-- Status: partial. Needs structured `routineImport` endpoint, event helpers, safety routing, usage limits, notification dispatcher, weekly summary job, and exports for new jobs.
+- Spark-inactive legacy reference only. Do not deploy this directory and do not
+  port new backend work back to Firebase Functions.
+- Contains old `aiGenerate` callable and scheduled job exports that should be
+  migrated to Cloudflare Workers/Cron only when a task explicitly asks for it.
+- Status: legacy/reference. New structured routine import, event helpers,
+  safety routing, usage limits, notification dispatch, weekly summary, export,
+  delete, cleanup, and backfill work must target Cloudflare Workers/Cron.
 
 ### `functions/jobs/*.js`
 
@@ -394,8 +403,11 @@ Files ≥ 1 KB are listed below with byte count. Files > 1 KB are flagged for pe
 - `morningBrief.js` (3 KB): Morning brief job.
 - `middayPulse.js` (2 KB): Midday pulse job.
 - `utils.js` (8 KB): Shared utilities.
-- Status: partial. Needs notification dispatcher, AI planner/rule engine/safety split, export/delete, cleanup/backfill, weekly summary, emulator tests.
-- Verification note: `functions/package.json` currently does not define an `npm test` script, so `cd functions && npm test` is not available yet.
+- Status: legacy/reference. Keep as migration reference only until removal or a
+  Cloudflare port task is scheduled.
+- Verification note: `functions/package.json` has a test script for the legacy
+  skipped contract tests, while serve/shell/deploy/logs are disabled to fail
+  closed under the Spark-only architecture.
 
 ## Firestore Rules and Indexes
 
@@ -413,13 +425,13 @@ Files ≥ 1 KB are listed below with byte count. Files > 1 KB are flagged for pe
 
 1. Event contracts are not strict enough yet.
 2. Routine template schema is not formalized.
-3. AI features are too direct/ad hoc and not fully backend-controlled; `routineImport` backend callable is missing.
+3. AI features are too direct/ad hoc and not fully backend-controlled; Cloudflare Worker coverage for all AI paths is incomplete.
 4. Notification lifecycle is incomplete; notification center and custom alarm screens are missing.
 5. Several UI entry points exist but do not complete the full user flow (goal editor, settings screens, variant wiring).
 6. Tests are missing or skeletal.
 7. Feature matrix must be kept current after each phase.
 8. All 10 tracker variant views are stubs; real analytics and AI interpretation wiring must be added before release.
-9. Weekly summary Cloud Function and job are missing.
+9. Weekly summary Cloudflare Cron Worker/job is missing.
 10. Subscription/usage cap enforcement is missing from both the UI and backend.
 
 ## Testing
@@ -448,29 +460,17 @@ dev-dependencies.
 | `notification_service_contract_test.dart` | NotificationService | init, scheduleTaskReminder, scheduleTaskEndReminder, cancelTaskEndReminder, scheduleStreakMilestone, scheduleSlipRecovery, ensureNotificationSettings, reserveNotificationSlot, writeSuppressionEvent |
 | `suggestion_service_contract_test.dart` | SuggestionService (planned) | fetchSuggestions, dismissSuggestion, acceptSuggestion, watchPendingSuggestions |
 
-### Cloud Functions contract tests
+### Legacy Functions contract tests
 
-Three JS contract test files exist under `functions/test/`:
+Legacy JS contract test files exist under `functions/test/`:
 
 | File | Surface |
 |---|---|
 | `events.contract.test.js` | Event helper doc shape, dual-write, idempotency, auth guard, events_recent trimming |
 | `jobs.contract.test.js` | scheduledDayClose, scheduledInactivityCheck, scheduledMorningBrief, scheduledMiddayPulse |
-| `routineImport.contract.test.js` | Planned `routineImport` callable — auth, validation, Firestore writes, event emission, return shape, idempotency |
+| `routineImport.contract.test.js` | Legacy planned `routineImport` callable contract - use as migration reference only |
 
 > [!WARNING]
-> `functions/package.json` does **not** define an `npm test` script.
-> `cd functions && npm test` will fail with `Missing script: "test"`.
->
-> To enable JS tests, install a test runner (e.g. Jest) and add a test script:
->
-> ```json
-> // functions/package.json — scripts section
-> "scripts": {
->   "test": "jest --testPathPattern=test/"
-> }
-> ```
->
-> Then install: `npm install --save-dev jest`
->
-> This is deferred to a later task (test infrastructure wiring).
+> These tests are legacy Firebase Functions reference tests. They do not
+> authorize deploying Firebase Functions. New backend tests should live beside
+> the relevant Cloudflare Worker package.

@@ -32,6 +32,19 @@ header before doing user-scoped work.
 AI provider keys live only in Cloudflare Worker secrets. Flutter must never
 ship AI provider keys.
 
+## Current Service Labels
+
+- `firebase.json` is allowed to reference only `firestore.rules` and
+  `firestore.indexes.json` as Firebase deploy targets.
+- `storage.rules` is inactive legacy text and must stay unreferenced by
+  `firebase.json`.
+- `functions/` is inactive legacy Firebase Functions reference code. Keep it as
+  migration context only until a removal task deletes it; do not add new backend
+  work there.
+- `workers/` contains the active backend/API proxy packages.
+- Public legal and support pages belong on Cloudflare Pages, not Firebase
+  Hosting/App Hosting.
+
 ## Uploads And Images
 
 Firebase Storage is inactive. Image upload and image import features stay behind
@@ -69,3 +82,16 @@ Do not run Firebase deploys for functions, storage, hosting, or apphosting.
 Cloudflare Workers are deployed separately with Wrangler after review and
 tests. The routine import Worker is MVP preview-only: it returns suggestions to
 Flutter, and Flutter saves the reviewed final JSON.
+
+## Guardrail Scan
+
+Run this before implementation work and before release checks:
+
+```sh
+python3 scripts/spark_guardrail_scan.py
+```
+
+The scan fails on active forbidden Firebase/Google billing deploy targets,
+packages, manifest keys, or config references. See
+`docs/spark_only_guardrail_scan.md` for the manual checklist and the allowed
+legacy-reference rules.
