@@ -121,7 +121,7 @@ Read-only repo audit and documentation updates.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -149,7 +149,9 @@ Future implementation tasks need a known analyzer/test/build baseline so regress
 
 #### Gap
 
-The TODO does not define a single release QA command matrix with current pass/fail status, skipped tests, Worker test commands, release build command, device checks, Spark-only scan, and current analyzer/compile blockers that must be cleared before feature work.
+The TODO did not define a single release QA command matrix with current pass/fail status, skipped tests, Worker test commands, release build command, device checks, Spark-only scan, and current analyzer/compile blockers that must be cleared before feature work.
+
+Resolved 2026-05-09: `docs/build_test_qa_baseline.md` now records the baseline command matrix, dart-define dimensions, skipped tests, Worker test status, Android release build result, and real-device smoke checklist.
 
 #### Spec source
 
@@ -183,6 +185,8 @@ Final response format: files inspected, files changed, summary, Firestore paths 
 
 - `docs/`
 - `todo_V2_Final_PlayStore_Single_Phase.md` if baseline findings change task ordering
+- `android/settings.gradle.kts` for Android Gradle Plugin baseline compatibility
+- `android/gradle/wrapper/gradle-wrapper.properties` for Gradle wrapper baseline compatibility
 
 #### Firestore paths
 
@@ -215,11 +219,11 @@ Flutter SDK, Node/npm for Worker tests, Android Gradle toolchain.
 
 #### Done Criteria
 
-- [ ] Baseline analyzer/test/build status is documented.
-- [ ] Current analyzer/compile blockers are fixed before feature work, including the `profile_tab.dart` duplicate `emptyLabel` parameter.
-- [ ] Skipped or missing tests are listed.
-- [ ] Worker test commands are documented.
-- [ ] No deploy command is run.
+- [x] Baseline analyzer/test/build status is documented.
+- [x] Current analyzer/compile blockers are fixed before feature work, including verification that `profile_tab.dart` no longer has a duplicate `emptyLabel` parameter.
+- [x] Skipped or missing tests are listed.
+- [x] Worker test commands are documented.
+- [x] No deploy command is run.
 
 ### Task 1.3 — Centralize shared config, feature flags, and kill switches
 
