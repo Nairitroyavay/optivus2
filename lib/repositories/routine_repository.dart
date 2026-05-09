@@ -1,9 +1,6 @@
-import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
 import 'package:optivus2/core/config/app_config.dart';
+import 'package:optivus2/services/cloudflare_api_service.dart';
 
 import '../services/firestore_service.dart';
 import '../providers/routine_provider.dart'; // RoutineState lives here
@@ -22,13 +19,16 @@ class RoutineRepository {
   final FirestoreService _service;
   final AppBuildConfig _buildConfig;
   final AppFeatureFlags? _featureFlags;
+  final CloudflareApiService _apiService;
 
   RoutineRepository(
     this._service, {
     AppBuildConfig? buildConfig,
     AppFeatureFlags? featureFlags,
+    CloudflareApiService? apiService,
   })  : _buildConfig = buildConfig ?? AppBuildConfig.current,
-        _featureFlags = featureFlags;
+        _featureFlags = featureFlags,
+        _apiService = apiService ?? CloudflareApiService();
 
   /// Save the entire routine state as a single Firestore document.
   Future<void> saveRoutine(RoutineState state) async {
@@ -111,46 +111,24 @@ class RoutineRepository {
       );
     }
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      throw Exception('Cannot call routine import endpoint without auth token');
-    }
-
-    final idToken = await user.getIdToken();
-    if (idToken == null || idToken.isEmpty) {
-      throw Exception('Cannot call routine import endpoint without auth token');
-    }
-
-    final response = await http.post(
-      Uri.parse(endpoint),
-      headers: {
-        'Authorization': 'Bearer $idToken',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'userId': user.uid,
+    final data = await _apiService.postJson(
+      endpoint: endpoint,
+      endpointLabel: 'Routine import endpoint',
+      missingEndpointMessage:
+          'ROUTINE_IMPORT_ENDPOINT is not configured. $_localRunDartDefines',
+      payload: {
+        'userId': _apiService.requireCurrentUid(
+          endpointLabel: 'Routine import endpoint',
+        ),
         'routineType': routineType,
         'mode': mode,
         'commit': false,
         if (sourceText != null && sourceText.trim().isNotEmpty)
           'sourceText': sourceText.trim(),
         if (imageMetadata != null) 'imageMetadata': imageMetadata,
-      }),
+      },
     );
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'Routine import endpoint failed: '
-        '${response.statusCode} ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map) {
-      throw Exception('Routine import endpoint returned invalid JSON');
-    }
-
-    final data = Map<String, dynamic>.from(decoded);
     final raw = data['templates'] ?? data['items'] ?? data['blocks'];
     if (raw is! List) return const [];
     final suggestionIds = data['suggestionIds'] is List

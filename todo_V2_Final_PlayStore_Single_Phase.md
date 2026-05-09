@@ -340,7 +340,7 @@ Firebase Remote Config SDK, dart-define values, existing provider graph.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -366,7 +366,9 @@ Cloudflare calls are duplicated across AI, routine import, and R2 services. A co
 
 #### Gap
 
-There is no shared Cloudflare API service for Firebase ID token acquisition, JSON headers, endpoint validation, timeouts, typed errors, and fail-closed fallback behavior.
+Resolved 2026-05-09: `CloudflareApiService` now centralizes Firebase ID
+token acquisition, JSON headers, endpoint validation, timeouts, typed errors,
+and HTTP status mapping for Worker calls.
 
 #### Spec source
 
@@ -439,10 +441,10 @@ Firebase Auth ID token and `http` package.
 
 #### Done Criteria
 
-- [ ] Worker calls share auth/header/error behavior.
-- [ ] Existing contracts are preserved.
-- [ ] No secrets are introduced.
-- [ ] Focused tests cover failure paths.
+- [x] Worker calls share auth/header/error behavior.
+- [x] Existing contracts are preserved.
+- [x] No secrets are introduced.
+- [x] Focused tests cover failure paths.
 
 ### Task 1.5 — Make event names, payloads, and rule-engine inputs consistent
 

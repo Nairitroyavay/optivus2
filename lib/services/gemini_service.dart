@@ -1,12 +1,10 @@
 // lib/services/gemini_service.dart
 
-import 'dart:convert';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:optivus2/core/config/app_config.dart';
 import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/services/cloudflare_api_service.dart';
 import 'package:optivus2/services/event_service.dart';
 
 const String _localRunDartDefines = 'Required local run flags:\n'
@@ -51,16 +49,21 @@ class GeminiService {
   // Singleton instance
   static final GeminiService _instance = GeminiService._internal();
   final AppBuildConfig _buildConfig;
+  final CloudflareApiService _apiService;
 
   factory GeminiService() {
     return _instance;
   }
 
-  GeminiService._internal() : _buildConfig = AppBuildConfig.current;
+  GeminiService._internal()
+      : _buildConfig = AppBuildConfig.current,
+        _apiService = CloudflareApiService();
 
   GeminiService.forConfig({
     required AppBuildConfig buildConfig,
-  }) : _buildConfig = buildConfig;
+    CloudflareApiService? apiService,
+  })  : _buildConfig = buildConfig,
+        _apiService = apiService ?? CloudflareApiService();
 
   /// Interactive coach reply via the Cloudflare `coachReply` endpoint.
   ///
@@ -74,8 +77,9 @@ class GeminiService {
   }) async {
     final decoded = await _postAuthenticatedJson(
       endpoint: _buildConfig.cloudflare.normalizedCoachReplyEndpoint,
-      dartDefineName: 'COACH_REPLY_ENDPOINT',
       endpointLabel: 'Coach reply endpoint',
+      missingEndpointMessage:
+          'COACH_REPLY_ENDPOINT is not configured. $_localRunDartDefines',
       payload: {
         'userId': userId,
         'threadId': threadId,
@@ -101,8 +105,9 @@ class GeminiService {
   }) async {
     final decoded = await _postAuthenticatedJson(
       endpoint: _buildConfig.cloudflare.normalizedAiGenerateEndpoint,
-      dartDefineName: 'AI_GENERATE_ENDPOINT',
       endpointLabel: 'AI generation endpoint',
+      missingEndpointMessage:
+          'AI_GENERATE_ENDPOINT is not configured. $_localRunDartDefines',
       payload: {
         'systemPrompt': systemPrompt,
         'userMessage': userMessage,
@@ -145,8 +150,9 @@ class GeminiService {
 
     final decoded = await _postAuthenticatedJson(
       endpoint: _buildConfig.cloudflare.normalizedAiGenerateEndpoint,
-      dartDefineName: 'AI_GENERATE_ENDPOINT',
       endpointLabel: 'AI generation endpoint',
+      missingEndpointMessage:
+          'AI_GENERATE_ENDPOINT is not configured. $_localRunDartDefines',
       payload: {
         'contextPayload': {
           ...contextPayload,
@@ -181,43 +187,16 @@ class GeminiService {
 
   Future<Map<String, dynamic>> _postAuthenticatedJson({
     required String endpoint,
-    required String dartDefineName,
     required String endpointLabel,
+    required String missingEndpointMessage,
     required Map<String, dynamic> payload,
   }) async {
-    if (endpoint.isEmpty) {
-      throw Exception(
-        '$dartDefineName is not configured. $_localRunDartDefines',
-      );
-    }
-
-    final user = FirebaseAuth.instance.currentUser;
-    final idToken = await user?.getIdToken();
-    if (idToken == null || idToken.isEmpty) {
-      throw Exception('Cannot call $endpointLabel without auth token');
-    }
-
-    final response = await http.post(
-      Uri.parse(endpoint),
-      headers: {
-        'Authorization': 'Bearer $idToken',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(payload),
+    return _apiService.postJson(
+      endpoint: endpoint,
+      endpointLabel: endpointLabel,
+      missingEndpointMessage: missingEndpointMessage,
+      payload: payload,
     );
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        '$endpointLabel failed: ${response.statusCode} ${response.body}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map) {
-      throw Exception('$endpointLabel returned invalid JSON');
-    }
-
-    return Map<String, dynamic>.from(decoded);
   }
 }
 

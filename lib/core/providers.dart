@@ -42,6 +42,7 @@ import 'package:optivus2/services/fitness_event_service.dart';
 import 'package:optivus2/services/fitness_ai_coach_service.dart';
 import 'package:optivus2/services/fitness_health_connector_service.dart';
 import 'package:optivus2/services/location_tracking_service.dart';
+import 'package:optivus2/services/cloudflare_api_service.dart';
 
 export 'providers/bootstrap_provider.dart';
 
@@ -67,6 +68,10 @@ final appFeatureFlagsProvider = Provider<AppFeatureFlags>(
     build: ref.watch(appBuildConfigProvider),
     remote: ref.watch(appRemoteConfigProvider),
   ),
+);
+
+final cloudflareApiServiceProvider = Provider<CloudflareApiService>(
+  (_) => CloudflareApiService(),
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,6 +177,7 @@ final routineRepositoryProvider = Provider<RoutineRepository>(
     ref.read(firestoreServiceProvider),
     buildConfig: ref.watch(appBuildConfigProvider),
     featureFlags: ref.watch(appFeatureFlagsProvider),
+    apiService: ref.read(cloudflareApiServiceProvider),
   ),
 );
 

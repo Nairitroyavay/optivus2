@@ -1,22 +1,29 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:optivus2/core/config/app_config.dart';
+import 'package:optivus2/services/cloudflare_api_service.dart';
 
 class R2UploadService {
-  final FirebaseAuth _auth;
+  final FirebaseAuth? _auth;
   final http.Client _client;
   final R2EndpointConfig _config;
+  final CloudflareApiService _apiService;
 
   R2UploadService({
     FirebaseAuth? auth,
     http.Client? client,
     R2EndpointConfig? config,
-  })  : _auth = auth ?? FirebaseAuth.instance,
+    CloudflareApiService? apiService,
+  })  : _auth = auth,
         _client = client ?? http.Client(),
-        _config = config ?? AppBuildConfig.current.r2;
+        _config = config ?? AppBuildConfig.current.r2,
+        _apiService = apiService ??
+            CloudflareApiService(
+              auth: auth,
+              client: client,
+            );
 
   static String get signedUploadEndpoint =>
       AppBuildConfig.current.r2.normalizedSignedUploadEndpoint;
@@ -34,38 +41,23 @@ class R2UploadService {
       throw StateError('Cloudflare R2 upload endpoint is not configured.');
     }
 
-    final user = _auth.currentUser;
-    final uid = user?.uid;
-    if (user == null || uid == null) {
-      throw StateError('A signed-in user is required to upload images.');
-    }
-
-    final token = await user.getIdToken();
+    final uid = _apiService.requireCurrentUid(
+      endpointLabel: 'Cloudflare R2 signed upload endpoint',
+    );
     final safeRoutineType = _safePathSegment(routineType);
     final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
     final objectKey = 'users/$uid/uploads/$safeRoutineType/$timestamp.jpg';
 
-    final signedResponse = await _client.post(
-      Uri.parse(signedEndpoint),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
+    final body = await _apiService.postJson(
+      endpoint: signedEndpoint,
+      endpointLabel: 'Cloudflare R2 signed upload endpoint',
+      payload: {
         'objectKey': objectKey,
         'contentType': contentType,
         'sizeBytes': bytes.length,
         'routineType': safeRoutineType,
-      }),
+      },
     );
-    if (signedResponse.statusCode < 200 || signedResponse.statusCode >= 300) {
-      throw StateError('Cloudflare R2 signed upload request failed.');
-    }
-
-    final body = jsonDecode(signedResponse.body);
-    if (body is! Map<String, dynamic>) {
-      throw StateError('Cloudflare R2 signed upload response was invalid.');
-    }
 
     final uploadUrl = body['uploadUrl']?.toString() ?? '';
     if (uploadUrl.isEmpty) {
@@ -100,16 +92,13 @@ class R2UploadService {
     final deleteEndpoint = _config.normalizedDeleteUploadEndpoint;
     if (objectKey.isEmpty || deleteEndpoint.isEmpty) return;
 
-    final user = _auth.currentUser;
-    if (user == null) return;
-    final token = await user.getIdToken();
-    await _client.post(
-      Uri.parse(deleteEndpoint),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({'objectKey': objectKey}),
+    if ((_auth?.currentUser ?? FirebaseAuth.instance.currentUser) == null) {
+      return;
+    }
+    await _apiService.postJson(
+      endpoint: deleteEndpoint,
+      endpointLabel: 'Cloudflare R2 delete upload endpoint',
+      payload: {'objectKey': objectKey},
     );
   }
 
