@@ -158,7 +158,9 @@ bool _repeatRuleMatchesDate(String repeatRule, DateTime date) {
     return int.tryParse(monthly.group(1)!) == date.day;
   }
 
-  return true;
+  debugPrint(
+      '[RoutineProvider] Unknown repeat rule: $repeatRule. Failing safely.');
+  return false;
 }
 
 /// A fixed block template on the 24-hour schedule (from onboarding "Set Your Fixed Schedule")
@@ -176,6 +178,7 @@ class FixedScheduleTemplate {
   final bool isActive;
   final String createdAt;
   final String updatedAt;
+  final Map<String, dynamic> extra;
 
   const FixedScheduleTemplate({
     required this.templateId,
@@ -191,6 +194,7 @@ class FixedScheduleTemplate {
     this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
+    this.extra = const {},
   });
 
   FixedScheduleTemplate copyWith({
@@ -204,6 +208,7 @@ class FixedScheduleTemplate {
     int? reminderOffsetMinutes,
     bool? isActive,
     String? updatedAt,
+    Map<String, dynamic>? extra,
   }) =>
       FixedScheduleTemplate(
         templateId: templateId,
@@ -220,9 +225,11 @@ class FixedScheduleTemplate {
         isActive: isActive ?? this.isActive,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        extra: extra ?? this.extra,
       );
 
   Map<String, dynamic> toMap() => {
+        ...extra,
         'templateId': templateId,
         'title': title,
         'routineType': routineType,
@@ -240,25 +247,72 @@ class FixedScheduleTemplate {
 
   factory FixedScheduleTemplate.fromMap(Map<String, dynamic> m) =>
       FixedScheduleTemplate(
-        templateId: _cleanRoutineString(m['templateId']),
-        title: _cleanRoutineString(m['title']),
+        templateId: _fixedTemplateId(m),
+        title: _cleanRoutineString(m['title'] ?? m['name']),
         routineType: 'fixed_schedule',
-        startTime: _normalizeRoutineTime(m['startTime'], fallback: '09:00'),
+        startTime: _normalizeRoutineTime(
+          m['startTime'] ?? m['time'],
+          fallback: '09:00',
+        ),
         endTime: _normalizeRoutineTime(m['endTime'], fallback: '10:00'),
-        repeatRule: m['repeatRule'] ?? 'daily',
+        repeatRule:
+            _cleanRoutineString(m['repeatRule'] ?? m['weekdayRule']).isNotEmpty
+                ? _cleanRoutineString(m['repeatRule'] ?? m['weekdayRule'])
+                : 'daily',
         category: _cleanRoutineString(m['category']),
         notes: _cleanRoutineString(m['notes']),
         reminderEnabled: m['reminderEnabled'] == true,
         reminderOffsetMinutes:
             ((m['reminderOffsetMinutes'] as num?)?.toInt() ?? 5).clamp(0, 180),
-        isActive: m['isActive'] ?? true,
+        isActive: _fixedTemplateIsActive(m),
         createdAt: _cleanRoutineString(m['createdAt']).isNotEmpty
             ? _cleanRoutineString(m['createdAt'])
             : DateTime.now().toIso8601String(),
         updatedAt: _cleanRoutineString(m['updatedAt']).isNotEmpty
             ? _cleanRoutineString(m['updatedAt'])
             : DateTime.now().toIso8601String(),
+        extra: _fixedTemplateExtra(m),
       );
+}
+
+const _fixedScheduleKnownKeys = {
+  'templateId',
+  'title',
+  'routineType',
+  'startTime',
+  'endTime',
+  'repeatRule',
+  'category',
+  'notes',
+  'reminderEnabled',
+  'reminderOffsetMinutes',
+  'isActive',
+  'createdAt',
+  'updatedAt',
+};
+
+bool _fixedTemplateIsActive(Map<String, dynamic> map) {
+  if (map['isActive'] is bool) return map['isActive'] as bool;
+  final lifecycle =
+      _cleanRoutineString(map['state'] ?? map['status']).toLowerCase();
+  return lifecycle != 'inactive' &&
+      lifecycle != 'archived' &&
+      lifecycle != 'deleted';
+}
+
+Map<String, dynamic> _fixedTemplateExtra(Map<String, dynamic> map) => {
+      for (final entry in map.entries)
+        if (!_fixedScheduleKnownKeys.contains(entry.key))
+          entry.key.toString(): entry.value,
+    };
+
+String _fixedTemplateId(Map<String, dynamic> map) {
+  final explicit = _cleanRoutineString(map['templateId'] ?? map['id']);
+  if (explicit.isNotEmpty) return explicit;
+  return RoutineTemplateModel.forSave(
+    map,
+    fallbackRoutineType: 'fixed_schedule',
+  ).templateId;
 }
 
 /// Legacy UI adapter for screens that still edit/display minute-based blocks.
@@ -696,7 +750,7 @@ class RoutineState {
       for (final entry in routineTemplates.entries)
         entry.key: entry.value
             .map(
-              (e) => RoutineTemplateModel.fromMap(
+              (e) => RoutineTemplateModel.forSave(
                 e,
                 fallbackRoutineType: entry.key,
               ).toMap(),
@@ -738,7 +792,7 @@ class RoutineState {
           entry.key: (entry.value as List)
               .whereType<Map>()
               .map(
-                (item) => RoutineTemplateModel.fromMap(
+                (item) => RoutineTemplateModel.forSave(
                   Map<String, dynamic>.from(item),
                   fallbackRoutineType: entry.key.toString(),
                 ).toMap(),
@@ -769,7 +823,7 @@ class RoutineState {
   }
 }
 
-const _kTerminalTaskStates = {'completed', 'skipped', 'abandoned'};
+const _kTerminalTaskStates = {'completed', 'skipped', 'abandoned', 'cancelled'};
 
 class _MaterializationCandidate {
   final TaskModel task;
@@ -880,6 +934,7 @@ List<_MaterializationCandidate> _candidatesForDate(
         'schemaVersion': task.schemaVersion,
       },
       materializationMeta: {
+        'state': task.state.toJson(),
         'status': task.state.toJson(),
         'sourceRoutineType': routineType,
         'routineTemplateId': templateId,
@@ -1048,13 +1103,13 @@ List<_MaterializationCandidate> _candidatesForDate(
           : _repeatRuleMatchesDate(repeatRule, date);
       if (!repeatsToday) continue;
 
-      final templateId = _cleanRoutineString(template['templateId']).isNotEmpty
-          ? _cleanRoutineString(template['templateId'])
-          : '${routineType}_$i';
       final candidateRoutineType =
           _cleanRoutineString(template['routineType']).isNotEmpty
               ? _cleanRoutineString(template['routineType'])
               : routineType;
+      final templateId = _cleanRoutineString(template['templateId']).isNotEmpty
+          ? _cleanRoutineString(template['templateId'])
+          : 'tpl_${RoutineTemplateModel.fromMap(Map<String, dynamic>.from(template), fallbackRoutineType: candidateRoutineType).generateDeterministicHash()}';
       final title = _cleanRoutineString(template['title']).isNotEmpty
           ? _cleanRoutineString(template['title'])
           : templateId;
@@ -1062,6 +1117,8 @@ List<_MaterializationCandidate> _candidatesForDate(
         template['startTime'],
         fallback: '09:00',
       );
+      final hasExplicitEndTime =
+          _cleanRoutineString(template['endTime']).isNotEmpty;
       final endTime = _normalizeRoutineTime(
         template['endTime'],
         fallback: '09:30',
@@ -1093,12 +1150,14 @@ List<_MaterializationCandidate> _candidatesForDate(
         title: title,
         taskType: _taskTypeForRoutineType(candidateRoutineType),
         plannedStart: plannedStart,
-        plannedEnd: _routineEndAfterStart(
-          date,
-          startTime,
-          endTime,
-          fallbackEnd: '09:30',
-        ),
+        plannedEnd: hasExplicitEndTime
+            ? _routineEndAfterStart(
+                date,
+                startTime,
+                endTime,
+                fallbackEnd: '09:30',
+              )
+            : plannedStart.add(const Duration(minutes: 30)),
         repeatRule: repeatRule,
         emoji: _cleanRoutineString(template['emoji']).isNotEmpty
             ? _cleanRoutineString(template['emoji'])
@@ -1235,7 +1294,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
           existing[c.task.id] ?? await _repo.taskState(c.task.id);
 
       if (existingState != null &&
-          _kTerminalTaskStates.contains(existingState)) {
+          _kTerminalTaskStates.contains(existingState.toLowerCase())) {
         continue; // do not overwrite history
       }
 
@@ -1246,14 +1305,13 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
         } else {
           // Exclude user-editable fields so manual time/subtask edits survive
           // a re-materialization (e.g. template update on a future day).
-          final safeConfig = Map<String, dynamic>.from(c.configFields)
-            ..remove('plannedStart')
-            ..remove('plannedEnd')
-            ..remove('subtasks');
+          final safeMeta = Map<String, dynamic>.from(c.materializationMeta)
+            ..remove('state')
+            ..remove('status');
+
           await _repo.mergeTaskFields(c.task.id, {
-            ...safeConfig,
-            ...c.materializationMeta,
-            'status': existingState,
+            ...safeMeta,
+            'schemaVersion': c.task.schemaVersion,
           });
         }
         if (c.reminderEnabled) {
@@ -1450,17 +1508,22 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   // ── Custom routine templates ─────────────────────────────────────────────
 
   Future<void> addCustomRoutineTemplate(Map<String, dynamic> template) async {
+    final normalizedTemplate = RoutineTemplateModel.forSave(
+      template,
+      fallbackRoutineType: 'custom',
+    ).toMap();
     final existing = state.routineTemplates['custom'] ?? const [];
     final nextTemplates = {
       ...state.routineTemplates,
       'custom': [
         ...existing,
-        Map<String, dynamic>.from(template),
+        normalizedTemplate,
       ],
     };
     state = state.copyWith(routineTemplates: nextTemplates);
     await _repo.saveRoutine(state);
-    await _emitTemplateCreated(template, fallbackRoutineType: 'custom');
+    await _emitTemplateCreated(normalizedTemplate,
+        fallbackRoutineType: 'custom');
     await materializeFutureFromTomorrow(days: 30);
   }
 
@@ -1472,6 +1535,12 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   }) async {
     final normalized = templates
         .map((item) => Map<String, dynamic>.from(item))
+        .map(
+          (item) => RoutineTemplateModel.forSave(
+            item,
+            fallbackRoutineType: routineType,
+          ).toMap(),
+        )
         .where((item) => _cleanRoutineString(item['title']).isNotEmpty)
         .toList();
     final nextTemplates = {

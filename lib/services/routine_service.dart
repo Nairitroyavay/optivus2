@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/constants/event_names.dart';
 import '../models/day_summary_model.dart';
+import '../models/routine_template_model.dart';
 import '../models/suggestion_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
@@ -691,41 +692,91 @@ class RoutineService {
       if (entry.value is! List) continue;
       for (final raw in entry.value as List) {
         if (raw is! Map || raw['isActive'] == false) continue;
-        final template = Map<String, dynamic>.from(raw);
-        final repeatRule = (template['repeatRule'] ?? 'daily').toString();
-        if (!_repeatRuleMatchesDate(repeatRule, date)) continue;
+        final templateMap = Map<String, dynamic>.from(raw);
+        final templateModel = RoutineTemplateModel.forSave(
+          templateMap,
+          fallbackRoutineType: routineType,
+        );
+        final template = templateModel.toMap();
 
-        final title = (template['title'] ?? '').toString().trim();
+        final repeatRule = templateModel.repeatRule.trim().isEmpty
+            ? 'daily'
+            : templateModel.repeatRule;
+        final targetDate = (templateMap['targetDate']?.toString() ?? '').trim();
+        final startDate = (templateMap['startDate']?.toString() ?? '').trim();
+        final endDate = (templateMap['endDate']?.toString() ?? '').trim();
+        if (targetDate.isNotEmpty && targetDate != dateStr) continue;
+        if (startDate.isNotEmpty && dateStr.compareTo(startDate) < 0) {
+          continue;
+        }
+        if (endDate.isNotEmpty && dateStr.compareTo(endDate) > 0) {
+          continue;
+        }
+        final repeatRuleKey = repeatRule.toLowerCase();
+        final repeatsToday = repeatRuleKey == 'once'
+            ? targetDate == dateStr
+            : _repeatRuleMatchesDate(repeatRule, date);
+        if (!repeatsToday) continue;
+
+        final title = templateModel.title;
         if (title.isEmpty) continue;
-        final templateId = (template['templateId'] ?? title).toString();
-        final startTime = _normalizeTime(template['startTime'], '09:00');
-        final endTime = _normalizeTime(template['endTime'], '09:30');
+        final candidateRoutineType = templateModel.routineType.trim().isEmpty
+            ? routineType
+            : templateModel.routineType;
+        final templateId = templateModel.templateId;
+
+        final startTime = _normalizeTime(templateModel.startTime, '09:00');
+        final hasExplicitEndTime =
+            (templateMap['endTime']?.toString().trim() ?? '').isNotEmpty;
+        final endTime = _normalizeTime(templateModel.endTime, '09:30');
         final plannedStart = _dateTimeFromTime(date, startTime);
-        var plannedEnd = _dateTimeFromTime(date, endTime);
+        var plannedEnd = hasExplicitEndTime
+            ? _dateTimeFromTime(date, endTime)
+            : plannedStart.add(const Duration(minutes: 30));
         if (!plannedEnd.isAfter(plannedStart)) {
           plannedEnd = plannedStart.add(const Duration(minutes: 30));
         }
 
         final taskId =
-            'routine_${dateStr}_${_slug(routineType)}_${_slug(templateId)}';
+            'routine_${dateStr}_${_slug(candidateRoutineType)}_${_slug(templateId)}';
         final taskRef = _firestore
             .collection('users')
             .doc(uid)
             .collection('tasks')
             .doc(taskId);
-        if ((await taskRef.get()).exists) continue;
+        final taskSnap = await taskRef.get();
+        if (taskSnap.exists) {
+          final state =
+              _taskState(taskSnap.data() ?? const <String, dynamic>{});
+          if (_isTerminalTaskState(state)) continue;
+
+          await taskRef.set(
+            {
+              'sourceRoutineType': candidateRoutineType,
+              'routineTemplateId': templateId,
+              'scheduledDate': dateStr,
+              'repeatRule': repeatRule,
+              'materializedFromTemplateAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+              'schemaVersion': 1,
+            },
+            SetOptions(merge: true),
+          );
+          continue;
+        }
 
         final now = DateTime.now();
         final task = TaskModel(
           id: taskId,
-          type: _taskTypeForRoutineType(routineType),
+          type: _taskTypeForRoutineType(candidateRoutineType),
           parentRoutine: templateId,
           title: title,
           emoji: template['emoji']?.toString(),
           color: template['colorHex']?.toString(),
-          identityTags: [routineType],
+          identityTags: [candidateRoutineType],
           plannedStart: plannedStart,
           plannedEnd: plannedEnd,
+          subtasks: _subtasksForTemplate(template),
           createdAt: now,
           updatedAt: now,
         );
@@ -733,7 +784,7 @@ class RoutineService {
         batch.set(taskRef, {
           ...task.toFirestore(),
           'status': TaskState.scheduled.toJson(),
-          'sourceRoutineType': routineType,
+          'sourceRoutineType': candidateRoutineType,
           'routineTemplateId': templateId,
           'scheduledDate': dateStr,
           'repeatRule': repeatRule,
@@ -810,6 +861,29 @@ class RoutineService {
         'plannedDurationMin': task.plannedDurationMin,
       };
 
+  List<Subtask> _subtasksForTemplate(Map<String, dynamic> template) {
+    final subtasks = <Subtask>[];
+    for (final step in template['steps'] as List? ?? const []) {
+      if (step is Map && (step['name']?.toString().trim() ?? '').isNotEmpty) {
+        final title = step['name'].toString().trim();
+        subtasks.add(Subtask(id: _slug(title), title: title));
+      } else if (step is String && step.trim().isNotEmpty) {
+        subtasks.add(Subtask(id: _slug(step), title: step.trim()));
+      }
+    }
+    for (final entry in const {
+      'dosage': 'dosage',
+      'room': 'room',
+      'professor': 'professor',
+    }.entries) {
+      final value = template[entry.key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) {
+        subtasks.add(Subtask(id: entry.value, title: value));
+      }
+    }
+    return subtasks;
+  }
+
   TaskType _taskTypeForRoutineType(String routineType) {
     switch (routineType) {
       case 'skin_care':
@@ -879,6 +953,8 @@ class RoutineService {
   static bool _repeatRuleMatchesDate(String repeatRule, DateTime date) {
     final rule = repeatRule.trim().toLowerCase();
     if (rule.isEmpty || rule == 'daily') return true;
+    if (rule == 'once') return false;
+
     final weekly = RegExp(r'^weekly:(.+)$').firstMatch(rule);
     if (weekly != null) {
       final days = weekly
@@ -892,8 +968,26 @@ class RoutineService {
     final weekday =
         RegExp(r'^(weekday|mess_menu_weekday):(\d)$').firstMatch(rule);
     if (weekday != null) return int.parse(weekday.group(2)!) == date.weekday;
-    return true;
+
+    final monthly = RegExp(r'^monthly:(\d{1,2})$').firstMatch(rule);
+    if (monthly != null) {
+      return int.tryParse(monthly.group(1)!) == date.day;
+    }
+
+    debugPrint(
+        '[RoutineService] Unknown repeat rule: $repeatRule. Failing safely.');
+    return false;
   }
+
+  static String _taskState(Map<String, dynamic> data) =>
+      ((data['state'] as String?) ?? (data['status'] as String?) ?? 'scheduled')
+          .toLowerCase();
+
+  static bool _isTerminalTaskState(String state) =>
+      state == 'completed' ||
+      state == 'skipped' ||
+      state == 'abandoned' ||
+      state == 'cancelled';
 
   static DateTime? _parseFlexibleDate(Object? value) {
     if (value is Timestamp) return value.toDate();

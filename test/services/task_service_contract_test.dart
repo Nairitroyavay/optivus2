@@ -87,8 +87,8 @@ void main() {
       await service.createTask(_scheduledTask());
 
       final events = await eventsColl().get();
-      final scheduledEvents =
-          events.docs.where((d) => d.data()['eventName'] == EventNames.taskScheduled);
+      final scheduledEvents = events.docs
+          .where((d) => d.data()['eventName'] == EventNames.taskScheduled);
       expect(scheduledEvents.length, 1);
       final payload = scheduledEvents.first.data()['payload'] as Map;
       expect(payload['taskId'], 'task_1');
@@ -96,7 +96,8 @@ void main() {
       expect(payload['plannedDurationMin'], 30);
     });
 
-    test('throws InvalidTimeRangeError when plannedEnd ≤ plannedStart', () async {
+    test('throws InvalidTimeRangeError when plannedEnd ≤ plannedStart',
+        () async {
       final t = DateTime(2026, 5, 2, 10);
       final task = _scheduledTask(plannedStart: t, plannedEnd: t);
       await expectLater(
@@ -109,8 +110,8 @@ void main() {
       final start = DateTime(2026, 5, 2, 8);
       final end = start.add(const Duration(hours: 9));
       await expectLater(
-        service.createTask(
-            _scheduledTask(plannedStart: start, plannedEnd: end)),
+        service
+            .createTask(_scheduledTask(plannedStart: start, plannedEnd: end)),
         throwsA(isA<TaskTooLongError>()),
       );
     });
@@ -141,6 +142,48 @@ void main() {
       final emitted = await service.watchTask('task_1').first;
       expect(emitted, isNotNull);
       expect(emitted!.id, 'task_1');
+    });
+
+    test('loads legacy status-only lifecycle documents', () async {
+      final start = DateTime(2026, 5, 2, 10);
+      await tasksColl().doc('legacy_status_task').set({
+        'taskId': 'legacy_status_task',
+        'type': 'fixed',
+        'title': 'Legacy status task',
+        'plannedStart': Timestamp.fromDate(start),
+        'plannedEnd':
+            Timestamp.fromDate(start.add(const Duration(minutes: 30))),
+        'status': 'completed',
+        'createdAt': Timestamp.fromDate(start),
+        'updatedAt': Timestamp.fromDate(start),
+        'schemaVersion': 1,
+      });
+
+      final emitted = await service.watchTask('legacy_status_task').first;
+      expect(emitted, isNotNull);
+      expect(emitted!.state, TaskState.completed);
+      expect(emitted.state.isTerminal, isTrue);
+    });
+
+    test('loads legacy status-only cancelled documents as terminal', () async {
+      final start = DateTime(2026, 5, 2, 10);
+      await tasksColl().doc('legacy_cancelled_task').set({
+        'taskId': 'legacy_cancelled_task',
+        'type': 'fixed',
+        'title': 'Legacy cancelled task',
+        'plannedStart': Timestamp.fromDate(start),
+        'plannedEnd':
+            Timestamp.fromDate(start.add(const Duration(minutes: 30))),
+        'status': 'cancelled',
+        'createdAt': Timestamp.fromDate(start),
+        'updatedAt': Timestamp.fromDate(start),
+        'schemaVersion': 1,
+      });
+
+      final emitted = await service.watchTask('legacy_cancelled_task').first;
+      expect(emitted, isNotNull);
+      expect(emitted!.state, isNot(TaskState.scheduled));
+      expect(emitted.state.isTerminal, isTrue);
     });
   });
 

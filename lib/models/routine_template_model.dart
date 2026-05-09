@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 
 class RoutineTemplateModel {
   final String templateId;
@@ -75,11 +77,38 @@ class RoutineTemplateModel {
         map['reminderOffsetMinutes'],
         fallback: 5,
       ).clamp(0, 180).toInt(),
-      isActive: map['isActive'] != false,
+      isActive: _asActive(map),
       createdAt: _asDateTime(map['createdAt']),
       updatedAt: _asDateTime(map['updatedAt']),
       metadata: _stringKeyMap(map['metadata']),
       extra: _extra(map, _knownKeys),
+    );
+  }
+
+  factory RoutineTemplateModel.forSave(
+    Map<String, dynamic> map, {
+    String fallbackRoutineType = 'custom',
+    String fallbackId = '',
+    DateTime? now,
+  }) {
+    final timestamp = now ?? DateTime.now();
+    final parsed = RoutineTemplateModel.fromMap(
+      map,
+      fallbackRoutineType: fallbackRoutineType,
+      fallbackId: fallbackId,
+    );
+    final hasExplicitEndTime = _cleanString(map['endTime']).isNotEmpty;
+    final normalized = hasExplicitEndTime
+        ? parsed
+        : parsed.copyWith(endTime: _timePlusMinutes(parsed.startTime, 30));
+    final templateId = normalized.templateId.isNotEmpty
+        ? normalized.templateId
+        : 'tpl_${normalized.generateDeterministicHash()}';
+
+    return normalized.copyWith(
+      templateId: templateId,
+      createdAt: normalized.createdAt ?? timestamp,
+      updatedAt: timestamp,
     );
   }
 
@@ -148,6 +177,32 @@ class RoutineTemplateModel {
       extra: extra ?? this.extra,
     );
   }
+
+  /// Generates a stable hash from a sorted map representation.
+  String generateDeterministicHash() {
+    final sortedMap = _sortMap(toMap());
+    // Strip unstable fields that shouldn't affect uniqueness for a task generated on a specific date.
+    sortedMap.remove('createdAt');
+    sortedMap.remove('updatedAt');
+    final jsonString = jsonEncode(sortedMap);
+    return md5.convert(utf8.encode(jsonString)).toString().substring(0, 8);
+  }
+
+  static Map<String, dynamic> _sortMap(Map<String, dynamic> map) {
+    final sortedKeys = map.keys.toList()..sort();
+    return {
+      for (final key in sortedKeys)
+        key: map[key] is Map
+            ? _sortMap(Map<String, dynamic>.from(map[key] as Map))
+            : (map[key] is List ? _sortList(map[key] as List) : map[key]),
+    };
+  }
+
+  static List<dynamic> _sortList(List<dynamic> list) {
+    return list
+        .map((e) => e is Map ? _sortMap(Map<String, dynamic>.from(e)) : e)
+        .toList();
+  }
 }
 
 const _knownKeys = {
@@ -195,6 +250,27 @@ String _validTime(int hour, int minute, String fallback) {
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
   return '${hour.toString().padLeft(2, '0')}:'
       '${minute.toString().padLeft(2, '0')}';
+}
+
+String _timePlusMinutes(String hhmm, int deltaMinutes) {
+  final normalized = _normalizeTime(hhmm, fallback: '09:00');
+  final parts = normalized.split(':').map(int.parse).toList();
+  final totalMinutes = (parts[0] * 60 + parts[1] + deltaMinutes) % 1440;
+  final hour = totalMinutes ~/ 60;
+  final minute = totalMinutes % 60;
+  return '${hour.toString().padLeft(2, '0')}:'
+      '${minute.toString().padLeft(2, '0')}';
+}
+
+bool _asActive(Map<String, dynamic> map) {
+  if (map['isActive'] is bool) return map['isActive'] as bool;
+  final lifecycle = _cleanString(map['state'] ?? map['status']).toLowerCase();
+  if (lifecycle == 'inactive' ||
+      lifecycle == 'archived' ||
+      lifecycle == 'deleted') {
+    return false;
+  }
+  return true;
 }
 
 List<Map<String, dynamic>> _mapList(Object? value) {

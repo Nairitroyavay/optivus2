@@ -62,8 +62,13 @@ class TaskService {
         .where('state', isEqualTo: TaskState.started.toJson())
         .limit(1)
         .get();
-    if (snap.docs.isEmpty) return null;
-    return snap.docs.first.id;
+    if (snap.docs.isNotEmpty) return snap.docs.first.id;
+    final legacySnap = await _tasksRef
+        .where('status', isEqualTo: TaskState.started.toJson())
+        .limit(1)
+        .get();
+    if (legacySnap.docs.isEmpty) return null;
+    return legacySnap.docs.first.id;
   }
 
   Map<String, dynamic> _buildPayload(
@@ -267,6 +272,24 @@ class TaskService {
     final todayStart = DateTime(now.year, now.month, now.day);
     final emitWindowEnd = todayStart.add(const Duration(days: 2));
 
+    final emitCandidateIds = tasks
+        .where((t) =>
+            !t.plannedStart.isBefore(todayStart) &&
+            t.plannedStart.isBefore(emitWindowEnd))
+        .map((t) => t.id)
+        .toList();
+
+    final existingIds = <String>{};
+    for (var i = 0; i < emitCandidateIds.length; i += 10) {
+      final chunkIds = emitCandidateIds.sublist(
+        i,
+        (i + 10).clamp(0, emitCandidateIds.length),
+      );
+      final snap =
+          await _tasksRef.where(FieldPath.documentId, whereIn: chunkIds).get();
+      existingIds.addAll(snap.docs.map((d) => d.id));
+    }
+
     for (int start = 0; start < tasks.length; start += _kBatchChunk) {
       final chunk = tasks.sublist(
         start,
@@ -277,6 +300,9 @@ class TaskService {
 
       for (final task in chunk) {
         final docRef = _tasksRef.doc(task.id);
+        final inEmitWindow = !task.plannedStart.isBefore(todayStart) &&
+            task.plannedStart.isBefore(emitWindowEnd);
+        final isNewTask = inEmitWindow && !existingIds.contains(task.id);
 
         final updates = <String, dynamic>{
           'taskId': task.id,
@@ -302,8 +328,7 @@ class TaskService {
 
         batch.set(docRef, updates, SetOptions(merge: true));
 
-        if (!task.plannedStart.isBefore(todayStart) &&
-            task.plannedStart.isBefore(emitWindowEnd)) {
+        if (isNewTask) {
           await _eventService.emit(
             eventName: EventNames.taskScheduled,
             source: 'routine_sync',
@@ -342,6 +367,7 @@ class TaskService {
     final batch = _firestore.batch();
     batch.update(docRef, {
       'state': TaskState.started.toJson(),
+      'status': TaskState.started.toJson(),
       'actualStart': Timestamp.fromDate(now),
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -388,6 +414,7 @@ class TaskService {
       'fitnessActivityId': fitnessActivityId,
       if (task.state == TaskState.scheduled) ...{
         'state': TaskState.started.toJson(),
+        'status': TaskState.started.toJson(),
         'actualStart': Timestamp.fromDate(now),
       },
       'updatedAt': FieldValue.serverTimestamp(),
@@ -422,6 +449,7 @@ class TaskService {
     final batch = _firestore.batch();
     batch.update(docRef, {
       'state': TaskState.paused.toJson(),
+      'status': TaskState.paused.toJson(),
       'pausedAt': Timestamp.fromDate(now),
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -456,6 +484,7 @@ class TaskService {
     final batch = _firestore.batch();
     batch.update(docRef, {
       'state': TaskState.started.toJson(),
+      'status': TaskState.started.toJson(),
       'totalPauseDurationMin': newTotalPause,
       'pausedAt': FieldValue.delete(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -499,6 +528,7 @@ class TaskService {
 
     final updates = <String, dynamic>{
       'state': TaskState.completed.toJson(),
+      'status': TaskState.completed.toJson(),
       'actualEnd': Timestamp.fromDate(now),
       'actualDurationMin': actualDurationMin,
       'driftPct': driftPct,
@@ -570,6 +600,7 @@ class TaskService {
 
     final updates = <String, dynamic>{
       'state': TaskState.abandoned.toJson(),
+      'status': TaskState.abandoned.toJson(),
       'abandonedAt': Timestamp.fromDate(now),
       'actualDurationMin': actualDurationMin,
       'driftPct': driftPct,
@@ -635,6 +666,7 @@ class TaskService {
 
     final updates = <String, dynamic>{
       'state': TaskState.skipped.toJson(),
+      'status': TaskState.skipped.toJson(),
       'skippedAt': Timestamp.fromDate(now),
       'actualDurationMin': actualDurationMin,
       'driftPct': driftPct,

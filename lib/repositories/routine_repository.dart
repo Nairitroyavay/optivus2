@@ -72,7 +72,7 @@ class RoutineRepository {
   }) async {
     final normalizedTemplates = templates
         .map(
-          (template) => RoutineTemplateModel.fromMap(
+          (template) => RoutineTemplateModel.forSave(
             template,
             fallbackRoutineType: routineType,
           ).toMap(),
@@ -204,7 +204,8 @@ class RoutineRepository {
   }
 
   String _taskState(Map<String, dynamic> data) =>
-      (data['state'] as String?) ?? (data['status'] as String?) ?? 'scheduled';
+      ((data['state'] as String?) ?? (data['status'] as String?) ?? 'scheduled')
+          .toLowerCase();
 
   String _setupFlagFor(String routineType) {
     switch (routineType) {

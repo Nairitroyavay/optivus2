@@ -32,6 +32,9 @@ enum TaskState {
       case 'abandoned':
         return TaskState.abandoned;
       case 'skipped':
+      case 'cancelled':
+        // Legacy/interop value. Keep the public enum stable while preserving
+        // terminal behavior so cancelled docs are never treated as scheduled.
         return TaskState.skipped;
       default:
         return TaskState.scheduled;
@@ -288,7 +291,9 @@ class TaskModel {
       ),
       plannedStart: _asDateTime(d['plannedStart']) ?? DateTime.now(),
       plannedEnd: _asDateTime(d['plannedEnd']) ?? DateTime.now(),
-      state: TaskState.fromString(d['state'] as String?),
+      state: TaskState.fromString(
+        (d['state'] as String?) ?? (d['status'] as String?),
+      ),
       actualStart: _asDateTime(d['actualStart']),
       actualEnd: _asDateTime(d['actualEnd']),
       pausedAt: _asDateTime(d['pausedAt']),
@@ -345,7 +350,9 @@ class TaskModel {
           : (_asDateTime(map['plannedStart']) ?? DateTime.now()),
       plannedEnd: _asDateTime(map['plannedEnd']) ??
           DateTime.now().add(const Duration(hours: 1)),
-      state: TaskState.fromString(map['state'] as String?),
+      state: TaskState.fromString(
+        (map['state'] as String?) ?? (map['status'] as String?),
+      ),
       actualStart: _asDateTime(map['actualStart']),
       actualEnd: _asDateTime(map['actualEnd']),
       pausedAt: _asDateTime(map['pausedAt']),
@@ -387,7 +394,8 @@ class TaskModel {
       'alarmSnoozeDurations': alarmSnoozeDurations,
       'plannedStart': Timestamp.fromDate(plannedStart),
       'plannedEnd': Timestamp.fromDate(plannedEnd),
-      'state': state.name,
+      'state': state.toJson(),
+      'status': state.toJson(),
       if (actualStart != null) 'actualStart': Timestamp.fromDate(actualStart!),
       if (actualEnd != null) 'actualEnd': Timestamp.fromDate(actualEnd!),
       if (pausedAt != null) 'pausedAt': Timestamp.fromDate(pausedAt!),

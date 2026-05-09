@@ -790,7 +790,7 @@ Event and Firestore schema alignment.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
