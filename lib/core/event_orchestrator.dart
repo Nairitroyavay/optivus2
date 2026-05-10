@@ -284,6 +284,19 @@ class EventOrchestrator {
         }
         break;
 
+      case EventNames.taskSkipped:
+        // Cancel start/end reminders when skipped before ever starting.
+        if (uid != null) {
+          try {
+            final task = TaskModel.fromMap(event.payload);
+            await _notificationService.cancelTaskEndReminder(task, uid);
+          } catch (e) {
+            debugPrint(
+                '[EventOrchestrator] Failed to cancel task-skip notifications: $e');
+          }
+        }
+        break;
+
       case EventNames.taskAbandoned:
         // Cancel the end-reminder if abandoned early.
         if (uid != null) {
@@ -350,7 +363,22 @@ class EventOrchestrator {
         debugPrint('[EventOrchestrator] streakExtended — '
             'habitId=${event.payload['habitId']}, '
             'count=${event.payload['currentCount']}');
-        // TODO: Call _notificationService with a congratulatory nudge.
+        if (uid != null) {
+          try {
+            final habitId = event.payload['habitId'] as String? ?? '';
+            final count = event.payload['currentCount'] as int? ?? 0;
+            if (habitId.isNotEmpty && count > 0) {
+              await _notificationService.scheduleStreakCongrats(
+                uid: uid,
+                habitId: habitId,
+                streakCount: count,
+              );
+            }
+          } catch (e) {
+            debugPrint(
+                '[EventOrchestrator] Failed to schedule streak congrats: $e');
+          }
+        }
         break;
 
       case EventNames.streakMilestoneReached:
@@ -379,7 +407,22 @@ class EventOrchestrator {
         debugPrint('[EventOrchestrator] streakBroken — '
             'habitId=${event.payload['habitId']}, '
             'previous=${event.payload['previousCount']}');
-        // TODO: Call _notificationService with an encouraging nudge.
+        if (uid != null) {
+          try {
+            final habitId = event.payload['habitId'] as String? ?? '';
+            final previousCount = event.payload['previousCount'] as int? ?? 0;
+            if (habitId.isNotEmpty) {
+              await _notificationService.scheduleStreakEncouragement(
+                uid: uid,
+                habitId: habitId,
+                previousStreak: previousCount,
+              );
+            }
+          } catch (e) {
+            debugPrint(
+                '[EventOrchestrator] Failed to schedule streak encouragement: $e');
+          }
+        }
         break;
 
       // ── Day lifecycle ─────────────────────────────────────────────────
@@ -391,16 +434,33 @@ class EventOrchestrator {
         final date = event.payload['date'] as String? ?? _todayString();
         debugPrint('[EventOrchestrator] dayClosed for $date — '
             'rollup already completed by RoutineService.');
-        // TODO: Call _notificationService to deliver the day summary.
+        if (uid != null) {
+          try {
+            final tasksCompleted = event.payload['tasksCompleted'] as int? ?? 0;
+            final habitsCompleted = event.payload['habitsCompleted'] as int? ?? 0;
+            await _notificationService.scheduleDaySummary(
+              uid: uid,
+              date: date,
+              tasksCompleted: tasksCompleted,
+              habitsCompleted: habitsCompleted,
+            );
+          } catch (e) {
+            debugPrint(
+                '[EventOrchestrator] Failed to schedule day summary notification: $e');
+          }
+        }
         break;
 
       case EventNames.dayStarted:
-        // TODO: Schedule today's routine notifications.
+        debugPrint('[EventOrchestrator] dayStarted — '
+            'routine tasks materialized by RoutineService.');
         break;
 
       // ── Routine ───────────────────────────────────────────────────────
       case EventNames.routineBlockCompleted:
-        // TODO: Check if all blocks for the day are done → emit dayClosed?
+        debugPrint('[EventOrchestrator] routineBlockCompleted — '
+            'routineType=${event.payload['routineType']}, '
+            'taskId=${event.payload['taskId']}');
         break;
 
       case EventNames.routineDaySummarized:

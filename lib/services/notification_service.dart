@@ -946,6 +946,100 @@ class NotificationService {
     );
   }
 
+  /// Schedule a congratulatory nudge when a streak is extended.
+  Future<bool> scheduleStreakCongrats({
+    required String uid,
+    required String habitId,
+    required int streakCount,
+  }) async {
+    final fireAt = DateTime.now().add(const Duration(seconds: 1));
+    final dateStr = _formatDate(fireAt);
+    final timeStr = _formatTime(fireAt);
+
+    return _scheduleAndPersist(
+      uid: uid,
+      notifId: _makeDeterministicId(
+        habitId,
+        dateStr,
+        timeStr,
+        NotifCategory.streakCongrats,
+      ),
+      category: NotifCategory.streakCongrats,
+      title: '🔥 $streakCount days strong!',
+      body: 'Your streak keeps growing. Keep it up!',
+      scheduledFor: fireAt,
+      details: _kHabitNotifDetails,
+      habitId: habitId,
+      routineTemplateId: habitId,
+      scheduledDate: dateStr,
+      scheduledTime: timeStr,
+      intentDescription: 'streak_congrats_$habitId',
+    );
+  }
+
+  /// Schedule an encouraging nudge when a streak is broken.
+  Future<bool> scheduleStreakEncouragement({
+    required String uid,
+    required String habitId,
+    required int previousStreak,
+  }) async {
+    final fireAt = DateTime.now().add(const Duration(seconds: 1));
+    final dateStr = _formatDate(fireAt);
+    final timeStr = _formatTime(fireAt);
+
+    return _scheduleAndPersist(
+      uid: uid,
+      notifId: _makeDeterministicId(
+        habitId,
+        dateStr,
+        timeStr,
+        NotifCategory.streakEncouragement,
+      ),
+      category: NotifCategory.streakEncouragement,
+      title: '💪 Time to rebuild',
+      body: previousStreak > 0
+          ? 'Your $previousStreak-day streak ended — one step restarts it.'
+          : 'Every day is a fresh start. You\'ve got this!',
+      scheduledFor: fireAt,
+      details: _kHabitNotifDetails,
+      habitId: habitId,
+      routineTemplateId: habitId,
+      scheduledDate: dateStr,
+      scheduledTime: timeStr,
+      intentDescription: 'streak_encouragement_$habitId',
+    );
+  }
+
+  /// Schedule a day-close summary notification.
+  Future<bool> scheduleDaySummary({
+    required String uid,
+    required String date,
+    required int tasksCompleted,
+    required int habitsCompleted,
+  }) async {
+    final fireAt = DateTime.now().add(const Duration(seconds: 1));
+    final timeStr = _formatTime(fireAt);
+
+    return _scheduleAndPersist(
+      uid: uid,
+      notifId: _makeDeterministicId(
+        'day_summary',
+        date,
+        timeStr,
+        NotifCategory.daySummary,
+      ),
+      category: NotifCategory.daySummary,
+      title: '📊 Day closed: $date',
+      body: '$tasksCompleted tasks completed, $habitsCompleted habits logged.',
+      scheduledFor: fireAt,
+      details: _kHabitNotifDetails,
+      routineTemplateId: 'day_summary_$date',
+      scheduledDate: date,
+      scheduledTime: timeStr,
+      intentDescription: 'day_summary_$date',
+    );
+  }
+
   /// Generic schedule primitive.  Prefer the typed helpers above.
   Future<void> schedule({
     required int id,
@@ -2062,6 +2156,9 @@ class NotificationService {
       case _kAlarmCategory:
         return _kAlarmNotifDetails;
       case NotifCategory.streakMilestone:
+      case NotifCategory.streakCongrats:
+      case NotifCategory.streakEncouragement:
+      case NotifCategory.daySummary:
       case NotifCategory.slipRecovery:
         return _kHabitNotifDetails;
       case NotifCategory.taskReminder:

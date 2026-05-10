@@ -1010,7 +1010,7 @@ Routine materialization and notification service contracts.
 
 #### Status
 
-- [ ] Not started
+- [x] Done
 
 #### Priority
 
@@ -1120,10 +1120,10 @@ Routine schema, task model, event validator, notification service.
 
 #### Done Criteria
 
-- [ ] Timeline controls map to valid service transitions.
-- [ ] Day close is idempotent.
-- [ ] Events and outcomes match task state.
-- [ ] Selected-date timeline stays consistent.
+- [x] Timeline controls map to valid service transitions.
+- [x] Day close is idempotent.
+- [x] Events and outcomes match task state.
+- [x] Selected-date timeline stays consistent.
 
 ### Task 1.11 — Harden existing Worker preview contracts
 

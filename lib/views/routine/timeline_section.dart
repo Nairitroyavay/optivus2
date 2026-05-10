@@ -981,6 +981,32 @@ class _TaskActionRow extends StatelessWidget {
 
     switch (state) {
       case TaskState.scheduled:
+        // When callbacks are null, the task is from a past date — show
+        // a read-only badge instead of action buttons.
+        if (onStart == null) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: kSub.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.history_rounded, size: 14, color: kSub),
+                const SizedBox(width: 5),
+                Text(
+                  'Past',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: kSub,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
         return Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1075,6 +1101,30 @@ class _TaskActionRow extends StatelessWidget {
           ),
         );
       case TaskState.abandoned:
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFB7185).withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cancel_rounded,
+                  size: 13, color: Color(0xFFE11D48)),
+              const SizedBox(width: 4),
+              Text(
+                'Abandoned',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFFE11D48),
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+        );
       case TaskState.skipped:
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -1085,7 +1135,7 @@ class _TaskActionRow extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.close_rounded, size: 13, color: kSub),
+              Icon(Icons.skip_next_rounded, size: 14, color: kSub),
               const SizedBox(width: 4),
               Text(
                 'Skipped',

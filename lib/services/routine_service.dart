@@ -604,6 +604,22 @@ class RoutineService {
         },
         SetOptions(merge: true),
       );
+
+      await _eventService.emit(
+        eventName: outcome == 'skipped'
+            ? EventNames.taskSkipped
+            : EventNames.taskAbandoned,
+        payload: {
+          'taskId': task.id,
+          'type': task.type.name,
+          'reasonCategory': updates['reasonCategory'],
+          'reasonTag': 'day_close',
+          'actualDurationMin': actualDurationMin,
+        },
+        source: 'routine_service',
+        batch: batch,
+      );
+
       await batch.commit();
     }
   }

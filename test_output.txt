@@ -1,0 +1,184 @@
+00:00 +0: loading /Users/roy/optivus/optivus2/test/services/routine_service_contract_test.dart
+00:00 +0: RoutineService cancelled compatibility day close does not treat status-only cancelled task as scheduled
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 0 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Closing day 2026-05-09
+[StreakService] runDayCloseRollup(2026-05-09) — starting
+[StreakService] runDayCloseRollup(2026-05-09) — complete. completed=0 active=0
+[StateAggregator] Computing identity profile for routine_service_user
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[StateAggregator] identity_profile/main updated — score=0->0 identities=0
+[StateAggregator] Identity list updated with unchanged score.
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Day 2026-05-09 closed successfully.
+00:00 +1: RoutineService.runDayCloseIfNeeded — guard conditions returns early without writing Firestore when no user is signed in
+00:00 +2: RoutineService.runDayCloseIfNeeded — guard conditions returns early when /users/{uid} document does not exist
+00:00 +3: RoutineService.runDayCloseIfNeeded — guard conditions returns early when lastDayClosed >= yesterdayStr (already closed)
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 0 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+00:00 +3 -1: RoutineService.runDayCloseIfNeeded — guard conditions returns early when lastDayClosed >= yesterdayStr (already closed) [E]
+  Expected: empty
+    Actual: [Instance of 'MockQueryDocumentSnapshot<Map<String, dynamic>>']
+  
+  package:matcher                                         expect
+  package:flutter_test/src/widget_tester.dart 473:18      expect
+  test/services/routine_service_contract_test.dart 197:7  main.<fn>.<fn>
+  
+00:00 +3 -1: RoutineService.runDayCloseIfNeeded — guard conditions proceeds with rollup when lastDayClosed is null (first day)
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 0 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Closing day 2026-05-09
+[StreakService] runDayCloseRollup(2026-05-09) — starting
+[StreakService] runDayCloseRollup(2026-05-09) — complete. completed=0 active=0
+[StateAggregator] Computing identity profile for routine_service_user
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[StateAggregator] identity_profile/main updated — score=0->0 identities=0
+[StateAggregator] Identity list updated with unchanged score.
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Day 2026-05-09 closed successfully.
+00:00 +4 -1: RoutineService.runDayCloseIfNeeded — guard conditions proceeds with rollup when lastDayClosed < yesterdayStr
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 0 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Closing day 2026-05-09
+[StreakService] runDayCloseRollup(2026-05-09) — starting
+[StreakService] runDayCloseRollup(2026-05-09) — complete. completed=0 active=0
+[StateAggregator] Computing identity profile for routine_service_user
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[StateAggregator] identity_profile/main updated — score=0->0 identities=0
+[StateAggregator] Identity list updated with unchanged score.
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Day 2026-05-09 closed successfully.
+00:00 +5 -1: RoutineService.runDayCloseIfNeeded — happy path calls StreakService.runDayCloseRollup, writes summaries, updates lastDayClosed, emits events
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 0 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Closing day 2026-05-09
+[StreakService] runDayCloseRollup(2026-05-09) — starting
+[StreakService] habit1: hit=true logged=1 current=1 longest=1 state=active mode=strict
+[StreakService] runDayCloseRollup(2026-05-09) — complete. completed=1 active=1
+[StateAggregator] Computing identity profile for routine_service_user
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 4 doc(s)
+[StateAggregator] streaks(active): 1 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=1,active=1) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[StateAggregator] identity_profile/main updated — score=0->5 identities=0
+[StateAggregator] Updated identity score: 0 -> 5
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 4 doc(s)
+[StateAggregator] streaks(active): 1 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=1,active=1) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Day 2026-05-09 closed successfully.
+00:00 +6 -1: RoutineService.runDayCloseIfNeeded — idempotency calling twice for the same day does not produce duplicate dailySummary writes or events
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 0 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Closing day 2026-05-09
+[StreakService] runDayCloseRollup(2026-05-09) — starting
+[StreakService] runDayCloseRollup(2026-05-09) — complete. completed=0 active=0
+[StateAggregator] Computing identity profile for routine_service_user
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[StateAggregator] identity_profile/main updated — score=0->0 identities=0
+[StateAggregator] Identity list updated with unchanged score.
+[StateAggregator] Building snapshot uid=routine_service_user date=2026-05-10
+[StateAggregator] events_recent: 3 doc(s)
+[StateAggregator] streaks(active): 0 doc(s)
+[StateAggregator] dailySummaries: 0 doc(s) for 2026-05-10
+[StateAggregator] profile/main exists=true
+[StateAggregator] dailySummaries → no doc yet (intra-day)
+[StateAggregator] profile/main → budget=0/3 quiet=false toneLocked=false daysSinceLastActive=0
+[StateAggregator] Snapshot ready: state=on_track tasks(done=0,abandoned=0) habits(good=0,slips=0) streak(longest=0,active=0) mission=0 ghost=0d budget=0/3 quiet=false fitness(acts=0,dist=0m,cal=0)
+[RoutineService] Day 2026-05-09 closed successfully.
+00:00 +7 -1: RoutineService.runDayCloseIfNeeded — error resilience does not rethrow when Firestore batch commit fails
+00:00 +8 -1: RoutineService._formatDate (via runDayCloseIfNeeded) produces zero-padded YYYY-MM-DD string for single-digit month and day
+00:00 +9 -1: Some tests failed.

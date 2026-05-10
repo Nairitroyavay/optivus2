@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:optivus2/core/errors/app_errors.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
@@ -593,7 +594,30 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       return;
     }
 
-    await ref.read(taskServiceProvider).startTask(taskId);
+    try {
+      await ref.read(taskServiceProvider).startTask(taskId);
+    } on AppError catch (e) {
+      _showTaskError(e.message);
+    }
+  }
+
+  Future<void> _handleTaskAction(Future<void> Function() action) async {
+    try {
+      await action();
+    } on AppError catch (e) {
+      _showTaskError(e.message);
+    }
+  }
+
+  void _showTaskError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ));
   }
 
   FitnessActivityType? _fitnessTypeForTask(TaskModel task) {
@@ -1101,7 +1125,20 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                                                   sliver: SliverList(
                                                     delegate:
                                                         SliverChildBuilderDelegate(
-                                                      (_, i) => TimelineRow(
+                                                      (_, i) {
+                                                        final now = DateTime.now();
+                                                        final entryDay = DateTime(
+                                                          entry.key.year,
+                                                          entry.key.month,
+                                                          entry.key.day,
+                                                        );
+                                                        final todayDay = DateTime(
+                                                          now.year,
+                                                          now.month,
+                                                          now.day,
+                                                        );
+                                                        final isPastDate = entryDay.isBefore(todayDay);
+                                                        return TimelineRow(
                                                         block: entry.value[i],
                                                         index: i,
                                                         showHourLabel: i == 0 ||
@@ -1118,34 +1155,40 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                                                         isLast: i ==
                                                             entry.value.length -
                                                                 1,
-                                                        onStart: (taskId) =>
+                                                        onStart: isPastDate ? null : (taskId) =>
                                                             _handleStartTask(
                                                           taskId,
                                                           tasksById[taskId],
                                                         ),
-                                                        onComplete: (taskId) => ref
+                                                        onComplete: isPastDate ? null : (taskId) =>
+                                                            _handleTaskAction(() => ref
                                                             .read(
                                                                 taskServiceProvider)
                                                             .completeTask(
-                                                                taskId),
-                                                        onPause: (taskId) => ref
+                                                                taskId)),
+                                                        onPause: isPastDate ? null : (taskId) =>
+                                                            _handleTaskAction(() => ref
                                                             .read(
                                                                 taskServiceProvider)
-                                                            .pauseTask(taskId),
-                                                        onResume: (taskId) => ref
+                                                            .pauseTask(taskId)),
+                                                        onResume: isPastDate ? null : (taskId) =>
+                                                            _handleTaskAction(() => ref
                                                             .read(
                                                                 taskServiceProvider)
-                                                            .resumeTask(taskId),
-                                                        onSkip: (taskId) => ref
+                                                            .resumeTask(taskId)),
+                                                        onSkip: isPastDate ? null : (taskId) =>
+                                                            _handleTaskAction(() => ref
                                                             .read(
                                                                 taskServiceProvider)
-                                                            .skipTask(taskId),
-                                                        onAbandon: (taskId) => ref
+                                                            .skipTask(taskId)),
+                                                        onAbandon: isPastDate ? null : (taskId) =>
+                                                            _handleTaskAction(() => ref
                                                             .read(
                                                                 taskServiceProvider)
                                                             .abandonTask(
-                                                                taskId),
-                                                      ),
+                                                                taskId)),
+                                                      );
+                                                      },
                                                       childCount:
                                                           entry.value.length,
                                                     ),

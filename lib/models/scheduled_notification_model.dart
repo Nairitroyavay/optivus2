@@ -15,6 +15,9 @@ abstract final class NotifCategory {
   static const taskReminder = 'task_reminder';
   static const taskEndReminder = 'task_end_reminder';
   static const streakMilestone = 'streak_milestone';
+  static const streakCongrats = 'streak_congrats';
+  static const streakEncouragement = 'streak_encouragement';
+  static const daySummary = 'day_summary';
   static const slipRecovery = 'slip_recovery';
 }
 

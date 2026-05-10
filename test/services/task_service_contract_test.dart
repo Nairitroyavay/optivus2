@@ -203,6 +203,73 @@ void main() {
       expect(tasks.map((t) => t.id), contains('today'));
       expect(tasks.map((t) => t.id), isNot(contains('tomorrow')));
     });
+
+    // ── Selected-date rendering consistency (Task 1.10 Done Criterion 4) ──
+
+    test(
+        'non-today selected date returns correct tasks with Firestore-backed state',
+        () async {
+      // Simulate a past date that is NOT today.
+      final pastDate = DateTime(2026, 4, 28, 9);
+      final pastEnd = pastDate.add(const Duration(minutes: 45));
+
+      await service.createTask(_scheduledTask(
+        id: 'past_task_1',
+        plannedStart: pastDate,
+        plannedEnd: pastEnd,
+      ));
+      await service.startTask('past_task_1');
+      await service.completeTask('past_task_1');
+
+      await service.createTask(_scheduledTask(
+        id: 'past_task_2',
+        plannedStart: pastDate.add(const Duration(hours: 2)),
+        plannedEnd: pastDate.add(const Duration(hours: 2, minutes: 30)),
+      ));
+      // Leave past_task_2 in scheduled state (simulates a missed task).
+
+      // Query the selected date — same API the provider uses.
+      final tasks = await service.watchTasksForDay(pastDate).first;
+
+      expect(tasks.length, 2);
+
+      final completed = tasks.firstWhere((t) => t.id == 'past_task_1');
+      expect(completed.state, TaskState.completed);
+      expect(completed.state.isTerminal, isTrue);
+
+      final scheduled = tasks.firstWhere((t) => t.id == 'past_task_2');
+      expect(scheduled.state, TaskState.scheduled);
+    });
+
+    test(
+        'state transitions on a non-today date are reflected in subsequent stream emissions',
+        () async {
+      final futureDate = DateTime(2026, 5, 15, 14);
+      await service.createTask(_scheduledTask(
+        id: 'future_task',
+        plannedStart: futureDate,
+        plannedEnd: futureDate.add(const Duration(minutes: 30)),
+      ));
+
+      // First emission: scheduled.
+      final before = await service.watchTasksForDay(futureDate).first;
+      expect(before.length, 1);
+      expect(before.first.state, TaskState.scheduled);
+
+      // Transition to started.
+      await service.startTask('future_task');
+      final after = await service.watchTasksForDay(futureDate).first;
+      expect(after.length, 1);
+      expect(after.first.state, TaskState.started);
+      expect(after.first.actualStart, isNotNull);
+    });
+
+    test('non-today date with no tasks returns empty list', () async {
+      // A date with zero scheduled tasks must return empty — not crash.
+      final emptyDate = DateTime(2026, 6, 1);
+      final tasks = await service.watchTasksForDay(emptyDate).first;
+      expect(tasks, isEmpty);
+    });
   });
 
   group('TaskService.watchTasksForWindow', () {
