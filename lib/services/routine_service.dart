@@ -750,55 +750,18 @@ class RoutineService {
           final stateStr = _taskState(existingData);
           if (_isTerminalTaskState(stateStr)) continue;
 
-          final now = DateTime.now();
-          final taskModel = TaskModel(
-            id: taskId,
-            type: _taskTypeForRoutineType(candidateRoutineType),
-            parentRoutine: templateId,
-            title: title,
-            emoji: template['emoji']?.toString(),
-            color: template['colorHex']?.toString(),
-            identityTags: [candidateRoutineType],
-            plannedStart: plannedStart,
-            plannedEnd: plannedEnd,
-            subtasks: _subtasksForTemplate(template),
-            createdAt: now,
-            updatedAt: now,
-          );
-
-          final updates = taskModel.toFirestore();
-          updates.remove('state');
-          updates.remove('status');
-          updates.remove('actualStart');
-          updates.remove('actualEnd');
-          updates.remove('pausedAt');
-          updates.remove('abandonedAt');
-          updates.remove('skippedAt');
-          updates.remove('actualDurationMin');
-          updates.remove('totalPauseDurationMin');
-          updates.remove('driftPct');
-          updates.remove('reasonCategory');
-          updates.remove('reasonTag');
-          updates.remove('createdAt');
-
-          final existingSubtasks = (existingData['subtasks'] as List?)
-              ?.map((s) => Subtask.fromMap(Map<String, dynamic>.from(s as Map)))
-              .toList() ?? [];
-          final checkedSubtaskIds = existingSubtasks
-              .where((s) => s.checked)
-              .map((s) => s.id)
-              .toSet();
-
-          final mergedSubtasks = taskModel.subtasks.map((s) {
-            return s.copyWith(checked: checkedSubtaskIds.contains(s.id));
-          }).toList();
-          updates['subtasks'] = mergedSubtasks.map((s) => s.toMap()).toList();
-
-          updates['sourceRoutineType'] = candidateRoutineType;
-          updates['routineTemplateId'] = templateId;
-          updates['scheduledDate'] = dateStr;
-          updates['repeatRule'] = repeatRule;
-          updates['materializedFromTemplateAt'] = FieldValue.serverTimestamp();
+          // Preserve user-edited fields: only write metadata that the
+          // service owns.  Title, emoji, color, identityTags, subtasks,
+          // plannedStart and plannedEnd may have been manually changed by
+          // the user and must NOT be clobbered on re-materialization.
+          final updates = <String, dynamic>{
+            'sourceRoutineType': candidateRoutineType,
+            'routineTemplateId': templateId,
+            'scheduledDate': dateStr,
+            'repeatRule': repeatRule,
+            'updatedAt': FieldValue.serverTimestamp(),
+            'materializedFromTemplateAt': FieldValue.serverTimestamp(),
+          };
 
           await taskRef.set(updates, SetOptions(merge: true));
           continue;

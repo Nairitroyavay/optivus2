@@ -902,7 +902,7 @@ Core model contracts, event validator, Firestore indexes.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1001,10 +1001,10 @@ Routine materialization and notification service contracts.
 
 #### Done Criteria
 
-- [ ] Selected date is honored.
-- [ ] Repeat rules are explicit.
-- [ ] Invalid tasks cannot be saved.
-- [ ] No duplicate tasks are generated.
+- [x] Selected date is honored.
+- [x] Repeat rules are explicit.
+- [x] Invalid tasks cannot be saved.
+- [x] No duplicate tasks are generated.
 
 ### Task 1.10 — Finalize routine timeline status controls and day lifecycle
 

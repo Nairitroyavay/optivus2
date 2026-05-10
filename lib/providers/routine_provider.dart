@@ -135,7 +135,7 @@ String _normalizeMealTime(String value) {
 bool _repeatRuleMatchesDate(String repeatRule, DateTime date) {
   final rule = repeatRule.trim().toLowerCase();
   if (rule.isEmpty || rule == 'daily') return true;
-  if (rule == 'once') return false;
+  if (rule == 'once' || rule == 'none') return false;
 
   final weekly = RegExp(r'^weekly:(.+)$').firstMatch(rule);
   if (weekly != null) {
@@ -1098,9 +1098,10 @@ List<_MaterializationCandidate> _candidatesForDate(
         continue;
       }
       final repeatRuleKey = repeatRule.trim().toLowerCase();
-      final repeatsToday = repeatRuleKey == 'once'
-          ? targetDate == scheduledDate
-          : _repeatRuleMatchesDate(repeatRule, date);
+      final repeatsToday =
+          (repeatRuleKey == 'once' || repeatRuleKey == 'none')
+              ? targetDate == scheduledDate
+              : _repeatRuleMatchesDate(repeatRule, date);
       if (!repeatsToday) continue;
 
       final candidateRoutineType =

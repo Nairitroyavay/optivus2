@@ -302,10 +302,14 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     }
   }
 
-  bool get _canSave =>
-      !_saving &&
-      _titleCtrl.text.trim().isNotEmpty &&
-      !(_repeatRule == 'custom' && _customDays.isEmpty);
+  bool get _canSave {
+    if (_saving) return false;
+    if (_titleCtrl.text.trim().isEmpty) return false;
+    if (_repeatRule == 'custom' && _customDays.isEmpty) return false;
+    final dur = int.tryParse(_durationCtrl.text.trim()) ?? 0;
+    if (dur <= 0 || dur > 480) return false;
+    return true;
+  }
 
   @override
   void initState() {
@@ -320,6 +324,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     _titleCtrl.addListener(() => setState(() {
           _autoMatchEmoji(_titleCtrl.text);
         }));
+    _durationCtrl.addListener(() => setState(() {}));
   }
 
   @override
@@ -387,6 +392,29 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     }
     if (duration <= 0 || duration > 480) {
       setState(() => _error = 'Duration must be 1–480 minutes (max 8 hours).');
+      return;
+    }
+
+    // Validate that the computed repeat rule is a known format.
+    final computedRule = _computedRepeatRule;
+    const validPrefixes = {'none', 'daily', 'weekly:', 'monthly:'};
+    if (!validPrefixes.any((p) => computedRule.startsWith(p))) {
+      setState(() => _error = 'Unsupported repeat rule.');
+      return;
+    }
+
+    // Verify the computed time range is valid (catches midnight-crossing edge
+    // cases where plannedEnd would wrap into the next day).
+    final plannedStart = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      _selectedTime.hour,
+      _selectedTime.minute,
+    );
+    final plannedEnd = plannedStart.add(Duration(minutes: duration));
+    if (!plannedEnd.isAfter(plannedStart)) {
+      setState(() => _error = 'End time must be after start time.');
       return;
     }
 

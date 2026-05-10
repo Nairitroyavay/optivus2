@@ -44,6 +44,7 @@ class RoutineTab extends ConsumerStatefulWidget {
 class _RoutineTabState extends ConsumerState<RoutineTab> {
   late RoutineFilter _filter;
   bool _aiOpen = false;
+  bool _creatingTask = false;
 
   TimelineZoomLevel _zoomLevel = TimelineZoomLevel.day;
   bool _isZooming = false;
@@ -59,15 +60,6 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   String _dateKey(DateTime date) => '${date.year.toString().padLeft(4, '0')}-'
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
-
-  String _slug(String value) {
-    final slug = value
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-        .replaceAll(RegExp(r'^_+|_+$'), '');
-    return slug.isEmpty ? 'template' : slug;
-  }
 
   String _hex(Color color) =>
       '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
@@ -545,13 +537,50 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     );
   }
 
+  // Repeat rules that the Add Task flow recognises.
+  static const _kValidRepeatPrefixes = {'none', 'daily', 'weekly:', 'monthly:'};
+
   Future<void> _handleAddTask(AddTaskRequest request) async {
-    if (request.isOneOff) {
-      await _createOneOffTask(request);
-    } else {
-      await _createRepeatingTemplate(request);
+    // Double-submission guard (belt-and-suspenders on top of sheet's _saving).
+    if (_creatingTask) return;
+    _creatingTask = true;
+    try {
+      // Pre-flight validation: blank title and invalid time range.
+      if (request.title.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Task title cannot be empty.')),
+          );
+        }
+        return;
+      }
+      if (!request.plannedEnd.isAfter(request.plannedStart)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('End time must be after start time.')),
+          );
+        }
+        return;
+      }
+      // Validate repeat rule before branching.
+      if (!_kValidRepeatPrefixes.any((p) => request.repeatRule.startsWith(p))) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unsupported repeat rule.')),
+          );
+        }
+        return;
+      }
+
+      if (request.isOneOff) {
+        await _createOneOffTask(request);
+      } else {
+        await _createRepeatingTemplate(request);
+      }
+      _selectDate(request.date);
+    } finally {
+      _creatingTask = false;
     }
-    _selectDate(request.date);
   }
 
   Future<void> _handleStartTask(String taskId, TaskModel? task) async {
@@ -636,11 +665,16 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     // createTask writes state, plannedStart/End and emits task_scheduled in one batch.
     await ref.read(taskServiceProvider).createTask(task);
     // Merge extra metadata fields not covered by TaskModel.toFirestore().
+    // Tag one-off tasks explicitly so they're distinguishable from materialized
+    // routine tasks and pinned to their target date.
     await ref.read(firestoreServiceProvider).saveUserSubdocument(
       'tasks',
       taskId,
       {
         'scheduledDate': _dateKey(request.date),
+        'targetDate': _dateKey(request.date),
+        'repeatRule': 'none',
+        'isOneOff': true,
         'sourceRoutineType': request.routineType,
         'category': request.category,
         'notes': request.notes,
@@ -657,12 +691,17 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     );
 
     if (request.reminderEnabled) {
-      await _scheduleReminder(
-        taskId: taskId,
-        title: request.title,
-        fireAt: request.plannedStart.subtract(const Duration(minutes: 5)),
-        source: 'manual_task',
-      );
+      try {
+        await _scheduleReminder(
+          taskId: taskId,
+          title: request.title,
+          fireAt: request.plannedStart.subtract(const Duration(minutes: 5)),
+          source: 'manual_task',
+        );
+      } catch (e) {
+        debugPrint('[RoutineTab] Reminder scheduling failed for $taskId: $e');
+        // Task save succeeded — reminder failure is non-fatal.
+      }
     }
   }
 
@@ -672,15 +711,19 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
   Future<void> _createRepeatingTemplate(AddTaskRequest request) async {
     final now = DateTime.now().toIso8601String();
     final templateId = generateId();
+    final repeatRule = _toFirestoreRepeatRule(request);
     final template = {
       'templateId': templateId,
       'title': request.title,
       'routineType': request.routineType,
       'startTime': request.startTime,
       'endTime': request.endTime,
-      'repeatRule': _toFirestoreRepeatRule(request),
+      'repeatRule': repeatRule,
       'category': request.category,
       'notes': request.notes,
+      // Pin one-off templates to their target date so they never materialise
+      // on other calendar days.
+      if (repeatRule == 'none') 'targetDate': _dateKey(request.date),
       'reminderEnabled': request.reminderEnabled,
       'alarmTier': request.reminderEnabled
           ? AlarmTier.custom.name
@@ -696,28 +739,14 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       'updatedAt': now,
     };
 
+    // addCustomRoutineTemplate already emits routineTemplateCreated and
+    // materialises future days; we only need to materialise the selected date.
+    // Reminder scheduling is owned by RoutineProvider.materializeForDate() which
+    // uses deterministic notification IDs (routine_notification_{taskId}).
+    // Do NOT schedule reminders here — that would create duplicate notification
+    // docs and duplicate notification_scheduled events.
     await ref.read(routineProvider.notifier).addCustomRoutineTemplate(template);
-    await ref.read(eventServiceProvider).emit(
-      eventName: EventNames.routineTemplateCreated,
-      source: 'routine_tab',
-      payload: {
-        'templateId': templateId,
-        'routineType': request.routineType,
-      },
-    );
     await ref.read(routineProvider.notifier).materializeForDate(request.date);
-
-    if (request.reminderEnabled) {
-      final taskId =
-          'routine_${_dateKey(request.date)}_${_slug(request.routineType)}_${_slug(templateId)}';
-      await _scheduleReminder(
-        taskId: taskId,
-        title: request.title,
-        fireAt: request.plannedStart.subtract(const Duration(minutes: 5)),
-        source: 'routine_template',
-        templateId: templateId,
-      );
-    }
   }
 
   Future<void> _scheduleReminder({
