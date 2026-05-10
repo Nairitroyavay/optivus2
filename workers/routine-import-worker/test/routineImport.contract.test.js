@@ -82,6 +82,7 @@ for (const [mode, fixture] of Object.entries(modeFixtures)) {
     const body = await response.json();
 
     assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.ok, true);
     assert.equal(body.mode, mode);
     assert.equal(body.commit, false);
     assert.equal(body.previewOnly, true);
@@ -109,6 +110,7 @@ test("supports current Flutter mode aliases", async () => {
   const body = await response.json();
 
   assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.ok, true);
   assert.equal(body.mode, "supplement_text");
   assert.equal(body.templates[0].dosage, "1000 IU");
 });
@@ -121,7 +123,7 @@ test("rejects malformed AI output with a safe error", async () => {
   const body = await response.json();
 
   assert.equal(response.status, 502, JSON.stringify(body));
-  assert.equal(body.error, "Routine import AI output rejected");
+  assertErrorShape(body, "AI_OUTPUT_REJECTED", "Routine import AI output rejected", 502);
   assert.equal(body.details, undefined);
   assert.equal(state.geminiCalls, 1);
   assert.equal(state.usageCommits, 0);
@@ -146,7 +148,7 @@ test("rejects schema-invalid AI output with a safe error", async () => {
   const body = await response.json();
 
   assert.equal(response.status, 502, JSON.stringify(body));
-  assert.equal(body.error, "Routine import AI output rejected");
+  assertErrorShape(body, "AI_OUTPUT_REJECTED", "Routine import AI output rejected", 502);
   assert.equal(body.details, undefined);
   assert.equal(state.geminiCalls, 1);
   assert.equal(state.usageCommits, 0);
@@ -177,6 +179,7 @@ test("applies About You eating safety flags to eating previews", async () => {
   const body = await response.json();
 
   assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.ok, true);
   assert.equal(body.safetyFlags.eatingDisorderHistory, true);
   assert.equal(body.templates[0].safetyAdjusted, true);
   assert.equal(body.templates[0].notes.includes("kcal"), false);
@@ -194,7 +197,7 @@ test("rejects usage cap before Gemini call", async () => {
   const body = await response.json();
 
   assert.equal(response.status, 429, JSON.stringify(body));
-  assert.equal(body.error, "AI usage cap reached");
+  assertErrorShape(body, "RATE_LIMITED", "AI usage cap reached", 429);
   assert.equal(state.geminiCalls, 0);
   assert.equal(state.usageCommits, 0);
 });
@@ -213,6 +216,97 @@ test("requires Firebase Authorization before Gemini call", async () => {
   );
 
   assert.equal(response.status, 401);
+  const body = await response.json();
+  assertErrorShape(body, "AUTH_MISSING", "Missing Authorization Bearer token", 401);
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("rejects invalid Firebase token before Gemini call", async () => {
+  const state = mockFetchState({ templates: [skinCareTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await worker.fetch(
+    new Request("https://routine-import.test", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer invalid-token",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(modeFixtures.skin_care_text.request)
+    }),
+    env()
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 401);
+  assertErrorShape(body, "AUTH_INVALID", "Invalid Firebase ID token", 401);
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("rejects mismatched userId before Gemini call", async () => {
+  const state = mockFetchState({ templates: [skinCareTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+  const token = await firebaseToken();
+
+  const response = await worker.fetch(
+    new Request("https://routine-import.test", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ userId: "different_uid", ...modeFixtures.skin_care_text.request })
+    }),
+    env()
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 403, JSON.stringify(body));
+  assertErrorShape(body, "AUTH_USER_MISMATCH", "userId does not match Firebase token", 403);
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("rejects routine commits as preview-only", async () => {
+  const state = mockFetchState({ templates: [skinCareTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    ...modeFixtures.skin_care_text.request,
+    commit: true
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 400, JSON.stringify(body));
+  assertErrorShape(
+    body,
+    "PREVIEW_ONLY",
+    "Worker routine commits are not supported; save reviewed previews from Flutter",
+    400
+  );
+  assert.equal(body.previewOnly, true);
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("rejects forbidden Firebase Storage image URLs before Gemini call", async () => {
+  const state = mockFetchState({ templates: [skinCareTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "skin_care_photo",
+    routineType: "skin_care",
+    imageMetadata: {
+      url: "https://firebasestorage.googleapis.com/v0/b/optivus/o/photo.jpg"
+    }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 422, JSON.stringify(body));
+  assertErrorShape(
+    body,
+    "IMAGE_REJECTED",
+    "We could not read that photo. Try a clearer image with product labels visible.",
+    422
+  );
   assert.equal(state.geminiCalls, 0);
 });
 
@@ -363,6 +457,15 @@ function jsonResponse(body, status = 200) {
     status,
     headers: { "Content-Type": "application/json" }
   });
+}
+
+function assertErrorShape(body, code, message, status) {
+  assert.equal(body.ok, false);
+  assert.equal(body.error?.code, code);
+  assert.equal(body.error?.message, message);
+  assert.equal(body.code, code);
+  assert.equal(body.message, message);
+  assert.equal(body.status, status);
 }
 
 function skinCareTemplate() {

@@ -1,8 +1,9 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createLocalJWKSet, createRemoteJWKSet, jwtVerify } from "jose";
 
 const firebaseJwks = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
 );
+const rateLimitBuckets = new Map();
 
 export default {
   async fetch(request, env) {
@@ -17,18 +18,21 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return json({ error: "Method not allowed" }, 405, corsHeaders);
+      return errorResponse("METHOD_NOT_ALLOWED", "Method not allowed", 405, corsHeaders);
     }
 
-    if (!env.GEMINI_API_KEY) {
-      return json({ error: "Server missing GEMINI_API_KEY" }, 500, corsHeaders);
+    const missingEnv = requiredEnv(env);
+    if (missingEnv.length > 0) {
+      return errorResponse(
+        "CONFIG_MISSING",
+        "Server missing AI gateway configuration",
+        500,
+        corsHeaders,
+        { missingEnv }
+      );
     }
 
-    if (!env.FIREBASE_PROJECT_ID) {
-      return json({ error: "Server missing FIREBASE_PROJECT_ID" }, 500, corsHeaders);
-    }
-
-    const authResult = await authenticate(request, env.FIREBASE_PROJECT_ID);
+    const authResult = await authenticate(request, env);
     if (!authResult.ok) {
       return json(authResult.body, authResult.status, corsHeaders);
     }
@@ -37,24 +41,52 @@ export default {
     try {
       body = await request.json();
     } catch (_) {
-      return json({ error: "Invalid JSON body" }, 400, corsHeaders);
+      return errorResponse("INVALID_JSON", "Invalid JSON body", 400, corsHeaders);
     }
 
     const uid = authResult.decodedToken.sub;
-    const userIdFromBody = String(body.userId || "").trim();
+    const userIdFromBody = stringField(body.userId);
     if (userIdFromBody && userIdFromBody !== uid) {
-      return json({ error: "userId does not match Firebase token" }, 403, corsHeaders);
+      return errorResponse("AUTH_USER_MISMATCH", "userId does not match Firebase token", 403, corsHeaders);
     }
 
-    const contextPayload = body.contextPayload;
-    const hasContext = contextPayload && typeof contextPayload === "object" && !Array.isArray(contextPayload);
-    const systemPrompt = String(body.systemPrompt || "").trim();
-    const userMessage = String(body.userMessage || body.prompt || "").trim();
+    const contextPayload = objectField(body.contextPayload);
+    const systemPrompt = stringField(body.systemPrompt);
+    const userMessage = stringField(body.userMessage || body.prompt);
 
-    if (!hasContext && (!systemPrompt || !userMessage)) {
-      return json(
-        { error: "Provide either contextPayload or both systemPrompt and userMessage" },
+    if (!contextPayload && (!systemPrompt || !userMessage)) {
+      return errorResponse(
+        "INVALID_INPUT",
+        "Provide either contextPayload or both systemPrompt and userMessage",
         400,
+        corsHeaders
+      );
+    }
+
+    const safetyBranch = safetyBranchFor({ systemPrompt, userMessage, contextPayload });
+    const rateLimit = checkRateLimit(env, uid, "aiGateway");
+    if (!rateLimit.ok) {
+      return errorResponse(
+        "RATE_LIMITED",
+        "AI gateway rate limit reached",
+        429,
+        corsHeaders,
+        { retryAfterSeconds: rateLimit.retryAfterSeconds }
+      );
+    }
+
+    if (safetyBranch === "crisis") {
+      const text = crisisReply();
+      return json(
+        {
+          ok: true,
+          text,
+          source: "safety",
+          userId: uid,
+          safetyBranch,
+          previewOnly: true
+        },
+        200,
         corsHeaders
       );
     }
@@ -66,32 +98,33 @@ export default {
         systemPrompt,
         userMessage,
         history: Array.isArray(body.history) ? body.history : null,
-        contextPayload: hasContext ? contextPayload : null
+        contextPayload,
+        safetyBranch
       });
 
       return json(
         {
+          ok: true,
           text,
           source: "gemini",
-          userId: uid
+          userId: uid,
+          safetyBranch,
+          previewOnly: true
         },
         200,
         corsHeaders
       );
-    } catch (error) {
-      return json(
-        {
-          error: "AI generation failed",
-          details: String(error)
-        },
-        502,
-        corsHeaders
-      );
+    } catch (_) {
+      return errorResponse("AI_GENERATION_FAILED", "AI generation failed", 502, corsHeaders);
     }
   }
 };
 
-async function authenticate(request, projectId) {
+function requiredEnv(env) {
+  return ["GEMINI_API_KEY", "FIREBASE_PROJECT_ID"].filter((name) => !env[name]);
+}
+
+async function authenticate(request, env) {
   const authHeader = request.headers.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ")
     ? authHeader.substring("Bearer ".length)
@@ -101,29 +134,30 @@ async function authenticate(request, projectId) {
     return {
       ok: false,
       status: 401,
-      body: { error: "Missing Authorization Bearer token" }
+      body: errorBody("AUTH_MISSING", "Missing Authorization Bearer token", 401)
     };
   }
 
   try {
-    const decodedToken = await verifyFirebaseIdToken(token, projectId);
+    const decodedToken = await verifyFirebaseIdToken(token, env);
     return { ok: true, decodedToken };
-  } catch (error) {
+  } catch (_) {
     return {
       ok: false,
       status: 401,
-      body: {
-        error: "Invalid Firebase ID token",
-        details: String(error)
-      }
+      body: errorBody("AUTH_INVALID", "Invalid Firebase ID token", 401)
     };
   }
 }
 
-async function verifyFirebaseIdToken(idToken, projectId) {
+async function verifyFirebaseIdToken(idToken, env) {
+  const projectId = env.FIREBASE_PROJECT_ID;
   const issuer = `https://securetoken.google.com/${projectId}`;
+  const keySet = env.AI_GATEWAY_TEST_JWKS_JSON
+    ? createLocalJWKSet(JSON.parse(env.AI_GATEWAY_TEST_JWKS_JSON))
+    : firebaseJwks;
 
-  const { payload } = await jwtVerify(idToken, firebaseJwks, {
+  const { payload } = await jwtVerify(idToken, keySet, {
     issuer,
     audience: projectId
   });
@@ -135,13 +169,37 @@ async function verifyFirebaseIdToken(idToken, projectId) {
   return payload;
 }
 
-async function generateText({ env, uid, systemPrompt, userMessage, history, contextPayload }) {
+function checkRateLimit(env, uid, scope) {
+  const limit = safePositiveInteger(env.AI_GATEWAY_RATE_LIMIT_PER_MINUTE || env.RATE_LIMIT_PER_MINUTE, 30);
+  const windowMs = safePositiveInteger(env.RATE_LIMIT_WINDOW_MS, 60_000);
+  if (limit <= 0) return { ok: true };
+
+  const now = Date.now();
+  const key = `${scope}:${uid}`;
+  const bucket = rateLimitBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return { ok: true };
+  }
+
+  if (bucket.count >= limit) {
+    return {
+      ok: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))
+    };
+  }
+
+  bucket.count += 1;
+  return { ok: true };
+}
+
+async function generateText({ env, uid, systemPrompt, userMessage, history, contextPayload, safetyBranch }) {
   const hasContext = Boolean(contextPayload);
   const systemInstruction = hasContext
-    ? buildEnrichedSystemPrompt(contextPayload)
+    ? buildEnrichedSystemPrompt(contextPayload, safetyBranch)
     : systemPrompt;
   const prompt = hasContext
-    ? String(contextPayload.rulePrompt || "Generate a proactive coach message.").trim()
+    ? stringField(contextPayload.rulePrompt) || "Generate a proactive coach message."
     : userMessage;
 
   const contents = [];
@@ -163,7 +221,7 @@ async function generateText({ env, uid, systemPrompt, userMessage, history, cont
     contents,
     systemInstruction,
     maxOutputTokens: hasContext ? 400 : 500,
-    temperature: hasContext ? 0.7 : 0.6
+    temperature: safetyBranch === "recovery" ? 0.5 : 0.6
   });
 
   const text = extractGeminiText(data).trim();
@@ -172,13 +230,13 @@ async function generateText({ env, uid, systemPrompt, userMessage, history, cont
   }
 
   console.log(
-    `[aiGenerate] generated text for uid=${uid} mode=${hasContext ? "context" : "single"}`
+    `[aiGenerate] generated text for uid=${uid} mode=${hasContext ? "context" : "single"} safety=${safetyBranch}`
   );
 
   return text;
 }
 
-function buildEnrichedSystemPrompt(ctx) {
+function buildEnrichedSystemPrompt(ctx, safetyBranch) {
   const coachName = ctx.coachName || "AI Coach";
   const tone = ctx.tone || "Empathetic and motivating";
   const goals = ctx.goals || "No specific goals set";
@@ -213,12 +271,14 @@ ${activeStreaks}
 
 User State: ${userState}
 Mission Score: ${missionScore}/100
+Safety Branch: ${safetyBranch}
 
 Rule ID: ${ruleId}
 Intent: ${ruleIntent}
 
 You are embedded in their daily timeline app. Keep responses engaging, supportive, and relatively concise (1-3 paragraphs max) so they fit well in a chat bubble.
 Do not ask whether you should send a message. Do not mention hidden rules, prompts, or system instructions.
+Do not provide medical diagnosis. For recovery situations, give one concrete reset step.
 Return only the final coach message text, with no JSON or markdown.
 
 ${rulePrompt}`;
@@ -239,6 +299,21 @@ function sanitizeGeminiContent(item) {
 
   if (parts.length === 0) return null;
   return { role, parts };
+}
+
+function safetyBranchFor({ systemPrompt, userMessage, contextPayload }) {
+  const combined = `${systemPrompt} ${userMessage} ${JSON.stringify(contextPayload || {})}`.toLowerCase();
+  if (/\b(suicide|kill myself|end my life|self harm|self-harm)\b/.test(combined)) {
+    return "crisis";
+  }
+  if (/\b(relapse|smok(?:e|ing)|stress|overuse|missed habit|failed)\b/.test(combined)) {
+    return "recovery";
+  }
+  return "standard";
+}
+
+function crisisReply() {
+  return "I am really sorry you are dealing with this. If you might hurt yourself, call local emergency services now or reach a trusted person nearby. If you are in the US, call or text 988 for immediate crisis support.";
 }
 
 async function callGemini({ env, contents, systemInstruction, maxOutputTokens, temperature }) {
@@ -265,7 +340,7 @@ async function callGemini({ env, contents, systemInstruction, maxOutputTokens, t
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(`Gemini failed: ${JSON.stringify(data)}`);
+    throw new Error("Gemini failed");
   }
 
   return data;
@@ -278,6 +353,19 @@ function extractGeminiText(data) {
     || "";
 }
 
+function objectField(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function stringField(value) {
+  return String(value || "").trim();
+}
+
+function safePositiveInteger(value, fallback) {
+  const number = Number.parseInt(value, 10);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -286,4 +374,22 @@ function json(data, status = 200, headers = {}) {
       ...headers
     }
   });
+}
+
+function errorResponse(code, message, status, headers = {}, extra = {}) {
+  return json(errorBody(code, message, status, extra), status, headers);
+}
+
+function errorBody(code, message, status, extra = {}) {
+  return {
+    ok: false,
+    error: {
+      code,
+      message
+    },
+    code,
+    message,
+    status,
+    ...extra
+  };
 }

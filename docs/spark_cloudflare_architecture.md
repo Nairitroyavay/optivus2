@@ -80,8 +80,10 @@ firebase deploy --only firestore:rules,firestore:indexes
 Do not run Firebase deploys for functions, storage, hosting, or apphosting.
 
 Cloudflare Workers are deployed separately with Wrangler after review and
-tests. The routine import Worker is MVP preview-only: it returns suggestions to
-Flutter, and Flutter saves the reviewed final JSON.
+tests. Routine import, coach reply, and AI gateway Workers require Firebase ID
+tokens, keep provider secrets server-side, apply per-user preview rate limits,
+and return preview-only JSON. Flutter saves any reviewed final JSON to
+Firestore.
 
 ## Guardrail Scan
 

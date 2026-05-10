@@ -106,18 +106,17 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return json({ error: "Method not allowed" }, 405, corsHeaders);
+      return errorResponse("METHOD_NOT_ALLOWED", "Method not allowed", 405, corsHeaders);
     }
 
     const missingEnv = requiredEnv(env);
     if (missingEnv.length > 0) {
-      return json(
-        {
-          error: "Server missing routine import configuration",
-          missingEnv
-        },
+      return errorResponse(
+        "CONFIG_MISSING",
+        "Server missing routine import configuration",
         500,
-        corsHeaders
+        corsHeaders,
+        { missingEnv }
       );
     }
 
@@ -130,26 +129,28 @@ export default {
     try {
       body = await request.json();
     } catch (_) {
-      return json({ error: "Invalid JSON body" }, 400, corsHeaders);
+      return errorResponse("INVALID_JSON", "Invalid JSON body", 400, corsHeaders);
     }
 
     const uid = authResult.decodedToken.sub;
     const userIdFromBody = stringField(body.userId);
     if (userIdFromBody && userIdFromBody !== uid) {
-      return json({ error: "userId does not match Firebase token" }, 403, corsHeaders);
+      return errorResponse("AUTH_USER_MISMATCH", "userId does not match Firebase token", 403, corsHeaders);
     }
 
     if (body.commit === true) {
-      return json(
-        { error: "Worker routine commits are not supported; save reviewed previews from Flutter" },
+      return errorResponse(
+        "PREVIEW_ONLY",
+        "Worker routine commits are not supported; save reviewed previews from Flutter",
         400,
-        corsHeaders
+        corsHeaders,
+        { previewOnly: true }
       );
     }
 
     const modeResult = resolveMode(body);
     if (!modeResult.ok) {
-      return json({ error: modeResult.error }, 400, corsHeaders);
+      return errorResponse("UNSUPPORTED_MODE", modeResult.error, 400, corsHeaders);
     }
 
     const mode = modeResult.mode;
@@ -160,18 +161,16 @@ export default {
 
     const inputError = validateInput(contract, sourceText, imageMetadata, context);
     if (inputError) {
-      return json({ error: inputError }, 400, corsHeaders);
+      return errorResponse("INVALID_INPUT", inputError, 400, corsHeaders);
     }
 
     let accessToken;
     try {
       accessToken = await getServiceAccountAccessToken(env);
     } catch (error) {
-      return json(
-        {
-          error: "Firestore service-account authentication failed",
-          details: String(error)
-        },
+      return errorResponse(
+        "FIRESTORE_AUTH_FAILED",
+        "Firestore service-account authentication failed",
         500,
         corsHeaders
       );
@@ -203,6 +202,7 @@ export default {
       });
       const safePreview = applySafetyPolicy(preview, contract, safetyFlags);
       const output = {
+        ok: true,
         mode,
         routineType: contract.routineType,
         commit: false,
@@ -234,45 +234,35 @@ export default {
       return json(output, 200, corsHeaders);
     } catch (error) {
       if (error instanceof UsageCapError) {
-        return json(
-          {
-            error: "AI usage cap reached",
-            usage: error.usage
-          },
+        return errorResponse(
+          "RATE_LIMITED",
+          "AI usage cap reached",
           429,
-          corsHeaders
+          corsHeaders,
+          { usage: error.usage }
         );
       }
 
       if (error instanceof AiOutputValidationError) {
-        return json(
-          {
-            error: "Routine import AI output rejected",
-            reason: "The model returned malformed or unsafe JSON for this mode"
-          },
+        return errorResponse(
+          "AI_OUTPUT_REJECTED",
+          "Routine import AI output rejected",
           502,
-          corsHeaders
+          corsHeaders,
+          { reason: "The model returned malformed or unsafe JSON for this mode" }
         );
       }
 
       if (error instanceof BadImageError) {
-        return json(
-          {
-            error: "We could not read that photo. Try a clearer image with product labels visible."
-          },
+        return errorResponse(
+          "IMAGE_REJECTED",
+          "We could not read that photo. Try a clearer image with product labels visible.",
           422,
           corsHeaders
         );
       }
 
-      return json(
-        {
-          error: "Routine import failed",
-          details: String(error)
-        },
-        502,
-        corsHeaders
-      );
+      return errorResponse("ROUTINE_IMPORT_FAILED", "Routine import failed", 502, corsHeaders);
     }
   }
 };
@@ -296,7 +286,7 @@ async function authenticate(request, env) {
     return {
       ok: false,
       status: 401,
-      body: { error: "Missing Authorization Bearer token" }
+      body: errorBody("AUTH_MISSING", "Missing Authorization Bearer token", 401)
     };
   }
 
@@ -307,10 +297,7 @@ async function authenticate(request, env) {
     return {
       ok: false,
       status: 401,
-      body: {
-        error: "Invalid Firebase ID token",
-        details: String(error)
-      }
+      body: errorBody("AUTH_INVALID", "Invalid Firebase ID token", 401)
     };
   }
 }
@@ -1396,4 +1383,22 @@ function json(data, status = 200, headers = {}) {
       ...headers
     }
   });
+}
+
+function errorResponse(code, message, status, headers = {}, extra = {}) {
+  return json(errorBody(code, message, status, extra), status, headers);
+}
+
+function errorBody(code, message, status, extra = {}) {
+  return {
+    ok: false,
+    error: {
+      code,
+      message
+    },
+    code,
+    message,
+    status,
+    ...extra
+  };
 }

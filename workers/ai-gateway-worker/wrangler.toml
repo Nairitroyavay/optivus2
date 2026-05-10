@@ -8,3 +8,5 @@ GEMINI_MODEL = "gemini-1.5-flash"
 # Configure FIREBASE_PROJECT_ID as a Worker variable or secret.
 # Store GEMINI_API_KEY only as a Wrangler secret:
 # wrangler secret put GEMINI_API_KEY
+# Optional per-user preview rate limit:
+# wrangler secret put AI_GATEWAY_RATE_LIMIT_PER_MINUTE
