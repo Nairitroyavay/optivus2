@@ -239,6 +239,21 @@ test("success and error schemas are consistent", async () => {
   assertErrorShape(errorBody, "UNSUPPORTED_CONTENT_TYPE", "contentType must be image/jpeg", 400);
 });
 
+test("returns optional public R2 download URL when configured", async () => {
+  const response = await callWorker({
+    path: "/signed-upload",
+    body: validUploadBody(),
+    workerEnv: env({ publicBaseUrl: "https://uploads.example/r2/" })
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(
+    body.downloadUrl,
+    `https://uploads.example/r2/users/${uid}/uploads/skin_care/1715289300000.jpg`
+  );
+});
+
 async function callWorker({ path, body, workerEnv }) {
   const token = await firebaseToken(uid);
   return worker.fetch(
@@ -274,6 +289,7 @@ function env(options = {}) {
     R2_SECRET_ACCESS_KEY: "test-secret-key",
     R2_UPLOAD_TEST_JWKS_JSON: JSON.stringify({ keys: [authJwk] }),
     UPLOAD_URL_TTL_SECONDS: "120",
+    R2_PUBLIC_BASE_URL: options.publicBaseUrl ?? "",
     R2_BUCKET: {
       async delete(objectKey) {
         deletedKeys.push(objectKey);

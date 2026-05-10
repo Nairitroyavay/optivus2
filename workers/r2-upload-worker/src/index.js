@@ -89,11 +89,13 @@ async function handleSignedUpload({ body, env, uid, headers }) {
     sizeBytes,
     expiresInSeconds
   });
+  const downloadUrl = publicDownloadUrl(env, objectKey);
 
   return json(
     {
       ok: true,
       uploadUrl,
+      ...(downloadUrl ? { downloadUrl } : {}),
       method: "PUT",
       objectKey,
       path: objectKey,
@@ -358,6 +360,13 @@ function uploadUrlTtlSeconds(env) {
   const configured = Number.parseInt(stringField(env.UPLOAD_URL_TTL_SECONDS), 10);
   if (!Number.isFinite(configured)) return maxUploadUrlTtlSeconds;
   return Math.min(maxUploadUrlTtlSeconds, Math.max(minUploadUrlTtlSeconds, configured));
+}
+
+function publicDownloadUrl(env, objectKey) {
+  const baseUrl = stringField(env.R2_PUBLIC_BASE_URL).replace(/\/+$/, "");
+  if (!baseUrl) return null;
+  const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
+  return `${baseUrl}/${encodedKey}`;
 }
 
 function stringField(value) {

@@ -95,7 +95,7 @@ class RoutineRepository {
       if (importMetadata != null)
         'imports': {
           ...existingImports,
-          routineType: importMetadata,
+          routineType: _firestoreSafeImportMetadata(importMetadata),
         },
       '${_setupFlagFor(routineType)}SetUp': normalizedTemplates.isNotEmpty,
     });
@@ -222,5 +222,34 @@ class RoutineRepository {
       default:
         return '${routineType.replaceAll('_', '')}Templates';
     }
+  }
+
+  Map<String, dynamic> _firestoreSafeImportMetadata(
+    Map<String, dynamic> metadata,
+  ) {
+    final sanitized = Map<String, dynamic>.from(metadata);
+    final imageMetadata = sanitized['imageMetadata'];
+    if (imageMetadata is Map) {
+      sanitized['imageMetadata'] = _firestoreSafeImageMetadata(imageMetadata);
+    }
+    return sanitized;
+  }
+
+  Map<String, dynamic> _firestoreSafeImageMetadata(Map imageMetadata) {
+    final sanitized = <String, dynamic>{};
+    const transientKeys = {
+      'base64',
+      'data',
+      'downloadUrl',
+      'publicUrl',
+      'uploadUrl',
+      'url',
+    };
+    for (final entry in imageMetadata.entries) {
+      final key = entry.key?.toString() ?? '';
+      if (key.isEmpty || transientKeys.contains(key)) continue;
+      sanitized[key] = entry.value;
+    }
+    return sanitized;
   }
 }

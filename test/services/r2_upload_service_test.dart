@@ -221,6 +221,8 @@ void main() {
                 },
                 'publicUrl':
                     'https://firebasestorage.googleapis.com/forbidden.jpg',
+                'downloadUrl':
+                    'https://firebasestorage.googleapis.com/forbidden.jpg',
                 'base64': 'forbidden',
               }),
               200,
@@ -250,6 +252,50 @@ void main() {
             'provider',
           ]));
     });
+
+    test('safe R2 downloadUrl is returned for transient image preview',
+        () async {
+      final auth = MockFirebaseAuth(
+        mockUser: MockUser(uid: 'uid_123'),
+        signedIn: true,
+      );
+      final service = R2UploadService(
+        auth: auth,
+        config: _r2Config(),
+        client: MockClient((request) async {
+          if (request.method == 'POST') {
+            return http.Response(
+              jsonEncode({
+                'uploadUrl': 'https://r2.example/upload',
+                'downloadUrl':
+                    'https://uploads.example/users/uid_123/uploads/eating/1715289300000.jpg',
+                'objectKey': 'users/uid_123/uploads/eating/1715289300000.jpg',
+                'path': 'users/uid_123/uploads/eating/1715289300000.jpg',
+                'contentType': 'image/jpeg',
+                'sizeBytes': 3,
+                'requiredHeaders': {
+                  'Content-Type': 'image/jpeg',
+                  'Content-Length': '3',
+                },
+              }),
+              200,
+            );
+          }
+          return http.Response('', 200);
+        }),
+      );
+
+      final metadata = await service.uploadBytes(
+        bytes: Uint8List.fromList([1, 2, 3]),
+        routineType: 'eating',
+        contentType: ImageUploadService.jpegMimeType,
+      );
+
+      expect(
+        metadata['downloadUrl'],
+        'https://uploads.example/users/uid_123/uploads/eating/1715289300000.jpg',
+      );
+    });
   });
 
   group('ImageUploadService', () {
@@ -267,6 +313,58 @@ void main() {
         service.uploadPickedImage(
           XFile.fromData(Uint8List.fromList([1, 2, 3])),
           routineType: 'skin_care',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'Image uploads are coming soon.',
+          ),
+        ),
+      );
+    });
+
+    test('disabled upload fallback does not require auth', () async {
+      final service = ImageUploadService(
+        auth: MockFirebaseAuth(signedIn: false),
+        featureFlags: AppFeatureFlags.defaults(),
+      );
+
+      await expectLater(
+        service.uploadPickedImage(
+          XFile.fromData(Uint8List.fromList([1, 2, 3])),
+          routineType: 'profile',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            'Image uploads are coming soon.',
+          ),
+        ),
+      );
+    });
+
+    test('per-routine image flags fail closed even when base R2 is ready',
+        () async {
+      final service = ImageUploadService(
+        auth: MockFirebaseAuth(
+          mockUser: MockUser(uid: 'uid_123'),
+          signedIn: true,
+        ),
+        featureFlags: _featureFlags(
+          r2UploadsReady: true,
+          imageRoutineImportReady: true,
+          classTimetableImageImportReady: false,
+          hostelMessImageImportReady: true,
+          skinProductImageImportReady: true,
+        ),
+      );
+
+      await expectLater(
+        service.uploadPickedImage(
+          XFile.fromData(Uint8List.fromList([1, 2, 3])),
+          routineType: 'classes',
         ),
         throwsA(
           isA<StateError>().having(
@@ -299,6 +397,40 @@ R2EndpointConfig _r2Config() => const R2EndpointConfig(
       signedUploadEndpoint: 'https://worker.example/sign',
       deleteUploadEndpoint: 'https://worker.example/delete',
     );
+
+AppFeatureFlags _featureFlags({
+  bool coachEnabled = false,
+  bool aiFeaturesEnabled = false,
+  bool aiCoachMessagesReady = false,
+  bool aiRoutineSuggestionsReady = false,
+  bool aiIdentitySummariesReady = false,
+  bool fitnessAiFeedbackReady = false,
+  bool routineImportWorkerReady = false,
+  bool r2UploadsReady = false,
+  bool profileImageUploadReady = false,
+  bool imageRoutineImportReady = false,
+  bool classTimetableImageImportReady = false,
+  bool hostelMessImageImportReady = false,
+  bool skinProductImageImportReady = false,
+  bool mapboxMapsReady = false,
+}) {
+  return AppFeatureFlags(
+    coachEnabled: coachEnabled,
+    aiFeaturesEnabled: aiFeaturesEnabled,
+    aiCoachMessagesReady: aiCoachMessagesReady,
+    aiRoutineSuggestionsReady: aiRoutineSuggestionsReady,
+    aiIdentitySummariesReady: aiIdentitySummariesReady,
+    fitnessAiFeedbackReady: fitnessAiFeedbackReady,
+    routineImportWorkerReady: routineImportWorkerReady,
+    r2UploadsReady: r2UploadsReady,
+    profileImageUploadReady: profileImageUploadReady,
+    imageRoutineImportReady: imageRoutineImportReady,
+    classTimetableImageImportReady: classTimetableImageImportReady,
+    hostelMessImageImportReady: hostelMessImageImportReady,
+    skinProductImageImportReady: skinProductImageImportReady,
+    mapboxMapsReady: mapboxMapsReady,
+  );
+}
 
 class _ThrowingDeleteR2UploadService extends R2UploadService {
   _ThrowingDeleteR2UploadService()

@@ -1344,7 +1344,7 @@ Cloudflare R2 binding and Worker secrets outside repo.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1371,7 +1371,14 @@ Flutter upload flows must store only R2 object metadata and gracefully show Comi
 
 #### Gap
 
-Upload metadata, cleanup-on-replace, profile image path, and image import flows are not fully verified against a real R2 Worker contract.
+Resolved 2026-05-10: Flutter upload flows now fail closed through the same
+profile and per-routine image feature flags used by the UI, before opening or
+reading image bytes. Focused Flutter tests and R2 Worker contract tests verify
+metadata-only uploads, profile object paths, cleanup-on-replace/delete, disabled
+fallbacks, optional R2 `downloadUrl` for transient image previews, Firestore
+sanitization before `/routine/current.imports`, and the signed upload/delete
+Worker contract. Real dev R2 bucket smoke verification is still required before
+enabling remote flags.
 
 #### Spec source
 
@@ -1443,10 +1450,10 @@ R2 signed upload Worker and feature flags.
 
 #### Done Criteria
 
-- [ ] Flutter stores only R2 metadata.
-- [ ] Disabled flows do not block manual/text setup.
-- [ ] Profile image upload is gated.
-- [ ] No Firebase Storage package or path is used.
+- [x] Flutter stores only R2 metadata.
+- [x] Disabled flows do not block manual/text setup.
+- [x] Profile image upload is gated.
+- [x] No Firebase Storage package or path is used.
 
 ### Task 1.14 — Finalize Mapbox infrastructure and no-token fallback
 

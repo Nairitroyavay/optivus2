@@ -101,6 +101,7 @@ class R2UploadService {
     final returnedPath = body['path']?.toString() ?? returnedKey;
     final returnedContentType = body['contentType']?.toString() ?? contentType;
     final returnedSizeBytes = _intField(body['sizeBytes']) ?? bytes.length;
+    final downloadUrl = _safeDownloadUrl(body['downloadUrl']);
     final uploadHeaders = _requiredUploadHeaders(
       body['requiredHeaders'],
       contentType: returnedContentType,
@@ -122,6 +123,7 @@ class R2UploadService {
       'contentType': returnedContentType,
       'sizeBytes': returnedSizeBytes,
       'provider': 'cloudflare_r2',
+      if (downloadUrl != null) 'downloadUrl': downloadUrl,
     };
   }
 
@@ -184,5 +186,18 @@ class R2UploadService {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value);
     return null;
+  }
+
+  static String? _safeDownloadUrl(Object? value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
+    final host = uri.host.toLowerCase();
+    if (host.endsWith('googleapis.com') ||
+        host.endsWith('firebasestorage.app')) {
+      return null;
+    }
+    return raw;
   }
 }

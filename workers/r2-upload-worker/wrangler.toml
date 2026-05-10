@@ -4,6 +4,9 @@ compatibility_date = "2026-05-08"
 
 [vars]
 UPLOAD_URL_TTL_SECONDS = "300"
+# Optional. Set to an R2 public bucket/custom-domain base URL only when image
+# import previews are enabled and the bucket path is intentionally readable.
+R2_PUBLIC_BASE_URL = ""
 
 [[r2_buckets]]
 binding = "R2_BUCKET"

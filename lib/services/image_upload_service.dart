@@ -35,6 +35,9 @@ class ImageUploadService {
     required ImageSource source,
     required String routineType,
   }) async {
+    _requireUploadsReadyFor(routineType);
+    _requireUid();
+
     final pickedFile = await pickImage(source);
     if (pickedFile == null) return null;
 
@@ -48,10 +51,9 @@ class ImageUploadService {
     XFile pickedFile, {
     required String routineType,
   }) async {
+    _requireUploadsReadyFor(routineType);
     _requireUid();
-    if (!_uploadsReadyFor(routineType)) {
-      throw StateError('Image uploads are coming soon.');
-    }
+
     final originalBytes = await pickedFile.readAsBytes();
     final compressedBytes = await compressToJpegUnderLimit(originalBytes);
     if (routineType == 'profile') {
@@ -91,12 +93,27 @@ class ImageUploadService {
     return uid;
   }
 
+  void _requireUploadsReadyFor(String routineType) {
+    if (!_uploadsReadyFor(routineType)) {
+      throw StateError('Image uploads are coming soon.');
+    }
+  }
+
   bool _uploadsReadyFor(String routineType) {
     final flags = _featureFlags ?? AppFeatureFlags.defaults();
     if (routineType == 'profile') {
       return flags.profileImageUploadReady;
     }
-    return flags.r2UploadsReady;
+    if (routineType == 'classes') {
+      return flags.classTimetableImageImportReady;
+    }
+    if (routineType == 'eating') {
+      return flags.hostelMessImageImportReady;
+    }
+    if (routineType == 'skin_care') {
+      return flags.skinProductImageImportReady;
+    }
+    return flags.imageRoutineImportReady;
   }
 }
 
