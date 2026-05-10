@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:optivus2/core/config/app_config.dart';
-import 'package:optivus2/core/config/feature_flags.dart';
 import 'package:optivus2/services/r2_upload_service.dart';
 
 class ImageUploadService {
@@ -50,11 +49,17 @@ class ImageUploadService {
     required String routineType,
   }) async {
     _requireUid();
-    if (!(_featureFlags?.r2UploadsReady ?? FeatureFlags.enableR2Uploads)) {
+    if (!_uploadsReadyFor(routineType)) {
       throw StateError('Image uploads are coming soon.');
     }
     final originalBytes = await pickedFile.readAsBytes();
     final compressedBytes = await compressToJpegUnderLimit(originalBytes);
+    if (routineType == 'profile') {
+      return _r2UploadService.uploadProfileBytes(
+        bytes: compressedBytes,
+        contentType: jpegMimeType,
+      );
+    }
     return _r2UploadService.uploadBytes(
       bytes: compressedBytes,
       routineType: routineType,
@@ -67,13 +72,15 @@ class ImageUploadService {
   }
 
   Future<void> deleteUpload(String path) async {
-    _requireUid();
-    await _r2UploadService.deleteUploadedMetadata({'path': path});
+    await deleteUploadedMetadata({'path': path});
   }
 
   Future<void> deleteUploadedMetadata(Map<String, dynamic>? metadata) async {
-    _requireUid();
-    await _r2UploadService.deleteUploadedMetadata(metadata);
+    try {
+      await _r2UploadService.deleteUploadedMetadata(metadata);
+    } catch (error) {
+      debugPrint('[ImageUploadService] R2 cleanup failed: $error');
+    }
   }
 
   String _requireUid() {
@@ -82,6 +89,14 @@ class ImageUploadService {
       throw StateError('A signed-in user is required to upload images.');
     }
     return uid;
+  }
+
+  bool _uploadsReadyFor(String routineType) {
+    final flags = _featureFlags ?? AppFeatureFlags.defaults();
+    if (routineType == 'profile') {
+      return flags.profileImageUploadReady;
+    }
+    return flags.r2UploadsReady;
   }
 }
 

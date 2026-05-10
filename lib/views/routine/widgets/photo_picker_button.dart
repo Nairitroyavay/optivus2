@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,7 +10,7 @@ import '../../../services/image_upload_service.dart';
 class PhotoPickerButton extends ConsumerStatefulWidget {
   final String routineType;
   final Map<String, dynamic>? initialMetadata;
-  final ValueChanged<Map<String, dynamic>?> onChanged;
+  final FutureOr<void> Function(Map<String, dynamic>?) onChanged;
   final ImageUploadService? uploadService;
   final String label;
   final bool enabled;
@@ -91,7 +93,16 @@ class _PhotoPickerButtonState extends ConsumerState<PhotoPickerButton> {
     if (widget.routineType == 'profile') {
       return flags.profileImageUploadReady;
     }
-    return flags.r2UploadsReady;
+    if (widget.routineType == 'classes') {
+      return flags.classTimetableImageImportReady;
+    }
+    if (widget.routineType == 'eating') {
+      return flags.hostelMessImageImportReady;
+    }
+    if (widget.routineType == 'skin_care') {
+      return flags.skinProductImageImportReady;
+    }
+    return flags.imageRoutineImportReady;
   }
 
   void _showComingSoon() {
@@ -111,7 +122,7 @@ class _PhotoPickerButtonState extends ConsumerState<PhotoPickerButton> {
       if (!mounted || metadata == null) return;
 
       setState(() => _metadata = metadata);
-      widget.onChanged(metadata);
+      await widget.onChanged(metadata);
       if (widget.deleteOnClear && previousMetadata != null) {
         await _deleteMetadataQuietly(previousMetadata);
       }
@@ -145,7 +156,7 @@ class _PhotoPickerButtonState extends ConsumerState<PhotoPickerButton> {
       if (!mounted) return;
 
       setState(() => _metadata = null);
-      widget.onChanged(null);
+      await widget.onChanged(null);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

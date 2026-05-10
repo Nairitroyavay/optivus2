@@ -36,17 +36,50 @@ class R2UploadService {
     required String routineType,
     required String contentType,
   }) async {
+    final uid = _apiService.requireCurrentUid(
+      endpointLabel: 'Cloudflare R2 signed upload endpoint',
+    );
+    final objectKey = _objectKeyFor(
+      uid: uid,
+      routineType: routineType,
+    );
+
+    return _uploadBytesToObjectKey(
+      bytes: bytes,
+      objectKey: objectKey,
+      routineType: routineType,
+      contentType: contentType,
+    );
+  }
+
+  Future<Map<String, dynamic>> uploadProfileBytes({
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    final uid = _apiService.requireCurrentUid(
+      endpointLabel: 'Cloudflare R2 signed upload endpoint',
+    );
+    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+    return _uploadBytesToObjectKey(
+      bytes: bytes,
+      objectKey: 'users/$uid/profile/$timestamp.jpg',
+      routineType: 'profile',
+      contentType: contentType,
+    );
+  }
+
+  Future<Map<String, dynamic>> _uploadBytesToObjectKey({
+    required Uint8List bytes,
+    required String objectKey,
+    required String routineType,
+    required String contentType,
+  }) async {
     final signedEndpoint = _config.normalizedSignedUploadEndpoint;
     if (signedEndpoint.isEmpty) {
       throw StateError('Cloudflare R2 upload endpoint is not configured.');
     }
 
-    final uid = _apiService.requireCurrentUid(
-      endpointLabel: 'Cloudflare R2 signed upload endpoint',
-    );
     final safeRoutineType = _safePathSegment(routineType);
-    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final objectKey = 'users/$uid/uploads/$safeRoutineType/$timestamp.jpg';
 
     final body = await _apiService.postJson(
       endpoint: signedEndpoint,
@@ -64,23 +97,30 @@ class R2UploadService {
       throw StateError('Cloudflare R2 signed upload URL was missing.');
     }
 
+    final returnedKey = body['objectKey']?.toString() ?? objectKey;
+    final returnedPath = body['path']?.toString() ?? returnedKey;
+    final returnedContentType = body['contentType']?.toString() ?? contentType;
+    final returnedSizeBytes = _intField(body['sizeBytes']) ?? bytes.length;
+    final uploadHeaders = _requiredUploadHeaders(
+      body['requiredHeaders'],
+      contentType: returnedContentType,
+      sizeBytes: returnedSizeBytes,
+    );
+
     final uploadResponse = await _client.put(
       Uri.parse(uploadUrl),
-      headers: {'Content-Type': contentType},
+      headers: uploadHeaders,
       body: bytes,
     );
     if (uploadResponse.statusCode < 200 || uploadResponse.statusCode >= 300) {
       throw StateError('Cloudflare R2 upload failed.');
     }
 
-    final returnedKey = body['objectKey']?.toString() ?? objectKey;
     return {
-      'path': returnedKey,
       'objectKey': returnedKey,
-      'sizeBytes': bytes.length,
-      'mimeType': contentType,
-      if ((body['publicUrl']?.toString() ?? '').isNotEmpty)
-        'url': body['publicUrl'].toString(),
+      'path': returnedPath,
+      'contentType': returnedContentType,
+      'sizeBytes': returnedSizeBytes,
       'provider': 'cloudflare_r2',
     };
   }
@@ -110,5 +150,39 @@ class R2UploadService {
         .replaceAll(RegExp(r'_+'), '_')
         .replaceAll(RegExp(r'^_|_$'), '');
     return normalized.isEmpty ? 'routine' : normalized;
+  }
+
+  static String _objectKeyFor({
+    required String uid,
+    required String routineType,
+  }) {
+    final safeRoutineType = _safePathSegment(routineType);
+    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
+    return 'users/$uid/uploads/$safeRoutineType/$timestamp.jpg';
+  }
+
+  static Map<String, String> _requiredUploadHeaders(
+    Object? value, {
+    required String contentType,
+    required int sizeBytes,
+  }) {
+    final headers = <String, String>{};
+    if (value is Map) {
+      for (final entry in value.entries) {
+        final key = entry.key?.toString() ?? '';
+        if (key.isEmpty) continue;
+        headers[key] = entry.value?.toString() ?? '';
+      }
+    }
+    headers.putIfAbsent('Content-Type', () => contentType);
+    headers.putIfAbsent('Content-Length', () => sizeBytes.toString());
+    return headers;
+  }
+
+  static int? _intField(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 }

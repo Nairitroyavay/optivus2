@@ -14,7 +14,7 @@ Non-negotiable architecture result: Optivus remains Firebase Spark-only. Do not 
 
 #### Status
 
-- [x] Completed
+- [ ] Not started
 
 #### Priority
 
@@ -1236,7 +1236,7 @@ Cloudflare Workers runtime, Firebase ID token verification approach, AI provider
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1258,11 +1258,13 @@ Profile photos and image routine import cannot ship until uploads use Cloudflare
 
 - `lib/services/r2_upload_service.dart` expects `R2_SIGNED_UPLOAD_ENDPOINT` and `R2_DELETE_UPLOAD_ENDPOINT`.
 - `lib/services/image_upload_service.dart` compresses images to JPEG under 1 MB.
-- No R2 upload Worker was found under `workers/`.
+- `workers/r2-upload-worker/` implements authenticated R2 signed upload and delete endpoints.
 
 #### Gap
 
-The backend endpoints for signed upload/delete do not exist, so all image upload features must remain disabled.
+Resolved 2026-05-10: authenticated Worker endpoints now exist for signed
+R2 JPEG upload URLs and same-user object deletion. Upload features remain
+disabled by default until real dev R2 verification is completed.
 
 #### Spec source
 
@@ -1333,10 +1335,10 @@ Cloudflare R2 binding and Worker secrets outside repo.
 
 #### Done Criteria
 
-- [ ] Signed upload endpoint exists.
-- [ ] Delete endpoint or cleanup policy exists.
-- [ ] UID/object key validation is enforced.
-- [ ] Feature flag remains off until verified.
+- [x] Signed upload endpoint exists.
+- [x] Delete endpoint or cleanup policy exists.
+- [x] UID/object key validation is enforced.
+- [x] Feature flag remains off until verified.
 
 ### Task 1.13 — Wire Flutter R2 uploads and disabled fallbacks
 

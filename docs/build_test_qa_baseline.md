@@ -11,11 +11,13 @@ source of truth for forbidden services and deployment limits.
 | Area | Command | Current status | Notes |
 | --- | --- | --- | --- |
 | Spark guardrail | `python3 scripts/spark_guardrail_scan.py` | PASS | No active forbidden dependency or deploy target found. Expected warning: inactive `storage.rules` exists and must stay unreferenced by `firebase.json`. |
-| Dart analyzer | `flutter analyze` | PASS | `No issues found! (ran in 5.2s)`. `lib/views/tabs/profile_tab.dart` was specifically checked for duplicate `emptyLabel`; only two call-site arguments and one `_buildPills` parameter exist. |
+| Dart analyzer | `flutter analyze` | PASS | `No issues found! (ran in 5.9s)`. `lib/views/tabs/profile_tab.dart` was specifically checked for duplicate `emptyLabel`; only two call-site arguments and one `_buildPills` parameter exist. |
 | Flutter tests | `flutter test` | PASS WITH SKIPS | Active tests passed: `+163 ~155`. Skipped tests are listed below and remain known coverage gaps. |
+| Focused R2 Flutter upload tests | `flutter test test/services/r2_upload_service_test.dart test/views/photo_picker_button_test.dart` | PASS | 8 pass. Covers disabled Coming Soon fallback, Worker response parsing, JPEG PUT headers/body, profile object path, delete cleanup success, non-fatal cleanup failure, and metadata-only output. |
 | Routine import Worker tests | `cd workers/routine-import-worker && npm test` | PASS | 17 pass, 0 fail, 0 skipped. Covers auth, invalid tokens, preview-only behavior, AI output validation, image URL rejection, and usage-cap rate limiting. |
 | Coach reply Worker tests | `cd workers/coach-reply-worker && npm test` | PASS | 7 pass, 0 fail, 0 skipped. Covers Firebase auth, invalid tokens, user mismatch, preview response shape, rate limiting, and crisis/recovery safety branches. |
 | AI gateway Worker tests | `cd workers/ai-gateway-worker && npm test` | PASS | 8 pass, 0 fail, 0 skipped. Covers Firebase auth, invalid tokens, user mismatch, context payloads, preview response shape, rate limiting, and crisis/recovery safety branches. |
+| R2 upload Worker tests | `cd workers/r2-upload-worker && npm test` | PASS | 12 pass, 0 fail, 0 skipped. Covers Firebase auth, signed upload URL contract, UID/object-key safety, traversal rejection, content type and size validation, delete, and response schema. |
 | Android release app bundle | `flutter build appbundle --release` | PASS | Built `build/app/outputs/bundle/release/app-release.aab` at 348.9 MB after clearing stale Gradle caches. |
 | Firebase deploy | none | NOT ALLOWED | Do not run `firebase deploy`. |
 | Cloudflare deploy | none | NOT ALLOWED | Do not run `wrangler deploy` or Worker deploy scripts during baseline QA. |

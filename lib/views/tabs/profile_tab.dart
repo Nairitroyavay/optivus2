@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/services/firestore_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
+import 'package:optivus2/views/routine/widgets/photo_picker_button.dart';
 
-class ProfileTab extends StatelessWidget {
+class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
@@ -27,7 +30,7 @@ class ProfileTab extends StatelessWidget {
                 const SizedBox(height: 32),
 
                 // 2. Avatar
-                _buildAvatarSection(),
+                _buildAvatarSection(context, ref),
                 const SizedBox(height: 16),
 
                 // 3. Name & Handle
@@ -103,57 +106,107 @@ class ProfileTab extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatarSection() {
+  Widget _buildAvatarSection(BuildContext context, WidgetRef ref) {
     return Center(
-      child: SizedBox(
-        width: 140,
-        height: 140,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Glassy rim background
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.2),
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.6), width: 3),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    blurRadius: 8,
-                    offset: const Offset(-2, -2),
-                  ),
-                ],
-              ),
-            ),
-            // Inner picture
-            ClipOval(
-              child: Image.asset(
-                'assets/images/placeholder_avatar.png', // Fallback gracefully if not found
-                width: 110,
-                height: 110,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  width: 110,
-                  height: 110,
-                  color: const Color(
-                      0xFFEBA587), // Matches image background roughly
-                  child: const Center(
-                    child: Icon(Icons.person, size: 60, color: Colors.white70),
-                  ),
+      child: FutureBuilder<Map<String, dynamic>?>(
+        future: FirestoreService().getProfile(),
+        builder: (context, snapshot) {
+          final profile = snapshot.data ?? const <String, dynamic>{};
+          final rawAvatarMetadata = profile['avatarImage'];
+          final avatarMetadata = rawAvatarMetadata is Map
+              ? _r2MetadataOnly(rawAvatarMetadata)
+              : null;
+          final flags = ref.watch(appFeatureFlagsProvider);
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 140,
+                height: 140,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Glassy rim background
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.2),
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            width: 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.05),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            blurRadius: 8,
+                            offset: const Offset(-2, -2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Inner picture
+                    ClipOval(
+                      child: Image.asset(
+                        'assets/images/placeholder_avatar.png',
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: 110,
+                          height: 110,
+                          color: const Color(0xFFEBA587),
+                          child: const Center(
+                            child: Icon(Icons.person,
+                                size: 60, color: Colors.white70),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(height: 10),
+              PhotoPickerButton(
+                routineType: 'profile',
+                initialMetadata: avatarMetadata,
+                label: flags.profileImageUploadReady
+                    ? 'Change photo'
+                    : 'Photo uploads soon',
+                onChanged: (metadata) async {
+                  await FirestoreService().saveProfile({
+                    'avatarImage': _r2MetadataOnly(metadata),
+                  });
+                },
+              ),
+            ],
+          );
+        },
       ),
     );
+  }
+
+  static Map<String, dynamic>? _r2MetadataOnly(Map? metadata) {
+    if (metadata == null) return null;
+    final objectKey = metadata['objectKey']?.toString() ?? '';
+    final path = metadata['path']?.toString() ?? objectKey;
+    final contentType = metadata['contentType']?.toString() ?? '';
+    final provider = metadata['provider']?.toString() ?? '';
+    final sizeBytes = metadata['sizeBytes'];
+    if (objectKey.isEmpty || path.isEmpty || provider != 'cloudflare_r2') {
+      return null;
+    }
+    return {
+      'objectKey': objectKey,
+      'path': path,
+      if (contentType.isNotEmpty) 'contentType': contentType,
+      if (sizeBytes is num) 'sizeBytes': sizeBytes.toInt(),
+      'provider': provider,
+    };
   }
 
   Widget _buildProfileInsights() {

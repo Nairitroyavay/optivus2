@@ -182,7 +182,7 @@ void main() {
     test('returns early when lastDayClosed >= yesterdayStr (already closed)', () async {
       final today = DateTime.now();
       final yesterday = today.subtract(const Duration(days: 1));
-      
+
       await firestore.collection('users').doc(uid).set({
         'uid': uid,
         'lastDayClosed': _dateKey(yesterday),
@@ -201,7 +201,7 @@ void main() {
 
     test('proceeds with rollup when lastDayClosed is null (first day)', () async {
       await firestore.collection('users').doc(uid).set({'uid': uid});
-      
+
       await service.runDayCloseIfNeeded();
 
       final today = DateTime.now();
@@ -256,7 +256,8 @@ void main() {
     tearDown(() => eventService.dispose());
 
     test('calls StreakService.runDayCloseRollup, writes summaries, updates lastDayClosed, emits events', () async {
-      final today = DateTime.now();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
       final yesterday = today.subtract(const Duration(days: 1));
       final twoDaysAgo = today.subtract(const Duration(days: 2));
 
@@ -314,10 +315,10 @@ void main() {
           .collection('events')
           .orderBy('timestamp')
           .get();
-      
+
       final eventNames = eventsSnap.docs.map((d) => d.data()['eventName']).toList();
       expect(eventNames, containsAll(['day_closed', 'routine_day_summarized']));
-      
+
       final dayClosedEvent = eventsSnap.docs.firstWhere((d) => d.data()['eventName'] == 'day_closed');
       expect(dayClosedEvent.data()['payload']['date'], _dateKey(yesterday));
     });
