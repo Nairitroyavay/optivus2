@@ -893,10 +893,10 @@ Core model contracts, event validator, Firestore indexes.
 
 #### Done Criteria
 
-- [ ] Template schema is canonical.
-- [ ] Materialization is idempotent.
-- [ ] Repeat rules work for daily, weekly, and once.
-- [ ] Task lifecycle state is preserved.
+- [x] Template schema is canonical.
+- [x] Materialization is idempotent.
+- [x] Repeat rules work for daily, weekly, and once.
+- [x] Task lifecycle state is preserved.
 
 ### Task 1.9 — Fix add task, repeat rules, and selected date behavior
 
