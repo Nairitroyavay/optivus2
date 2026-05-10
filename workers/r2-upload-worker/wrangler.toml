@@ -1,0 +1,17 @@
+name = "optivus-r2-upload"
+main = "src/index.js"
+compatibility_date = "2026-05-08"
+
+[vars]
+UPLOAD_URL_TTL_SECONDS = "300"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "optivus-uploads-dev"
+
+# Store runtime secrets with Wrangler:
+# wrangler secret put FIREBASE_PROJECT_ID
+# wrangler secret put R2_ACCOUNT_ID
+# wrangler secret put R2_BUCKET_NAME
+# wrangler secret put R2_ACCESS_KEY_ID
+# wrangler secret put R2_SECRET_ACCESS_KEY
