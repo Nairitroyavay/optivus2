@@ -14,7 +14,7 @@ Non-negotiable architecture result: Optivus remains Firebase Spark-only. Do not 
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1227,10 +1227,10 @@ Cloudflare Workers runtime, Firebase ID token verification approach, AI provider
 
 #### Done Criteria
 
-- [ ] Existing Workers require auth.
-- [ ] Response/error schemas are documented.
-- [ ] Tests cover no-token and malformed payloads.
-- [ ] No Worker writes to Firebase unless explicitly approved.
+- [x] Existing Workers require auth.
+- [x] Response/error schemas are documented.
+- [x] Tests cover no-token and malformed payloads.
+- [x] No Worker writes to Firebase unless explicitly approved.
 
 ### Task 1.12 — Build R2 signed upload Worker and cleanup policy
 
@@ -1582,7 +1582,7 @@ Mapbox token supplied outside source, Android location permission.
 
 #### Status
 
-- [x] Completed
+- [ ] Not started
 
 #### Priority
 
@@ -5078,6 +5078,23 @@ All tested canonical events.
 - [ ] Release-critical services have tests.
 - [ ] No unexplained skipped tests remain.
 - [ ] `flutter test` result is documented.
+
+
+
+
+#### ## Skipped Flutter tests audit required
+
+As of 2026-05-11:
+
+- `flutter test` result: 330 passed, 138 skipped.
+- All non-skipped tests passed.
+- Skipped tests are not blocking Task 1.15.
+- Task 1.46 must audit every skipped test and classify each one as:
+  1. intentionally deferred,
+  2. obsolete and should be removed,
+  3. release-critical and must be re-enabled,
+  4. blocked by missing emulator/device/platform API,
+  5. blocked by missing backend/dev credentials.
 
 ### Task 1.47 — Expand Worker tests and local verification scripts
 
