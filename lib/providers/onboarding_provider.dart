@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/fixed_schedule_validation.dart';
 import 'package:optivus2/models/user_model.dart';
 import 'package:optivus2/services/event_service.dart';
 
@@ -25,37 +26,11 @@ Map<String, dynamic> _normalizeFixedScheduleItem(
   Map<String, dynamic> item,
   int index,
 ) {
-  final now = DateTime.now().toIso8601String();
-  final templateId = _cleanString(item['templateId']);
-  final createdAt = _cleanString(item['createdAt']);
-  final updatedAt = _cleanString(item['updatedAt']);
-  return {
-    'templateId':
-        templateId.isNotEmpty ? templateId : 'fixed_schedule_${index + 1}',
-    'title': _cleanString(item['title']),
-    'routineType': 'fixed_schedule',
-    'startTime': _normalizeTime(item['startTime'], fallback: '09:00'),
-    'endTime': _normalizeTime(item['endTime'], fallback: '10:00'),
-    'repeatRule': 'daily',
-    'category': _cleanString(item['category']),
-    'notes': _cleanString(item['notes']),
-    'isActive': item['isActive'] as bool? ?? true,
-    'createdAt': createdAt.isNotEmpty ? createdAt : now,
-    'updatedAt': updatedAt.isNotEmpty ? updatedAt : now,
-  };
-}
-
-String _cleanString(Object? value) => value?.toString().trim() ?? '';
-
-String _normalizeTime(Object? value, {required String fallback}) {
-  final text = value?.toString() ?? '';
-  final match = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(text.trim());
-  if (match == null) return fallback;
-  final hour = int.tryParse(match.group(1)!);
-  final minute = int.tryParse(match.group(2)!);
-  if (hour == null || minute == null) return fallback;
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
-  return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+  return normalizeFixedScheduleTemplateMap(
+    item,
+    index: index,
+    touchUpdatedAt: false,
+  );
 }
 
 class OnboardingState {

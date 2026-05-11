@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/fixed_schedule_validation.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 
 const double kHourHeight = 60.0;
@@ -39,8 +40,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
   int _colorIndex = 0;
   final Map<String, Color> _blockColors = {};
 
-  Color _colorFor(String id) =>
-      _blockColors.putIfAbsent(id, () => _cycleColors[_colorIndex++ % _cycleColors.length]);
+  Color _colorFor(String id) => _blockColors.putIfAbsent(
+      id, () => _cycleColors[_colorIndex++ % _cycleColors.length]);
 
   @override
   void initState() {
@@ -98,16 +99,6 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
     return d;
   }
 
-  bool _overlaps(TimeOfDay s1, TimeOfDay e1, TimeOfDay s2, TimeOfDay e2) {
-    int a = s1.hour * 60 + s1.minute;
-    int b = e1.hour * 60 + e1.minute;
-    int c = s2.hour * 60 + s2.minute;
-    int d = e2.hour * 60 + e2.minute;
-    if (b <= a) b += 1440;
-    if (d <= c) d += 1440;
-    return a < d && c < b;
-  }
-
   double _blockTop(FixedScheduleTemplate t) =>
       _toMinutes(t.startTime) / 60 * kHourHeight;
 
@@ -123,16 +114,35 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
   static IconData _iconFor(FixedScheduleTemplate t) {
     final text = '${t.title} ${t.category}'.toLowerCase();
     if (_any(text, ['sleep', 'bed', 'rest', 'nap'])) return Icons.bed_rounded;
-    if (_any(text, ['gym', 'workout', 'exercise', 'fitness', 'yoga', 'run', 'sport', 'train'])) {
+    if (_any(text, [
+      'gym',
+      'workout',
+      'exercise',
+      'fitness',
+      'yoga',
+      'run',
+      'sport',
+      'train'
+    ])) {
       return Icons.fitness_center_rounded;
     }
     if (_any(text, ['work', 'office', 'job', 'meeting', 'desk', 'task'])) {
       return Icons.work_rounded;
     }
-    if (_any(text, ['school', 'study', 'learn', 'class', 'course', 'read', 'book'])) {
+    if (_any(text,
+        ['school', 'study', 'learn', 'class', 'course', 'read', 'book'])) {
       return Icons.school_rounded;
     }
-    if (_any(text, ['eat', 'food', 'meal', 'breakfast', 'lunch', 'dinner', 'cook', 'snack'])) {
+    if (_any(text, [
+      'eat',
+      'food',
+      'meal',
+      'breakfast',
+      'lunch',
+      'dinner',
+      'cook',
+      'snack'
+    ])) {
       return Icons.restaurant_rounded;
     }
     if (_any(text, ['meditat', 'mindful', 'breathe', 'relax'])) {
@@ -226,11 +236,13 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
             minute: initialStart?.minute ?? 0,
           )
         : _parseTod(existing.endTime);
-    String repeatRule = _safeRepeat(existing?.repeatRule ?? 'daily');
+    String repeatRule =
+        _safeRepeat(normalizeFixedScheduleRepeatRule(existing?.repeatRule));
 
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final categoryCtrl = TextEditingController(text: existing?.category ?? '');
     final notesCtrl = TextEditingController(text: existing?.notes ?? '');
+    bool reminderEnabled = existing?.reminderEnabled ?? false;
 
     int curDurMin() {
       int d = (endTod.hour * 60 + endTod.minute) -
@@ -258,12 +270,15 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
       builder: (ctx) {
         return StatefulBuilder(builder: (_, setModal) {
           return Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            padding:
+                EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [BoxShadow(color: Color(0x1A000000), blurRadius: 20)],
+                boxShadow: [
+                  BoxShadow(color: Color(0x1A000000), blurRadius: 20)
+                ],
               ),
               padding: const EdgeInsets.all(24),
               child: SingleChildScrollView(
@@ -284,7 +299,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                         ),
                         if (!isNew)
                           IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            icon: const Icon(Icons.delete_outline,
+                                color: Colors.red),
                             onPressed: () {
                               final id = existing.templateId;
                               setState(() => _templates.removeAt(index));
@@ -314,10 +330,13 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                               if (t != null) {
                                 setModal(() {
                                   startTod = t;
-                                  final dur = int.tryParse(durationCtrl.text.trim());
+                                  final dur =
+                                      int.tryParse(durationCtrl.text.trim());
                                   if (dur != null && dur > 0 && dur < 1440) {
-                                    final total = (t.hour * 60 + t.minute + dur) % 1440;
-                                    endTod = TimeOfDay(hour: total ~/ 60, minute: total % 60);
+                                    final total =
+                                        (t.hour * 60 + t.minute + dur) % 1440;
+                                    endTod = TimeOfDay(
+                                        hour: total ~/ 60, minute: total % 60);
                                   }
                                   errorMsg = null;
                                 });
@@ -364,12 +383,15 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                       onChanged: (v) {
                         final dur = int.tryParse(v.trim());
                         if (dur == null || dur <= 0 || dur >= 1440) {
-                          setModal(() => errorMsg = 'Duration must be 1 to 1439 minutes.');
+                          setModal(() =>
+                              errorMsg = 'Duration must be 1 to 1439 minutes.');
                           return;
                         }
-                        final total = (startTod.hour * 60 + startTod.minute + dur) % 1440;
+                        final total =
+                            (startTod.hour * 60 + startTod.minute + dur) % 1440;
                         setModal(() {
-                          endTod = TimeOfDay(hour: total ~/ 60, minute: total % 60);
+                          endTod =
+                              TimeOfDay(hour: total ~/ 60, minute: total % 60);
                           errorMsg = null;
                         });
                       },
@@ -382,9 +404,13 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                           value: repeatRule,
                           isExpanded: true,
                           items: const [
-                            DropdownMenuItem(value: 'daily', child: Text('Daily')),
-                            DropdownMenuItem(value: 'weekly:1,2,3,4,5', child: Text('Weekdays')),
-                            DropdownMenuItem(value: 'weekly:6,7', child: Text('Weekends')),
+                            DropdownMenuItem(
+                                value: 'daily', child: Text('Daily')),
+                            DropdownMenuItem(
+                                value: 'weekly:1,2,3,4,5',
+                                child: Text('Weekdays')),
+                            DropdownMenuItem(
+                                value: 'weekly:6,7', child: Text('Weekends')),
                           ],
                           onChanged: (v) {
                             if (v != null) setModal(() => repeatRule = v);
@@ -403,10 +429,26 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                       maxLines: 2,
                       decoration: _inputDecor('Notes (Optional)'),
                     ),
+                    const SizedBox(height: 16),
+                    SwitchListTile.adaptive(
+                      title: const Text('Reminder',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF0F111A))),
+                      subtitle: const Text('5 minutes before start',
+                          style: TextStyle(
+                              fontSize: 13, color: Color(0xFF64748B))),
+                      value: reminderEnabled,
+                      onChanged: (v) => setModal(() => reminderEnabled = v),
+                      contentPadding: EdgeInsets.zero,
+                      activeTrackColor: const Color(0xFF3B82F6),
+                    ),
                     if (errorMsg != null) ...[
                       const SizedBox(height: 16),
                       Text(errorMsg!,
-                          style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500)),
+                          style: const TextStyle(
+                              color: Colors.red, fontWeight: FontWeight.w500)),
                     ],
                     const SizedBox(height: 24),
                     SizedBox(
@@ -420,56 +462,58 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                               borderRadius: BorderRadius.circular(16)),
                         ),
                         onPressed: () {
-                          if (titleCtrl.text.trim().isEmpty) {
-                            setModal(() => errorMsg = 'Title cannot be blank.');
-                            return;
-                          }
-                          if (startTod.hour == endTod.hour &&
-                              startTod.minute == endTod.minute) {
-                            setModal(() => errorMsg = 'Start and end time cannot be the same.');
-                            return;
-                          }
                           final dur = int.tryParse(durationCtrl.text.trim());
                           if (dur == null || dur <= 0 || dur >= 1440) {
-                            setModal(() => errorMsg = 'Duration must be 1 to 1439 minutes.');
+                            setModal(() => errorMsg =
+                                'Duration must be 1 to 1439 minutes.');
                             return;
                           }
-                          if (!_allowOverlap) {
-                            for (int i = 0; i < _templates.length; i++) {
-                              if (!isNew && i == index) continue;
-                              if (_overlaps(
-                                startTod,
-                                endTod,
-                                _parseTod(_templates[i].startTime),
-                                _parseTod(_templates[i].endTime),
-                              )) {
-                                setModal(() => errorMsg =
-                                    'Time overlaps with another task. '
-                                    'Adjust times or allow overlaps.');
-                                return;
-                              }
-                            }
-                          }
                           final total =
-                              (startTod.hour * 60 + startTod.minute + dur) % 1440;
-                          endTod = TimeOfDay(hour: total ~/ 60, minute: total % 60);
+                              (startTod.hour * 60 + startTod.minute + dur) %
+                                  1440;
+                          endTod =
+                              TimeOfDay(hour: total ~/ 60, minute: total % 60);
+
+                          final startTime = _formatTod(startTod);
+                          final endTime = _formatTod(endTod);
+                          final validationError =
+                              validateFixedScheduleTemplateDraft(
+                            title: titleCtrl.text,
+                            startTime: startTime,
+                            endTime: endTime,
+                            existingTemplates: _templates,
+                            currentTemplateId: existing?.templateId,
+                            allowOverlap: _allowOverlap,
+                          );
+                          if (validationError != null) {
+                            setModal(() => errorMsg = validationError);
+                            return;
+                          }
 
                           final now = DateTime.now().toIso8601String();
-                          final template = FixedScheduleTemplate(
-                            templateId: existing?.templateId ??
-                                'sched_${DateTime.now().microsecondsSinceEpoch}',
-                            title: titleCtrl.text.trim(),
-                            startTime: _formatTod(startTod),
-                            endTime: _formatTod(endTod),
-                            repeatRule: repeatRule,
-                            category: categoryCtrl.text.trim(),
-                            notes: notesCtrl.text.trim(),
-                            isActive: existing?.isActive ?? true,
-                            reminderEnabled: existing?.reminderEnabled ?? false,
-                            reminderOffsetMinutes: existing?.reminderOffsetMinutes ?? 5,
-                            createdAt: existing?.createdAt ?? now,
-                            updatedAt: now,
+                          final templateMap = normalizeFixedScheduleTemplateMap(
+                            {
+                              ...?existing?.toMap(),
+                              'templateId': existing?.templateId ??
+                                  'sched_${DateTime.now().microsecondsSinceEpoch}',
+                              'title': titleCtrl.text.trim(),
+                              'startTime': startTime,
+                              'endTime': endTime,
+                              'repeatRule': repeatRule,
+                              'category': categoryCtrl.text.trim(),
+                              'notes': notesCtrl.text.trim(),
+                              'isActive': existing?.isActive ?? true,
+                              'reminderEnabled': reminderEnabled,
+                              'reminderOffsetMinutes':
+                                  existing?.reminderOffsetMinutes ?? 5,
+                              'createdAt': existing?.createdAt ?? now,
+                              'updatedAt': existing?.updatedAt ?? now,
+                            },
+                            index: isNew ? _templates.length : index,
+                            touchUpdatedAt: true,
                           );
+                          final template =
+                              FixedScheduleTemplate.fromMap(templateMap);
 
                           setState(() {
                             if (isNew) {
@@ -480,12 +524,15 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                             }
                           });
                           _notify();
-                          unawaited(isNew ? _emitCreated(template) : _emitUpdated(template));
+                          unawaited(isNew
+                              ? _emitCreated(template)
+                              : _emitUpdated(template));
                           Navigator.pop(ctx);
                         },
                         child: Text(
                           isNew ? 'Create Task' : 'Save Task',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -525,10 +572,12 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+            Text(label,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
             const SizedBox(height: 4),
             Text(time.format(ctx),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           ],
         ),
       );
@@ -547,7 +596,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
               ),
               const Text(
                 'Allow Overlaps',
-                style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, color: Color(0xFF334155)),
               ),
             ],
           ),
@@ -557,7 +607,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
             label: const Text('Add Task'),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF3B82F6),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],
@@ -596,25 +647,28 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.35),
             borderRadius: BorderRadius.circular(5),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.9), width: 1.2),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(5),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
               child: Stack(
-                children: List.generate(24, (i) => Positioned(
-                  top: i * kHourHeight - 0.75,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      width: 4,
-                      height: 1.5,
-                      color: Colors.white.withValues(alpha: 0.8),
-                    ),
-                  ),
-                )),
+                children: List.generate(
+                    24,
+                    (i) => Positioned(
+                          top: i * kHourHeight - 0.75,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: Container(
+                              width: 4,
+                              height: 1.5,
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        )),
               ),
             ),
           ),
@@ -628,12 +682,14 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
           color: Colors.white.withValues(alpha: 0.45),
           borderRadius: BorderRadius.circular(size),
           boxShadow: [
-            BoxShadow(color: Colors.white.withValues(alpha: 0.4), blurRadius: 6),
+            BoxShadow(
+                color: Colors.white.withValues(alpha: 0.4), blurRadius: 6),
           ],
         ),
       );
 
-  Widget _buildTapeWithDrops({GestureDragUpdateCallback? onDrag}) => MouseRegion(
+  Widget _buildTapeWithDrops({GestureDragUpdateCallback? onDrag}) =>
+      MouseRegion(
         cursor: SystemMouseCursors.resizeUpDown,
         child: GestureDetector(
           onVerticalDragUpdate: onDrag,
@@ -647,7 +703,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.95), width: 1.5),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.95), width: 1.5),
                   boxShadow: [
                     BoxShadow(
                         color: Colors.black.withValues(alpha: 0.06),
@@ -703,7 +760,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                       color.withValues(alpha: 0.05),
                     ],
                   ),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+                  border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.8), width: 1.5),
                   boxShadow: [
                     BoxShadow(
                         color: color.withValues(alpha: 0.2),
@@ -722,14 +780,17 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Row(
                               children: [
-                                Icon(icon, color: color.withValues(alpha: 0.9), size: 24),
+                                Icon(icon,
+                                    color: color.withValues(alpha: 0.9),
+                                    size: 24),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
@@ -749,12 +810,14 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                             const SizedBox(height: 8),
                             Container(
                               height: 32,
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.35),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.8), width: 1),
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    width: 1),
                               ),
                               child: Center(
                                 child: Text(
@@ -781,7 +844,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
               left: 0,
               right: 0,
               child: Center(
-                child: _buildTapeWithDrops(onDrag: (d) => _onTopTapeDrag(index, d)),
+                child: _buildTapeWithDrops(
+                    onDrag: (d) => _onTopTapeDrag(index, d)),
               ),
             ),
             // Bottom tape
@@ -790,7 +854,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
               left: 0,
               right: 0,
               child: Center(
-                child: _buildTapeWithDrops(onDrag: (d) => _onBottomTapeDrag(index, d)),
+                child: _buildTapeWithDrops(
+                    onDrag: (d) => _onBottomTapeDrag(index, d)),
               ),
             ),
           ],
@@ -817,7 +882,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(height / 2),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.8), width: 1.5),
             boxShadow: [
               BoxShadow(
                   color: Colors.black.withValues(alpha: 0.02),
@@ -850,7 +916,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Icon(Icons.more_vert_rounded, color: Color(0xFF94A3B8), size: 18),
+                    const Icon(Icons.more_vert_rounded,
+                        color: Color(0xFF94A3B8), size: 18),
                   ],
                 ),
               ),
@@ -883,7 +950,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.25),
             borderRadius: BorderRadius.circular(height / 2),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.7), width: 1.5),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.7), width: 1.5),
             boxShadow: [
               BoxShadow(
                   color: Colors.black.withValues(alpha: 0.03),
@@ -896,7 +964,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
               child: const Center(
-                child: Icon(Icons.add_rounded, color: Color(0xFF8B5CF6), size: 28),
+                child:
+                    Icon(Icons.add_rounded, color: Color(0xFF8B5CF6), size: 28),
               ),
             ),
           ),
@@ -941,8 +1010,10 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
             width: double.infinity,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.4),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.5),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(32)),
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.8), width: 1.5),
               boxShadow: [
                 BoxShadow(
                     color: Colors.black.withValues(alpha: 0.02),
@@ -951,7 +1022,8 @@ class _FixedScheduleEditorState extends ConsumerState<FixedScheduleEditor> {
               ],
             ),
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(32)),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                 child: SingleChildScrollView(

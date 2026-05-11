@@ -1805,7 +1805,7 @@ Auth/onboarding ready state.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 

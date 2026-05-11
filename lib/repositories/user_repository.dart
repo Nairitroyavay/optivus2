@@ -6,6 +6,7 @@ import '../models/habit_model.dart';
 import '../models/scheduled_notification_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
+import '../models/fixed_schedule_validation.dart';
 
 const int _maxOnboardingGoodHabits = 24;
 const int _maxOnboardingBadHabits = 24;
@@ -129,25 +130,11 @@ class UserRepository {
     Map<String, dynamic> item,
     int index,
   ) {
-    final now = DateTime.now().toIso8601String();
-    final templateId = _cleanLabel(item['templateId']?.toString() ?? '');
-    final createdAt = _cleanLabel(item['createdAt']?.toString() ?? '');
-    final updatedAt = _cleanLabel(item['updatedAt']?.toString() ?? '');
-
-    return {
-      'templateId':
-          templateId.isNotEmpty ? templateId : 'fixed_schedule_${index + 1}',
-      'title': _cleanLabel(item['title']?.toString() ?? ''),
-      'routineType': 'fixed_schedule',
-      'startTime': _sanitizeTime(item['startTime'], fallback: '09:00'),
-      'endTime': _sanitizeTime(item['endTime'], fallback: '10:00'),
-      'repeatRule': 'daily',
-      'category': _cleanLabel(item['category']?.toString() ?? ''),
-      'notes': _cleanLabel(item['notes']?.toString() ?? ''),
-      'isActive': item['isActive'] as bool? ?? true,
-      'createdAt': createdAt.isNotEmpty ? createdAt : now,
-      'updatedAt': updatedAt.isNotEmpty ? updatedAt : now,
-    };
+    return normalizeFixedScheduleTemplateMap(
+      item,
+      index: index,
+      touchUpdatedAt: false,
+    );
   }
 
   String _sanitizeTime(Object? value, {required String fallback}) {
@@ -555,13 +542,23 @@ class UserRepository {
     final existingTemplates = existingRoutine['templates'] is Map
         ? Map<String, dynamic>.from(existingRoutine['templates'] as Map)
         : <String, dynamic>{};
+    final existingFixedSchedule = existingTemplates['fixed_schedule'] is List
+        ? (existingTemplates['fixed_schedule'] as List)
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList()
+        : const <Map<String, dynamic>>[];
+    final mergedFixedSchedule = _mergeFixedScheduleTemplates(
+      existingFixedSchedule: existingFixedSchedule,
+      onboardingFixedSchedule: templates,
+    );
     await _service.saveRoutine({
       ...existingRoutine,
       'templates': {
         ...existingTemplates,
-        'fixed_schedule': templates,
+        'fixed_schedule': mergedFixedSchedule,
       },
-      'fixedScheduleSetUp': templates.isNotEmpty,
+      'fixedScheduleSetUp': mergedFixedSchedule.isNotEmpty,
     }, batch: batch);
 
     final todayTasks = _buildTodayTasksFromTemplates(
@@ -661,7 +658,7 @@ class UserRepository {
       if (title.isEmpty) continue;
 
       final templateId = _cleanLabel(item['templateId']?.toString() ?? title);
-      if (seenTemplateIds.add(_slug(templateId))) {
+      if (seenTemplateIds.add(templateId)) {
         templates.add(item);
       }
 
@@ -669,6 +666,42 @@ class UserRepository {
     }
 
     return templates;
+  }
+
+  List<Map<String, dynamic>> _mergeFixedScheduleTemplates({
+    required List<Map<String, dynamic>> existingFixedSchedule,
+    required List<Map<String, dynamic>> onboardingFixedSchedule,
+  }) {
+    final merged = <Map<String, dynamic>>[];
+    final seenTemplateIds = <String>{};
+
+    for (var i = 0; i < existingFixedSchedule.length; i++) {
+      final normalized = normalizeFixedScheduleTemplateMap(
+        existingFixedSchedule[i],
+        index: merged.length,
+        touchUpdatedAt: false,
+      );
+      final templateId =
+          _cleanLabel(normalized['templateId']?.toString() ?? '');
+      if (templateId.isEmpty || !seenTemplateIds.add(templateId)) continue;
+      merged.add(normalized);
+    }
+
+    for (var i = 0; i < onboardingFixedSchedule.length; i++) {
+      final normalized = normalizeFixedScheduleTemplateMap(
+        onboardingFixedSchedule[i],
+        index: merged.length,
+        touchUpdatedAt: false,
+      );
+      final templateId =
+          _cleanLabel(normalized['templateId']?.toString() ?? '');
+      if (templateId.isEmpty || seenTemplateIds.contains(templateId)) continue;
+      seenTemplateIds.add(templateId);
+      merged.add(normalized);
+      if (merged.length >= _maxOnboardingRoutineTemplates) break;
+    }
+
+    return merged;
   }
 
   List<Map<String, dynamic>> _effectiveFixedSchedule(

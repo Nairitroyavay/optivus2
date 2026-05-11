@@ -219,5 +219,78 @@ void main() {
       expect(notificationsSnap.docs.length, 3);
       expect(eventsSnap.docs.length, lessThan(500));
     });
+
+    test(
+        'completeOnboarding merges onboarding fixed schedule without clobbering existing routine templates',
+        () async {
+      final uid = mockAuth.currentUser!.uid;
+      final existingTemplateCreatedAt = '2025-01-01T00:00:00.000Z';
+
+      await fakeFirestore
+          .collection('users')
+          .doc(uid)
+          .collection('routine')
+          .doc('current')
+          .set({
+        'templates': {
+          'fixed_schedule': [
+            {
+              'templateId': 'existing_block',
+              'title': 'Existing Block',
+              'startTime': '06:00',
+              'endTime': '07:00',
+              'repeatRule': 'daily',
+              'category': 'Legacy',
+              'createdAt': existingTemplateCreatedAt,
+              'updatedAt': existingTemplateCreatedAt,
+              'legacyField': 'preserve',
+            },
+          ],
+        },
+        'fixedScheduleSetUp': true,
+      });
+
+      onboardingNotifier.updateFixedSchedule([
+        {
+          'templateId': 'existing_block',
+          'title': 'Incoming Duplicate',
+          'startTime': '08:00',
+          'endTime': '09:00',
+        },
+        {
+          'templateId': 'new_onboarding_block',
+          'title': 'New Onboarding Block',
+          'startTime': '09:30',
+          'endTime': '10:00',
+        },
+      ]);
+
+      final success = await onboardingNotifier.completeOnboarding();
+      expect(success, isTrue);
+
+      final routineDoc = await fakeFirestore
+          .collection('users')
+          .doc(uid)
+          .collection('routine')
+          .doc('current')
+          .get();
+
+      final templates = List<Map<String, dynamic>>.from(
+        (routineDoc.data()?['templates']?['fixed_schedule'] as List? ??
+                const [])
+            .map((item) => Map<String, dynamic>.from(item as Map)),
+      );
+      expect(templates.length, 2);
+
+      final existing = templates
+          .firstWhere((item) => item['templateId'] == 'existing_block');
+      expect(existing['title'], 'Existing Block');
+      expect(existing['legacyField'], 'preserve');
+      expect(existing['createdAt'], existingTemplateCreatedAt);
+
+      final added = templates
+          .firstWhere((item) => item['templateId'] == 'new_onboarding_block');
+      expect(added['title'], 'New Onboarding Block');
+    });
   });
 }

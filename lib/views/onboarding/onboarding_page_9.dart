@@ -32,35 +32,34 @@ class _OnboardingPage9State extends ConsumerState<OnboardingPage9> {
   }
 
   void _onChanged(List<FixedScheduleTemplate> templates) {
-    _templates = templates;
+    final normalizedTemplates = canonicalizeFixedScheduleTemplates(templates);
+    _templates = normalizedTemplates;
 
     // 1. Update onboarding draft (debounced Firestore write at /onboarding/state)
     ref.read(onboardingProvider.notifier).updateFixedSchedule(
-          templates.map((t) => t.toMap()).toList(),
+          normalizedTemplates.map((t) => t.toMap()).toList(),
         );
     ref.read(onboardingProvider.notifier).saveToFirestoreDebounced(9);
 
     // 2. Mirror to /users/{uid}/routine/current.templates.fixed_schedule
     ref
         .read(routineProvider.notifier)
-        .setFixedScheduleTemplates(templates);
+        .setFixedScheduleTemplates(normalizedTemplates);
     unawaited(
       ref
           .read(routineRepositoryProvider)
-          .saveFixedScheduleTemplates(templates),
+          .saveFixedScheduleTemplates(normalizedTemplates),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final topPadding =
-        MediaQuery.of(context).padding.top + kIndicatorOverlayH;
+    final topPadding = MediaQuery.of(context).padding.top + kIndicatorOverlayH;
     final bottomPadding =
         MediaQuery.of(context).padding.bottom + kButtonOverlayH;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-          20, topPadding + 16, 20, bottomPadding + 16),
+      padding: EdgeInsets.fromLTRB(20, topPadding + 16, 20, bottomPadding + 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

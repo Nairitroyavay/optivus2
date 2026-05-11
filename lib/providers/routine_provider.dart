@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/repositories/routine_repository.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/models/fixed_schedule_validation.dart';
 import 'package:optivus2/models/routine_template_model.dart';
 import 'package:optivus2/models/task_model.dart';
 import 'package:optivus2/services/event_service.dart';
@@ -88,6 +89,41 @@ String _routineSlug(String value) {
       .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
       .replaceAll(RegExp(r'^_+|_+$'), '');
   return slug.isEmpty ? 'template' : slug;
+}
+
+List<FixedScheduleTemplate> canonicalizeFixedScheduleTemplates(
+  List<FixedScheduleTemplate> templates, {
+  bool touchUpdatedAt = false,
+}) {
+  return [
+    for (var i = 0; i < templates.length; i++)
+      FixedScheduleTemplate.fromMap(
+        normalizeFixedScheduleTemplateMap(
+          templates[i].toMap(),
+          index: i,
+          touchUpdatedAt: touchUpdatedAt,
+        ),
+      ),
+  ];
+}
+
+String? validateFixedScheduleTemplateDraft({
+  required String title,
+  required String startTime,
+  required String endTime,
+  required List<FixedScheduleTemplate> existingTemplates,
+  String? currentTemplateId,
+  bool allowOverlap = false,
+}) {
+  return validateFixedScheduleTemplateCandidate(
+    title: title,
+    startTime: startTime,
+    endTime: endTime,
+    existingTemplates:
+        existingTemplates.map((template) => template.toMap()).toList(),
+    currentTemplateId: currentTemplateId,
+    allowOverlap: allowOverlap,
+  );
 }
 
 String _routineTaskId({
@@ -291,6 +327,22 @@ const _fixedScheduleKnownKeys = {
   'updatedAt',
 };
 
+const _fixedBlockKnownKeys = {
+  'id',
+  'title',
+  'emoji',
+  'startMinute',
+  'endMinute',
+  'colorHex',
+  'repeatRule',
+  'category',
+  'notes',
+  'reminderEnabled',
+  'reminderOffsetMinutes',
+  'createdAt',
+  'updatedAt',
+};
+
 bool _fixedTemplateIsActive(Map<String, dynamic> map) {
   if (map['isActive'] is bool) return map['isActive'] as bool;
   final lifecycle =
@@ -303,6 +355,12 @@ bool _fixedTemplateIsActive(Map<String, dynamic> map) {
 Map<String, dynamic> _fixedTemplateExtra(Map<String, dynamic> map) => {
       for (final entry in map.entries)
         if (!_fixedScheduleKnownKeys.contains(entry.key))
+          entry.key.toString(): entry.value,
+    };
+
+Map<String, dynamic> _fixedBlockExtra(Map<String, dynamic> map) => {
+      for (final entry in map.entries)
+        if (!_fixedBlockKnownKeys.contains(entry.key))
           entry.key.toString(): entry.value,
     };
 
@@ -324,9 +382,13 @@ class FixedBlock {
   final int endMinute;
   final String colorHex;
   final String repeatRule;
+  final String category;
   final String notes;
   final bool reminderEnabled;
   final int reminderOffsetMinutes;
+  final String createdAt;
+  final String updatedAt;
+  final Map<String, dynamic> extra;
 
   const FixedBlock({
     required this.id,
@@ -336,15 +398,20 @@ class FixedBlock {
     required this.endMinute,
     required this.colorHex,
     this.repeatRule = 'daily',
+    this.category = '',
     this.notes = '',
     this.reminderEnabled = false,
     this.reminderOffsetMinutes = 5,
+    this.createdAt = '',
+    this.updatedAt = '',
+    this.extra = const {},
   });
 
   String get startLabel => _routineTimeLabel(startMinute);
   String get endLabel => _routineTimeLabel(endMinute);
 
   Map<String, dynamic> toMap() => {
+        ...extra,
         'id': id,
         'title': title,
         'emoji': emoji,
@@ -352,9 +419,12 @@ class FixedBlock {
         'endMinute': endMinute,
         'colorHex': colorHex,
         'repeatRule': repeatRule,
+        'category': category,
         'notes': notes,
         'reminderEnabled': reminderEnabled,
         'reminderOffsetMinutes': reminderOffsetMinutes,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
       };
 
   FixedScheduleTemplate toTemplate() {
@@ -365,13 +435,14 @@ class FixedBlock {
       startTime: _routineTimeFromMinutes(startMinute),
       endTime: _routineTimeFromMinutes(endMinute),
       repeatRule: repeatRule,
-      category: '',
+      category: category,
       notes: notes,
       reminderEnabled: reminderEnabled,
       reminderOffsetMinutes: reminderOffsetMinutes,
       isActive: true,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: createdAt.isNotEmpty ? createdAt : now,
+      updatedAt: updatedAt.isNotEmpty ? updatedAt : now,
+      extra: extra,
     );
   }
 
@@ -383,9 +454,13 @@ class FixedBlock {
         endMinute: _routineMinutesFromTime(template.endTime),
         colorHex: '#CBD5E1',
         repeatRule: template.repeatRule,
+        category: template.category,
         notes: template.notes,
         reminderEnabled: template.reminderEnabled,
         reminderOffsetMinutes: template.reminderOffsetMinutes,
+        createdAt: template.createdAt,
+        updatedAt: template.updatedAt,
+        extra: template.extra,
       );
 
   factory FixedBlock.fromMap(Map<String, dynamic> m) => FixedBlock(
@@ -402,10 +477,14 @@ class FixedBlock {
         repeatRule: _cleanRoutineString(m['repeatRule']).isNotEmpty
             ? _cleanRoutineString(m['repeatRule'])
             : 'daily',
+        category: _cleanRoutineString(m['category']),
         notes: _cleanRoutineString(m['notes']),
         reminderEnabled: m['reminderEnabled'] == true,
         reminderOffsetMinutes:
             ((m['reminderOffsetMinutes'] as num?)?.toInt() ?? 5).clamp(0, 180),
+        createdAt: _cleanRoutineString(m['createdAt']),
+        updatedAt: _cleanRoutineString(m['updatedAt']),
+        extra: _fixedBlockExtra(m),
       );
 }
 
@@ -1098,10 +1177,9 @@ List<_MaterializationCandidate> _candidatesForDate(
         continue;
       }
       final repeatRuleKey = repeatRule.trim().toLowerCase();
-      final repeatsToday =
-          (repeatRuleKey == 'once' || repeatRuleKey == 'none')
-              ? targetDate == scheduledDate
-              : _repeatRuleMatchesDate(repeatRule, date);
+      final repeatsToday = (repeatRuleKey == 'once' || repeatRuleKey == 'none')
+          ? targetDate == scheduledDate
+          : _repeatRuleMatchesDate(repeatRule, date);
       if (!repeatsToday) continue;
 
       final candidateRoutineType =
@@ -1383,9 +1461,10 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   // ── Fixed schedule templates ───────────────────────────────────────────────
 
   void setFixedScheduleTemplates(List<FixedScheduleTemplate> templates) {
+    final normalizedTemplates = canonicalizeFixedScheduleTemplates(templates);
     state = state.copyWith(
-      fixedScheduleTemplates: templates,
-      fixedScheduleSetUp: templates.isNotEmpty,
+      fixedScheduleTemplates: normalizedTemplates,
+      fixedScheduleSetUp: normalizedTemplates.isNotEmpty,
     );
     _saveDebounced();
   }
@@ -1394,27 +1473,18 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     final list = state.fixedScheduleTemplates
         .map((b) => b.templateId == updated.templateId ? updated : b)
         .toList();
-    state = state.copyWith(fixedScheduleTemplates: list);
-    _saveDebounced();
+    setFixedScheduleTemplates(list);
   }
 
   void addFixedScheduleTemplate(FixedScheduleTemplate template) {
-    state = state.copyWith(
-      fixedScheduleTemplates: [...state.fixedScheduleTemplates, template],
-      fixedScheduleSetUp: true,
-    );
-    _saveDebounced();
+    setFixedScheduleTemplates([...state.fixedScheduleTemplates, template]);
   }
 
   void removeFixedScheduleTemplate(String templateId) {
     final templates = state.fixedScheduleTemplates
         .where((t) => t.templateId != templateId)
         .toList();
-    state = state.copyWith(
-      fixedScheduleTemplates: templates,
-      fixedScheduleSetUp: templates.isNotEmpty,
-    );
-    _saveDebounced();
+    setFixedScheduleTemplates(templates);
   }
 
   void reorderFixedScheduleTemplates(int oldIndex, int newIndex) {
@@ -1422,8 +1492,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     if (newIndex > oldIndex) newIndex -= 1;
     final item = list.removeAt(oldIndex);
     list.insert(newIndex, item);
-    state = state.copyWith(fixedScheduleTemplates: list);
-    _saveDebounced();
+    setFixedScheduleTemplates(list);
   }
 
   void setFixedBlocks(List<FixedBlock> blocks) {
