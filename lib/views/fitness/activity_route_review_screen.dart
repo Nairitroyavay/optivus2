@@ -9,8 +9,10 @@ import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/activity_split_model.dart';
 import 'package:optivus2/models/fitness_activity_model.dart';
+import 'package:optivus2/models/map_style_model.dart';
 import 'package:optivus2/models/route_point_model.dart';
 import 'package:optivus2/views/fitness/activity_formatters.dart';
+import 'package:optivus2/views/fitness/map_style_selector_sheet.dart';
 
 class ActivityRouteReviewScreen extends ConsumerStatefulWidget {
   final String activityId;
@@ -35,6 +37,8 @@ class _ActivityRouteReviewScreenState
         ref.watch(activityRoutePointsProvider(widget.activityId));
     final splitsAsync = ref.watch(activitySplitsProvider(widget.activityId));
     final mapboxReady = ref.watch(appFeatureFlagsProvider).mapboxMapsReady;
+    final selectedStyle = ref.watch(selectedMapboxStyleProvider).valueOrNull ??
+        MapboxStyles.defaultStyle;
 
     return Scaffold(
       backgroundColor: const Color(0xFF10131A),
@@ -90,8 +94,10 @@ class _ActivityRouteReviewScreenState
                   ),
                   children: [
                     fm.TileLayer(
-                      urlTemplate: MapConfig.mapboxTileUrl,
-                      userAgentPackageName: 'com.example.optivus',
+                      key: ValueKey(selectedStyle.storageId),
+                      urlTemplate: MapConfig.tileUrlForStyle(selectedStyle),
+                      userAgentPackageName: MapConfig.userAgentPackageName,
+                      evictErrorTileStrategy: fm.EvictErrorTileStrategy.dispose,
                     ),
                     fm.PolylineLayer(polylines: _polylines(points)),
                     fm.MarkerLayer(markers: _markers(points, splits)),
@@ -125,6 +131,11 @@ class _ActivityRouteReviewScreenState
                       _RoundMapButton(
                         icon: Icons.center_focus_strong_rounded,
                         onTap: () => _fitRoute(points),
+                      ),
+                      _RoundMapButton(
+                        icon: Icons.layers_rounded,
+                        active: selectedStyle.id != MapboxStyleId.coral,
+                        onTap: () => _showStyleSelector(selectedStyle),
                       ),
                       _RoundMapButton(
                         icon: Icons.add_rounded,
@@ -191,6 +202,16 @@ class _ActivityRouteReviewScreenState
         padding: const EdgeInsets.fromLTRB(42, 120, 42, 190),
       ),
     );
+  }
+
+  Future<void> _showStyleSelector(MapboxStyle selectedStyle) async {
+    final selected = await MapStyleSelectorSheet.show(
+      context,
+      selectedStyle: selectedStyle,
+    );
+    if (selected == null) return;
+    if (!mounted) return;
+    await ref.read(mapPreferenceRepositoryProvider).saveSelectedStyle(selected);
   }
 
   List<fm.Polyline> _polylines(List<RoutePointModel> points) {
@@ -430,10 +451,12 @@ class _RouteStat extends StatelessWidget {
 class _RoundMapButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+  final bool active;
 
   const _RoundMapButton({
     required this.icon,
     required this.onTap,
+    this.active = false,
   });
 
   @override
@@ -441,7 +464,9 @@ class _RoundMapButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: kWhite.withValues(alpha: 0.86),
+        color: active
+            ? kBlue.withValues(alpha: 0.92)
+            : kWhite.withValues(alpha: 0.86),
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -449,7 +474,7 @@ class _RoundMapButton extends StatelessWidget {
           child: SizedBox(
             width: 46,
             height: 46,
-            child: Icon(icon, color: kInk),
+            child: Icon(icon, color: active ? kWhite : kInk),
           ),
         ),
       ),

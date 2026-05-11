@@ -1,6 +1,6 @@
 # Build, Test, and QA Baseline
 
-Updated: 2026-05-10
+Updated: 2026-05-10 (Task 1.14 Mapbox styles)
 
 This is the current Task 1.2 baseline for local development and Play Store
 internal-testing readiness. Keep `docs/OPTIVUS_STRICT_TASK_RULES.md` as the
@@ -12,7 +12,7 @@ source of truth for forbidden services and deployment limits.
 | --- | --- | --- | --- |
 | Spark guardrail | `python3 scripts/spark_guardrail_scan.py` | PASS | No active forbidden dependency or deploy target found. Expected warning: inactive `storage.rules` exists and must stay unreferenced by `firebase.json`. |
 | Dart analyzer | `flutter analyze` | PASS | `No issues found! (ran in 5.9s)`. `lib/views/tabs/profile_tab.dart` was specifically checked for duplicate `emptyLabel`; only two call-site arguments and one `_buildPills` parameter exist. |
-| Flutter tests | `flutter test` | PASS WITH SKIPS | Active tests passed: `+163 ~155`. Skipped tests are listed below and remain known coverage gaps. |
+| Flutter tests | `flutter test` | PASS WITH SKIPS | Active tests passed: `+330 ~138`. Skipped tests are listed below and remain known coverage gaps. |
 | Focused R2 Flutter upload tests | `flutter test test/services/r2_upload_service_test.dart test/views/photo_picker_button_test.dart` | PASS | 8 pass. Covers disabled Coming Soon fallback, Worker response parsing, JPEG PUT headers/body, profile object path, delete cleanup success, non-fatal cleanup failure, and metadata-only output. |
 | Routine import Worker tests | `cd workers/routine-import-worker && npm test` | PASS | 17 pass, 0 fail, 0 skipped. Covers auth, invalid tokens, preview-only behavior, AI output validation, image URL rejection, and usage-cap rate limiting. |
 | Coach reply Worker tests | `cd workers/coach-reply-worker && npm test` | PASS | 7 pass, 0 fail, 0 skipped. Covers Firebase auth, invalid tokens, user mismatch, preview response shape, rate limiting, and crisis/recovery safety branches. |
@@ -100,18 +100,28 @@ Remote Config kill switch are both enabled.
 
 ## Current Skipped Flutter Tests
 
-`flutter test` currently reports 155 skipped tests. They are intentional
+`flutter test` currently reports 138 skipped tests. They are intentional
 contract placeholders, but they are release coverage gaps until implemented.
 
 | File | Skipped tests |
 | --- | ---: |
-| `test/services/analytics_service_contract_test.dart` | 26 |
-| `test/services/coach_service_contract_test.dart` | 28 |
-| `test/services/routine_import_service_contract_test.dart` | 22 |
-| `test/services/routine_service_contract_test.dart` | 17 |
-| `test/services/rule_engine_service_contract_test.dart` | 21 |
-| `test/services/safety_router_contract_test.dart` | 21 |
-| `test/services/suggestion_service_contract_test.dart` | 20 |
+| `test/services/routine_service_contract_test.dart` | 41 |
+| `test/services/r2_upload_service_test.dart` | 30 |
+| `test/services/habit_service_contract_test.dart` | 28 |
+| `test/services/rule_engine_service_contract_test.dart` | 25 |
+| `test/services/coach_service_contract_test.dart` | 24 |
+| `test/services/safety_router_contract_test.dart` | 20 |
+| `test/services/suggestion_service_contract_test.dart` | 19 |
+| `test/services/analytics_service_contract_test.dart` | 19 |
+| `test/services/routine_import_service_contract_test.dart` | 18 |
+
+New/focused test files added by Task 1.14 Mapbox work (0 skips, all passing):
+
+| File | Active tests |
+| --- | ---: |
+| `test/core/config/map_config_test.dart` | 23 |
+| `test/controllers/fitness_map_controller_test.dart` | 28 |
+| `test/repositories/map_preference_repository_test.dart` | 6 |
 
 Missing automated coverage:
 

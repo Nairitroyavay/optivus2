@@ -141,8 +141,36 @@ class MapboxClientConfig {
 
   bool get hasAccessToken => normalizedAccessToken.isNotEmpty;
 
-  String get tileUrl =>
-      'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=$normalizedAccessToken';
+  String tileUrlForStyleUri(String styleUri) {
+    final normalized = styleUri.trim();
+    const prefix = 'mapbox://styles/';
+    if (!normalized.startsWith(prefix)) {
+      throw ArgumentError.value(
+        styleUri,
+        'styleUri',
+        'Expected a mapbox://styles/{owner}/{styleId} URI.',
+      );
+    }
+
+    final path = normalized.substring(prefix.length);
+    final segments = path.split('/');
+    if (segments.length != 2 ||
+        segments.any((segment) => segment.trim().isEmpty)) {
+      throw ArgumentError.value(
+        styleUri,
+        'styleUri',
+        'Expected a mapbox://styles/{owner}/{styleId} URI.',
+      );
+    }
+
+    final owner = Uri.encodeComponent(segments[0].trim());
+    final styleId = Uri.encodeComponent(segments[1].trim());
+    return 'https://api.mapbox.com/styles/v1/$owner/$styleId/tiles/256/{z}/{x}/{y}@2x?access_token=$normalizedAccessToken';
+  }
+
+  String get tileUrl => tileUrlForStyleUri(
+        'mapbox://styles/nairitroy/cmozyqm88000c01r14o8h7bn0',
+      );
 }
 
 class AppFeatureFlags {

@@ -34,6 +34,7 @@ import 'package:optivus2/models/activity_split_model.dart';
 import 'package:optivus2/models/heart_rate_sample_model.dart';
 import 'package:optivus2/models/route_point_model.dart';
 import 'package:optivus2/repositories/fitness_activity_repository.dart';
+import 'package:optivus2/repositories/map_preference_repository.dart';
 import 'package:optivus2/controllers/active_activity_controller.dart';
 import 'package:optivus2/controllers/fitness_map_controller.dart';
 import 'package:optivus2/services/fitness_metrics_calculator.dart';
@@ -44,6 +45,7 @@ import 'package:optivus2/services/fitness_ai_coach_service.dart';
 import 'package:optivus2/services/fitness_health_connector_service.dart';
 import 'package:optivus2/services/location_tracking_service.dart';
 import 'package:optivus2/services/cloudflare_api_service.dart';
+import 'package:optivus2/models/map_style_model.dart';
 
 export 'providers/bootstrap_provider.dart';
 
@@ -482,6 +484,14 @@ final liveActivityMetricsProvider = Provider<LiveActivityMetricsModel>((ref) {
 final fitnessMapControllerProvider =
     StateNotifierProvider<FitnessMapController, FitnessMapState>((ref) {
   return FitnessMapController();
+});
+
+final mapPreferenceRepositoryProvider = Provider<MapPreferenceRepository>(
+  (ref) => MapPreferenceRepository(ref.read(firestoreServiceProvider)),
+);
+
+final selectedMapboxStyleProvider = StreamProvider<MapboxStyle>((ref) {
+  return ref.watch(mapPreferenceRepositoryProvider).watchSelectedStyle();
 });
 
 /// Fitness stats aggregation service.

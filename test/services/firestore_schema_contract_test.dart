@@ -55,6 +55,27 @@ void main() {
       );
     });
 
+    test('map settings rules are user-owned and token-free', () {
+      final rules = File('firestore.rules').readAsStringSync();
+
+      expect(rules, contains('match /settings/map'));
+      expect(rules, contains("'selectedStyleId'"));
+      expect(rules, contains("'selectedStyleUri'"));
+      expect(rules, contains("'updatedAt'"));
+      expect(rules, contains("'coral'"));
+      expect(rules, contains("'monoLight'"));
+      expect(rules, contains("'satellite'"));
+      expect(rules, contains("'energy'"));
+      expect(rules, isNot(contains('accessToken')));
+      expect(rules, isNot(contains('MAPBOX_ACCESS_TOKEN')));
+      expect(
+        RegExp(
+          r'match /settings/map \{[\s\S]*?allow read: if isOwner\(userId\);[\s\S]*?allow create, update: if isOwner\(userId\)[\s\S]*?request.resource.data.keys\(\).hasOnly',
+        ).hasMatch(rules),
+        isTrue,
+      );
+    });
+
     test('schema docs include every FirestoreService user-owned collection',
         () {
       final schema =

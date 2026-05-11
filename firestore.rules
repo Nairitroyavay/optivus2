@@ -71,6 +71,7 @@ service cloud.firestore {
         'screenTimeRaw',
         'money_saved',
         'money_savings_goals',
+        'settings',
         'fitnessActivities',
         'fitnessStats',
         'fitnessGoals'
@@ -172,15 +173,50 @@ service cloud.firestore {
       match /{collectionId}/{docId} {
         allow read: if isOwner(userId)
           && isKnownUserCollection(collectionId)
+          && collectionId != 'settings'
           && !isRestrictedUserCollection(collectionId);
         allow create, update: if isOwner(userId)
           && isKnownUserCollection(collectionId)
+          && collectionId != 'settings'
           && hasValidOptionalUid(userId)
           && hasNoForbiddenBlobFields()
           && !isRestrictedUserCollection(collectionId);
         allow delete: if isOwner(userId)
           && isKnownUserCollection(collectionId)
+          && collectionId != 'settings'
           && !isRestrictedUserCollection(collectionId);
+      }
+
+      // ── Settings ────────────────────────────────────────────────────────
+      // Map preferences are user-owned and never store tokens or secrets.
+      match /settings/map {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasOnly([
+            'selectedStyleId',
+            'selectedStyleUri',
+            'updatedAt'
+          ])
+          && request.resource.data.keys().hasAll([
+            'selectedStyleId',
+            'selectedStyleUri',
+            'updatedAt'
+          ])
+          && request.resource.data.selectedStyleId in [
+            'coral',
+            'monoLight',
+            'satellite',
+            'energy'
+          ]
+          && request.resource.data.selectedStyleUri in [
+            'mapbox://styles/nairitroy/cmozyqm88000c01r14o8h7bn0',
+            'mapbox://styles/nairitroy/cmp006knu000e01r17cgd61pj',
+            'mapbox://styles/nairitroy/cmp00db5a000r01pe3pea1r0k',
+            'mapbox://styles/nairitroy/cmp00nzd2005101s3foyldiil'
+          ]
+          && request.resource.data.updatedAt is timestamp
+          && hasNoForbiddenBlobFields();
+        allow delete: if isOwner(userId);
       }
 
       // ── Legacy habit nested logs ─────────────────────────────────────────

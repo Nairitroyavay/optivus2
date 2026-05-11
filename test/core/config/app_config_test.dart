@@ -100,6 +100,12 @@ void main() {
       );
       expect(missingToken.mapboxMapsReady, isFalse);
 
+      final whitespaceToken = AppFeatureFlags.fromConfig(
+        build: _buildConfig(mapboxAccessToken: '   '),
+        remote: remote,
+      );
+      expect(whitespaceToken.mapboxMapsReady, isFalse);
+
       final withToken = AppFeatureFlags.fromConfig(
         build: _buildConfig(mapboxAccessToken: 'mapbox-token'),
         remote: remote,

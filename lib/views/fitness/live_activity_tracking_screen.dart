@@ -11,9 +11,11 @@ import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/fitness_activity_model.dart';
 import 'package:optivus2/models/fitness_permission_state_model.dart';
+import 'package:optivus2/models/map_style_model.dart';
 import 'package:optivus2/models/route_point_model.dart';
 import 'package:optivus2/views/fitness/activity_pause_bottom_sheet.dart';
 import 'package:optivus2/views/fitness/finish_activity_confirmation_sheet.dart';
+import 'package:optivus2/views/fitness/map_style_selector_sheet.dart';
 
 enum _LiveMapProvider { mapbox, none }
 
@@ -37,6 +39,8 @@ class _LiveActivityTrackingScreenState
     final active = ref.watch(activeActivityControllerProvider);
     final mapState = ref.watch(fitnessMapControllerProvider);
     final mapboxReady = ref.watch(appFeatureFlagsProvider).mapboxMapsReady;
+    final selectedStyle = ref.watch(selectedMapboxStyleProvider).valueOrNull ??
+        MapboxStyles.defaultStyle;
     final activity = active.activity;
 
     if (activity == null) {
@@ -102,6 +106,7 @@ class _LiveActivityTrackingScreenState
                           route: route,
                           lastPoint: lastPoint,
                           controlsLocked: mapState.controlsLocked,
+                          selectedStyle: selectedStyle,
                         ),
                       _LiveMapProvider.none => const _MapUnavailableSurface(),
                     }
@@ -124,7 +129,8 @@ class _LiveActivityTrackingScreenState
                 child: _MapControls(
                   lastPoint: lastPoint,
                   controlsLocked: mapState.controlsLocked,
-                  supportsMapType: false,
+                  selectedStyle: selectedStyle,
+                  supportsMapType: true,
                 ),
               ),
             Positioned(
@@ -248,11 +254,13 @@ class _LiveMapboxMap extends ConsumerStatefulWidget {
   final List<RoutePointModel> route;
   final RoutePointModel? lastPoint;
   final bool controlsLocked;
+  final MapboxStyle selectedStyle;
 
   const _LiveMapboxMap({
     required this.route,
     required this.lastPoint,
     required this.controlsLocked,
+    required this.selectedStyle,
   });
 
   @override
@@ -300,8 +308,10 @@ class _LiveMapboxMapState extends ConsumerState<_LiveMapboxMap> {
       ),
       children: [
         fm.TileLayer(
-          urlTemplate: MapConfig.mapboxTileUrl,
-          userAgentPackageName: 'com.example.optivus',
+          key: ValueKey(widget.selectedStyle.storageId),
+          urlTemplate: MapConfig.tileUrlForStyle(widget.selectedStyle),
+          userAgentPackageName: MapConfig.userAgentPackageName,
+          evictErrorTileStrategy: fm.EvictErrorTileStrategy.dispose,
         ),
         fm.PolylineLayer(polylines: _mapboxPolylines(widget.route)),
         fm.MarkerLayer(markers: _mapboxMarkers(widget.route, widget.lastPoint)),
@@ -475,11 +485,13 @@ class _TopTrackingBar extends StatelessWidget {
 class _MapControls extends ConsumerWidget {
   final RoutePointModel? lastPoint;
   final bool controlsLocked;
+  final MapboxStyle selectedStyle;
   final bool supportsMapType;
 
   const _MapControls({
     required this.lastPoint,
     required this.controlsLocked,
+    required this.selectedStyle,
     required this.supportsMapType,
   });
 
@@ -506,7 +518,8 @@ class _MapControls extends ConsumerWidget {
         if (supportsMapType)
           _MapButton(
             icon: Icons.layers_rounded,
-            onTap: controller.cycleMapType,
+            active: selectedStyle.id != MapboxStyleId.coral,
+            onTap: () => _showStyleSelector(context, ref),
           ),
         _MapButton(
           icon: controlsLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
@@ -521,6 +534,15 @@ class _MapControls extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  Future<void> _showStyleSelector(BuildContext context, WidgetRef ref) async {
+    final selected = await MapStyleSelectorSheet.show(
+      context,
+      selectedStyle: selectedStyle,
+    );
+    if (selected == null) return;
+    await ref.read(mapPreferenceRepositoryProvider).saveSelectedStyle(selected);
   }
 }
 

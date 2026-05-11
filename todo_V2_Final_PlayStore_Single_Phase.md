@@ -1459,7 +1459,7 @@ R2 signed upload Worker and feature flags.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1486,7 +1486,21 @@ Running/fitness must work without Google Maps and without crashing when the Mapb
 
 #### Gap
 
-Mapbox token handling, route review, live route fallback, package/user-agent identity, and Android permission behavior need release verification.
+Resolved 2026-05-10: Centralized `userAgentPackageName` in `MapConfig` (was
+hardcoded `'com.example.optivus'` in two tile layers). Added
+`evictErrorTileStrategy: EvictErrorTileStrategy.dispose` to both `TileLayer`
+widgets for graceful invalid-token handling. Added 15 `MapConfig` unit tests
+and 28 `FitnessMapController` unit tests. All four events
+(`route_tracking_started`, `route_tracking_stopped`, `route_saved`,
+`route_review_opened`) verified wired. No Google Maps dependency. Token from
+`String.fromEnvironment` only. Real-device GPS permission and manual
+token-absent/invalid/valid verification still required.
+
+Follow-up completed 2026-05-10: Added selectable Mapbox styles for Coral, Mono
+Light, Satellite, and Energy. Selection persists at
+`/users/{uid}/settings/map` with style metadata only; no Mapbox token is stored.
+Live tracking and route review use the saved style reactively and fall back to
+Coral while loading, on invalid saved IDs, or when signed out.
 
 #### Spec source
 
@@ -1559,10 +1573,10 @@ Mapbox token supplied outside source, Android location permission.
 
 #### Done Criteria
 
-- [ ] No Google Maps dependency exists.
-- [ ] Missing Mapbox token does not break fitness metrics.
-- [ ] Route fallback UI is clear.
-- [ ] Real token is not committed.
+- [x] No Google Maps dependency exists.
+- [x] Missing Mapbox token does not break fitness metrics.
+- [x] Route fallback UI is clear.
+- [x] Real token is not committed.
 
 ### Task 1.15 — Harden auth, onboarding completion, and profile bootstrap
 

@@ -11,6 +11,7 @@ class FirestoreService {
   static const String kOnboardingDoc = 'state';
   static const String kRoutineDoc = 'current';
   static const String kIdentityProfileDoc = 'main';
+  static const String kMapSettingsDoc = 'map';
 
   // ── Canonical per-user collection IDs ──────────────────────────────────────
   static const String kProfile = 'profile';
@@ -41,6 +42,7 @@ class FirestoreService {
   static const String kScreenTimeRaw = 'screenTimeRaw';
   static const String kMoneySaved = 'money_saved';
   static const String kMoneySavingsGoals = 'money_savings_goals';
+  static const String kSettings = 'settings';
 
   // ── Fitness engine ─────────────────────────────────────────────────────────
   static const String kFitnessActivities = 'fitnessActivities';
