@@ -128,6 +128,8 @@ class FirestoreService {
   ) =>
       userCollection(collectionId).doc(docId);
 
+  WriteBatch getBatch() => _db.batch();
+
   // ── Generic subcollection helpers ─────────────────────────────────────────
 
   Future<void> saveUserSubdocument(
@@ -135,9 +137,16 @@ class FirestoreService {
     String docId,
     Map<String, dynamic> data, {
     bool merge = true,
-  }) =>
-      userSubdocument(collectionPath, docId)
-          .set(data, merge ? SetOptions(merge: true) : null);
+    WriteBatch? batch,
+  }) {
+    final ref = userSubdocument(collectionPath, docId);
+    final options = merge ? SetOptions(merge: true) : null;
+    if (batch != null) {
+      batch.set(ref, data, options);
+      return Future.value();
+    }
+    return ref.set(data, options);
+  }
 
   Future<Map<String, dynamic>?> getUserSubdocument(
     String collectionPath,
@@ -150,8 +159,14 @@ class FirestoreService {
   // ── User root document ─────────────────────────────────────────────────────
 
   Future<void> saveUserProfile(Map<String, dynamic> data,
-          {bool merge = false}) =>
-      userDoc.set(data, merge ? SetOptions(merge: true) : null);
+      {bool merge = false, WriteBatch? batch}) {
+    final options = merge ? SetOptions(merge: true) : null;
+    if (batch != null) {
+      batch.set(userDoc, data, options);
+      return Future.value();
+    }
+    return userDoc.set(data, options);
+  }
 
   Future<Map<String, dynamic>?> getUserProfile() async {
     final doc = await userDoc.get();
@@ -251,8 +266,15 @@ class FirestoreService {
 
   // ── /users/{uid}/routine/current ─────────────────────────────────────────
 
-  Future<void> saveRoutine(Map<String, dynamic> routineMap) =>
-      userSubdocument(kRoutine, kRoutineDoc).set(routineMap);
+  Future<void> saveRoutine(Map<String, dynamic> routineMap,
+      {WriteBatch? batch}) {
+    final ref = userSubdocument(kRoutine, kRoutineDoc);
+    if (batch != null) {
+      batch.set(ref, routineMap);
+      return Future.value();
+    }
+    return ref.set(routineMap);
+  }
 
   Future<Map<String, dynamic>?> getRoutine() async {
     final doc = await userSubdocument(kRoutine, kRoutineDoc).get();

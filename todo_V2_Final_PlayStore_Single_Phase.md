@@ -1582,7 +1582,7 @@ Mapbox token supplied outside source, Android location permission.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1687,10 +1687,10 @@ Firebase Auth, Firestore schema, routine materialization.
 
 #### Done Criteria
 
-- [ ] First-run flow is deterministic.
-- [ ] Onboarding completion is idempotent.
-- [ ] Required documents exist.
-- [ ] Ready state routes to `/home`.
+- [x] First-run flow is deterministic.
+- [x] Onboarding completion is idempotent.
+- [x] Required documents exist.
+- [x] Ready state routes to `/home`.
 
 ### Task 1.16 — Finish home, navigation shell, and settings entry points
 

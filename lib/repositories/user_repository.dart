@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firestore_service.dart';
 import '../models/context_snapshot.dart';
 import '../models/goal_model.dart';
@@ -5,6 +6,11 @@ import '../models/habit_model.dart';
 import '../models/scheduled_notification_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
+
+const int _maxOnboardingGoodHabits = 24;
+const int _maxOnboardingBadHabits = 24;
+const int _maxOnboardingGoals = 24;
+const int _maxOnboardingRoutineTemplates = 100;
 
 class OnboardingCompletionResult {
   final Map<String, dynamic> onboarding;
@@ -300,7 +306,9 @@ class UserRepository {
   Future<void> saveOnboardingData(
     Map<String, dynamic> onboardingMap, {
     int step = 0,
+    WriteBatch? batch,
   }) async {
+    final b = batch ?? _service.getBatch();
     final now = DateTime.now().toIso8601String();
     final rootOnboarding = _buildRootOnboardingPayload(
       onboardingMap,
@@ -315,7 +323,7 @@ class UserRepository {
       'onboardingStep': step,
       if (timezone != null) 'timezone': timezone,
       'updatedAt': now,
-    }, merge: true);
+    }, merge: true, batch: b);
 
     await _service.saveUserSubdocument(
       'onboarding',
@@ -326,6 +334,7 @@ class UserRepository {
         hasCompletedOnboarding: false,
         updatedAt: now,
       ),
+      batch: b,
     );
 
     await _service.saveUserSubdocument(
@@ -337,6 +346,7 @@ class UserRepository {
         hasCompletedOnboarding: false,
         updatedAt: now,
       ),
+      batch: b,
     );
 
     await _service.saveUserSubdocument(
@@ -348,12 +358,20 @@ class UserRepository {
         hasCompletedOnboarding: false,
         updatedAt: now,
       ),
+      batch: b,
     );
+
+    if (batch == null) {
+      await b.commit();
+    }
   }
 
   /// Complete onboarding by setting hasCompletedOnboarding to true.
   Future<OnboardingCompletionResult> completeOnboarding(
-      Map<String, dynamic> onboardingMap) async {
+    Map<String, dynamic> onboardingMap, {
+    WriteBatch? batch,
+  }) async {
+    final b = batch ?? _service.getBatch();
     final completedAt = DateTime.now().toIso8601String();
     final rootOnboarding = _buildRootOnboardingPayload(
       onboardingMap,
@@ -370,7 +388,7 @@ class UserRepository {
       'onboardingStep': 10, // The final step
       if (timezone != null) 'timezone': timezone,
       'updatedAt': completedAt,
-    }, merge: true);
+    }, merge: true, batch: b);
 
     await _service.saveUserSubdocument(
       'onboarding',
@@ -382,6 +400,7 @@ class UserRepository {
         updatedAt: completedAt,
         completedAt: completedAt,
       ),
+      batch: b,
     );
 
     await _service.saveUserSubdocument(
@@ -394,6 +413,7 @@ class UserRepository {
         updatedAt: completedAt,
         completedAt: completedAt,
       ),
+      batch: b,
     );
 
     await _service.saveUserSubdocument(
@@ -406,12 +426,19 @@ class UserRepository {
         updatedAt: completedAt,
         completedAt: completedAt,
       ),
+      batch: b,
     );
 
     final materialized = await _materializeOnboardingSelections(
       onboardingMap,
       completedAt: DateTime.parse(completedAt),
+      batch: b,
     );
+
+    if (batch == null) {
+      await b.commit();
+    }
+
     return OnboardingCompletionResult(
       onboarding: rootOnboarding,
       tasks: materialized.tasks,
@@ -424,10 +451,11 @@ class UserRepository {
   Future<_OnboardingMaterializationResult> _materializeOnboardingSelections(
     Map<String, dynamic> onboardingMap, {
     required DateTime completedAt,
+    required WriteBatch batch,
   }) async {
     final rawGoodHabits =
         List<String>.from(onboardingMap['goodHabits'] as List? ?? const []);
-    final badHabits =
+    final rawBadHabits =
         List<String>.from(onboardingMap['badHabits'] as List? ?? const []);
     final rawGoals =
         List<String>.from(onboardingMap['goals'] as List? ?? const []);
@@ -435,12 +463,18 @@ class UserRepository {
       _sanitizeFixedSchedule(onboardingMap['fixedSchedule']),
       completedAt,
     );
-    final goodHabits = rawGoodHabits
-        .map(_cleanLabel)
-        .where((name) => name.isNotEmpty)
-        .toList();
-    final goals =
-        rawGoals.map(_cleanLabel).where((goal) => goal.isNotEmpty).toList();
+    final goodHabits = _cleanDistinctLabels(
+      rawGoodHabits,
+      limit: _maxOnboardingGoodHabits,
+    );
+    final badHabits = _cleanDistinctLabels(
+      rawBadHabits,
+      limit: _maxOnboardingBadHabits,
+    );
+    final goals = _cleanDistinctLabels(
+      rawGoals,
+      limit: _maxOnboardingGoals,
+    );
     final habitNames =
         goodHabits.isNotEmpty ? goodHabits : const ['Review daily plan'];
     final goalTitles = goals.isNotEmpty
@@ -468,11 +502,11 @@ class UserRepository {
           createdAt: completedAt,
           updatedAt: completedAt,
         ).toFirestore(),
+        batch: batch,
       );
     }
 
-    for (final name
-        in badHabits.map(_cleanLabel).where((name) => name.isNotEmpty)) {
+    for (final name in badHabits) {
       final id = 'onboarding_bad_${_slug(name)}';
       if (await _service.getUserSubdocument('habits', id) != null) continue;
       await _service.saveUserSubdocument(
@@ -491,6 +525,7 @@ class UserRepository {
           createdAt: completedAt,
           updatedAt: completedAt,
         ).toFirestore(),
+        batch: batch,
       );
     }
 
@@ -510,13 +545,11 @@ class UserRepository {
           createdAt: completedAt,
           updatedAt: completedAt,
         ).toFirestore(),
+        batch: batch,
       );
     }
 
-    final templates = fixedSchedule
-        .where(
-            (item) => _cleanLabel(item['title']?.toString() ?? '').isNotEmpty)
-        .toList();
+    final templates = _limitDistinctFixedScheduleTemplates(fixedSchedule);
 
     final existingRoutine = await _service.getRoutine() ?? {};
     final existingTemplates = existingRoutine['templates'] is Map
@@ -529,17 +562,19 @@ class UserRepository {
         'fixed_schedule': templates,
       },
       'fixedScheduleSetUp': templates.isNotEmpty,
-    });
+    }, batch: batch);
 
     final todayTasks = _buildTodayTasksFromTemplates(
       templates,
       completedAt: completedAt,
     );
     for (final task in todayTasks) {
+      if (await _service.getUserSubdocument('tasks', task.id) != null) continue;
       await _service.saveUserSubdocument(
         'tasks',
         task.id,
         task.toFirestore(),
+        batch: batch,
       );
       createdTasks.add(task);
     }
@@ -549,10 +584,16 @@ class UserRepository {
       completedAt: completedAt,
     );
     for (final notification in notifications) {
+      if (await _service.getUserSubdocument(
+              'scheduled_notifications', notification.notifId) !=
+          null) {
+        continue;
+      }
       await _service.saveUserSubdocument(
         'scheduled_notifications',
         notification.notifId,
         notification.toFirestore(),
+        batch: batch,
       );
       scheduledNotifications.add(notification);
     }
@@ -577,6 +618,7 @@ class UserRepository {
       'ai_context_snapshots',
       snapshot['snapshotId'] as String,
       snapshot,
+      batch: batch,
     );
 
     return _OnboardingMaterializationResult(
@@ -585,6 +627,48 @@ class UserRepository {
       suggestions: suggestions,
       snapshot: snapshot,
     );
+  }
+
+  List<String> _cleanDistinctLabels(
+    Iterable<String> values, {
+    required int limit,
+  }) {
+    final labels = <String>[];
+    final seenSlugs = <String>{};
+
+    for (final value in values) {
+      final label = _cleanLabel(value);
+      if (label.isEmpty) continue;
+
+      if (seenSlugs.add(_slug(label))) {
+        labels.add(label);
+      }
+
+      if (labels.length >= limit) break;
+    }
+
+    return labels;
+  }
+
+  List<Map<String, dynamic>> _limitDistinctFixedScheduleTemplates(
+    List<Map<String, dynamic>> fixedSchedule,
+  ) {
+    final templates = <Map<String, dynamic>>[];
+    final seenTemplateIds = <String>{};
+
+    for (final item in fixedSchedule) {
+      final title = _cleanLabel(item['title']?.toString() ?? '');
+      if (title.isEmpty) continue;
+
+      final templateId = _cleanLabel(item['templateId']?.toString() ?? title);
+      if (seenTemplateIds.add(_slug(templateId))) {
+        templates.add(item);
+      }
+
+      if (templates.length >= _maxOnboardingRoutineTemplates) break;
+    }
+
+    return templates;
   }
 
   List<Map<String, dynamic>> _effectiveFixedSchedule(

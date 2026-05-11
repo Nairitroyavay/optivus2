@@ -14,20 +14,26 @@ class AppBootstrapNotifier extends StateNotifier<BootstrapState> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userSubscription;
   final EventService _eventService;
   final Future<void> Function() _ensureOrchestratorInitialized;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
   String? _activeUid;
   bool _hasInitializedSession = false;
 
   AppBootstrapNotifier({
     required EventService eventService,
     required Future<void> Function() ensureOrchestratorInitialized,
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
   })  : _eventService = eventService,
         _ensureOrchestratorInitialized = ensureOrchestratorInitialized,
+        _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance,
         super(BootstrapState.initializing) {
     _init();
   }
 
   void _init() {
-    _authSubscription = FirebaseAuth.instance.authStateChanges().listen(
+    _authSubscription = _auth.authStateChanges().listen(
           _handleAuthChanged,
           onError: (_) => _setState(BootstrapState.unauthenticated),
         );
@@ -44,11 +50,8 @@ class AppBootstrapNotifier extends StateNotifier<BootstrapState> {
       return;
     }
 
-    _userSubscription = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .snapshots()
-        .listen(
+    _userSubscription =
+        _firestore.collection('users').doc(user.uid).snapshots().listen(
       (doc) async {
         try {
           if (!doc.exists) {

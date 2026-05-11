@@ -176,9 +176,17 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
   Timer? _debounceTimer;
   final UserRepository _userRepo;
   final EventService _eventService;
+  final FirebaseFirestore _firestore;
+  final FirebaseAuth _auth;
 
-  OnboardingNotifier(this._userRepo, this._eventService)
-      : super(OnboardingState());
+  OnboardingNotifier(
+    this._userRepo,
+    this._eventService, {
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _auth = auth ?? FirebaseAuth.instance,
+        super(OnboardingState());
 
   @override
   void dispose() {
@@ -286,6 +294,11 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
   Future<bool> completeOnboarding() async {
     if (!_userRepo.isLoggedIn) return false;
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      debugPrint('Error: Cannot complete onboarding, user is null');
+      return false;
+    }
 
     try {
       final validationError = state.aboutYou.validate();
@@ -298,8 +311,11 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
         currentStep: 10,
         completedAt: completedAt,
       );
-      final result = await _userRepo.completeOnboarding(state.toMap());
-      await _emitCompletionEvents(result);
+      final batch = _firestore.batch();
+      final result =
+          await _userRepo.completeOnboarding(state.toMap(), batch: batch);
+      await _emitCompletionEvents(result, batch: batch);
+      await batch.commit();
       return true;
     } catch (e) {
       debugPrint('Error completing onboarding: $e');
@@ -307,13 +323,20 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     }
   }
 
-  Future<void> _emitCompletionEvents(OnboardingCompletionResult result) async {
+  Future<void> _emitCompletionEvents(
+    OnboardingCompletionResult result, {
+    WriteBatch? batch,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+
     await _eventService.emit(
       eventName: EventNames.onboardingCompleted,
+      eventId: 'onboarding_completed_$uid',
       source: 'onboarding',
       payload: {
-        'onboardingStep': 10,
         'hasCompletedOnboarding': true,
+        'onboardingStep': 10,
         'completedAt': state.completedAt,
         'selectedCategories': state.selectedCategories,
         'badHabits': state.badHabits,
@@ -329,11 +352,29 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
         'notificationCount': result.notifications.length,
         'snapshotId': result.snapshot['snapshotId'],
       },
+      batch: batch,
+    );
+
+    await _eventService.emit(
+      eventName: EventNames.identityCreated,
+      eventId: 'identity_created_$uid',
+      source: 'onboarding',
+      payload: {
+        'identityId': 'main',
+        'status': 'stub',
+        'selectedCategories': state.selectedCategories,
+        'goals': state.goals,
+        'coachStyle': state.coachStyle,
+        'accountabilityType': state.accountabilityType,
+        'hasCompletedOnboarding': true,
+      },
+      batch: batch,
     );
 
     for (final task in result.tasks) {
       await _eventService.emit(
         eventName: EventNames.taskScheduled,
+        eventId: 'task_scheduled_${uid}_${task.id}',
         source: 'onboarding',
         payload: {
           'taskId': task.id,
@@ -342,12 +383,14 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
           'plannedEnd': task.plannedEnd.toIso8601String(),
           'plannedDurationMin': task.plannedDurationMin,
         },
+        batch: batch,
       );
     }
 
     for (final notification in result.notifications) {
       await _eventService.emit(
         eventName: EventNames.notificationScheduled,
+        eventId: 'notification_scheduled_${uid}_${notification.notifId}',
         source: 'onboarding',
         payload: {
           'notifId': notification.notifId,
@@ -356,14 +399,20 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
           if (notification.taskId != null) 'taskId': notification.taskId,
           if (notification.habitId != null) 'habitId': notification.habitId,
         },
+        batch: batch,
       );
     }
 
     for (final suggestion in result.suggestions) {
+      final suggestionId = suggestion['suggestionId']?.toString();
+      if (suggestionId == null || suggestionId.isEmpty) continue;
+
       await _eventService.emit(
         eventName: EventNames.suggestionGenerated,
+        eventId: 'suggestion_generated_${uid}_$suggestionId',
         source: 'onboarding',
         payload: suggestion,
+        batch: batch,
       );
     }
   }
