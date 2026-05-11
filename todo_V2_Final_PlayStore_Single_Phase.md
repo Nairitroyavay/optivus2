@@ -1582,7 +1582,7 @@ Mapbox token supplied outside source, Android location permission.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1696,7 +1696,7 @@ Firebase Auth, Firestore schema, routine materialization.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -1795,11 +1795,11 @@ Auth/onboarding ready state.
 
 #### Done Criteria
 
-- [ ] No main navigation dead ends.
-- [ ] Profile has no dead taps for Subscription, Security, haptics, spelling, report bug, help, terms, or privacy.
-- [ ] Empty states are useful.
-- [ ] Disabled features have safe fallback UI.
-- [ ] Profile/settings routes needed for release are reachable.
+- [x] No main navigation dead ends.
+- [x] Profile has no dead taps for Subscription, Security, haptics, spelling, report bug, help, terms, or privacy.
+- [x] Empty states are useful.
+- [x] Disabled features have safe fallback UI.
+- [x] Profile/settings routes needed for release are reachable.
 
 ### Task 1.17 — Unify fixed schedule setup across onboarding and settings
 

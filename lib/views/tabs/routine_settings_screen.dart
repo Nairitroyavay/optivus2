@@ -15,7 +15,9 @@ String _countLabel(RoutineState s, RoutineFilter filter) {
       if (nNew > 0) return '$nNew step${nNew == 1 ? '' : 's'}';
       if (!s.skinCareSetUp) return 'Not set up yet';
       final nLeg = s.skinCarePlans.fold<int>(
-          0, (acc, d) => acc + d.morning.length + d.afternoon.length + d.night.length);
+          0,
+          (acc, d) =>
+              acc + d.morning.length + d.afternoon.length + d.night.length);
       return nLeg > 0 ? '$nLeg step${nLeg == 1 ? '' : 's'}' : 'Configured';
     case RoutineFilter.supplements:
       final n = (s.routineTemplates['supplements'] ?? const []).length;
@@ -134,7 +136,8 @@ class RoutineSettingsScreen extends ConsumerWidget {
                               _buildRoutineTile(
                                 context,
                                 row: _routineRows[i],
-                                subtitle: _countLabel(s, _routineRows[i].filter),
+                                subtitle:
+                                    _countLabel(s, _routineRows[i].filter),
                               ),
                             ],
                           ],
@@ -162,12 +165,15 @@ class RoutineSettingsScreen extends ConsumerWidget {
                               emoji: '🔔',
                               title: 'Notification Settings',
                               subtitle: 'Reminders for each routine block',
+                              onTap: () =>
+                                  context.push('/settings/notifications'),
                             ),
                             _buildDivider(),
                             _buildPrefTile(
                               emoji: '📤',
                               title: 'Export Schedule',
                               subtitle: 'Save to calendar or share as PDF',
+                              onTap: () => _showExportDeferred(context),
                             ),
                           ],
                         ),
@@ -358,6 +364,30 @@ class RoutineSettingsScreen extends ConsumerWidget {
       height: 1,
       color: Colors.white.withValues(alpha: 0.3),
       margin: const EdgeInsets.symmetric(horizontal: 20),
+    );
+  }
+
+  void _showExportDeferred(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E202A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Schedule export',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Calendar/PDF export is deferred for MVP testing. Routine data is still saved in Firestore and account export is available from Profile.',
+          style: TextStyle(color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 }

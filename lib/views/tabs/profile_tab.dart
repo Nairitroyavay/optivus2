@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,11 +13,25 @@ import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/views/routine/widgets/photo_picker_button.dart';
 
-class ProfileTab extends ConsumerWidget {
+class ProfileTab extends ConsumerStatefulWidget {
   const ProfileTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends ConsumerState<ProfileTab> {
+  bool _hapticFeedback = true;
+  bool _autocorrect = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadAppSettings());
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
@@ -74,7 +91,7 @@ class ProfileTab extends ConsumerWidget {
                 // 9. About
                 _buildSectionHeader('ABOUT'),
                 const SizedBox(height: 12),
-                _buildAboutSettings(),
+                _buildAboutSettings(context),
                 const SizedBox(height: 40),
 
                 // 10. Log Out
@@ -104,6 +121,71 @@ class ProfileTab extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _loadAppSettings() async {
+    try {
+      final profile = await ref.read(firestoreServiceProvider).getProfile();
+      final appSettings = Map<String, dynamic>.from(
+        profile?['appSettings'] as Map? ?? const <String, dynamic>{},
+      );
+      if (!mounted) return;
+      setState(() {
+        _hapticFeedback =
+            appSettings['hapticFeedback'] as bool? ?? _hapticFeedback;
+        _autocorrect = appSettings['autocorrect'] as bool? ?? _autocorrect;
+      });
+    } catch (_) {
+      // Profile settings fall back to enabled defaults if the profile document
+      // is not readable yet.
+    }
+  }
+
+  Future<void> _persistAppSetting(
+    BuildContext context, {
+    required String key,
+    required bool value,
+  }) async {
+    setState(() {
+      if (key == 'hapticFeedback') {
+        _hapticFeedback = value;
+      } else if (key == 'autocorrect') {
+        _autocorrect = value;
+      }
+    });
+
+    try {
+      await ref.read(firestoreServiceProvider).saveProfile({
+        'appSettings': {
+          key: value,
+          '${key}UpdatedAt': FieldValue.serverTimestamp(),
+        },
+      });
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value ? 'Setting enabled.' : 'Setting disabled.',
+          ),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (key == 'hapticFeedback') {
+          _hapticFeedback = !value;
+        } else if (key == 'autocorrect') {
+          _autocorrect = !value;
+        }
+      });
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not save setting. Please try again.'),
+        ),
+      );
+    }
   }
 
   Widget _buildAvatarSection(BuildContext context, WidgetRef ref) {
@@ -349,12 +431,24 @@ class ProfileTab extends ConsumerWidget {
             icon: Icons.email_outlined,
             iconColor: const Color(0xFF4B8EE3),
             title: 'Email',
+            hasArrow: false,
+            onTap: null,
+            trailing: Text(
+              FirebaseAuth.instance.currentUser?.email ?? 'Not set',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: kSub.withValues(alpha: 0.8),
+              ),
+            ),
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.star_border_rounded,
             iconColor: const Color(0xFFC48E33),
             title: 'Subscription',
+            hasArrow: true,
+            onTap: () => context.push('/settings/subscription'),
           ),
           _buildDivider(),
           _buildPrefTile(
@@ -389,6 +483,8 @@ class ProfileTab extends ConsumerWidget {
             icon: Icons.lock_outline_rounded,
             iconColor: const Color(0xFFD66A3D),
             title: 'Security',
+            hasArrow: true,
+            onTap: () => context.push('/settings/security'),
           ),
         ],
       ),
@@ -409,7 +505,14 @@ class ProfileTab extends ConsumerWidget {
             trailing: SizedBox(
               height: 38,
               width: 70,
-              child: _DualDropToggle(value: true, onChanged: (v) {}),
+              child: _DualDropToggle(
+                value: _hapticFeedback,
+                onChanged: (value) => _persistAppSetting(
+                  context,
+                  key: 'hapticFeedback',
+                  value: value,
+                ),
+              ),
             ),
           ),
           _buildDivider(),
@@ -420,7 +523,14 @@ class ProfileTab extends ConsumerWidget {
             trailing: SizedBox(
               height: 38,
               width: 70,
-              child: _DualDropToggle(value: true, onChanged: (v) {}),
+              child: _DualDropToggle(
+                value: _autocorrect,
+                onChanged: (value) => _persistAppSetting(
+                  context,
+                  key: 'autocorrect',
+                  value: value,
+                ),
+              ),
             ),
           ),
           _buildDivider(),
@@ -438,7 +548,7 @@ class ProfileTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildAboutSettings() {
+  Widget _buildAboutSettings(BuildContext context) {
     return LiquidCard(
       frosted: true,
       padding: EdgeInsets.zero,
@@ -449,24 +559,32 @@ class ProfileTab extends ConsumerWidget {
             icon: Icons.bug_report_outlined,
             iconColor: const Color(0xFFD66A3D),
             title: 'Report bug',
+            hasArrow: true,
+            onTap: () => context.push('/support/report-bug'),
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.help_outline_rounded,
             iconColor: const Color(0xFF4B8EE3),
             title: 'Help center',
+            hasArrow: true,
+            onTap: () => context.push('/support/help'),
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.description_outlined,
             iconColor: const Color(0xFF4DB685),
             title: 'Terms of use',
+            hasArrow: true,
+            onTap: () => context.push('/legal/terms'),
           ),
           _buildDivider(),
           _buildPrefTile(
             icon: Icons.privacy_tip_outlined,
             iconColor: const Color(0xFF5E4B9C),
             title: 'Privacy policy',
+            hasArrow: true,
+            onTap: () => context.push('/legal/privacy'),
           ),
           _buildDivider(),
           _buildPrefTile(
@@ -1007,6 +1125,14 @@ class _DualDropToggleState extends State<_DualDropToggle> {
   void initState() {
     super.initState();
     _val = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _DualDropToggle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _val = widget.value;
+    }
   }
 
   @override

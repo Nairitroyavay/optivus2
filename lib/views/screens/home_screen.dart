@@ -22,7 +22,12 @@ const List<List<Color>> _tabGradients = [
 ];
 
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+  final int initialIndex;
+
+  const HomeScreen({
+    super.key,
+    this.initialIndex = 0,
+  });
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -33,6 +38,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   RoutineFilter _routineFilter = RoutineFilter.all;
   String? _shownComebackKey;
   bool _isComebackVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, _tabGradients.length - 1);
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialIndex != widget.initialIndex) {
+      _currentIndex = widget.initialIndex.clamp(0, _tabGradients.length - 1);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +83,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   setState(() {
                     _currentIndex = 1;
                     _routineFilter = RoutineFilter.skinCare;
+                  });
+                },
+                onFixedScheduleTapped: () {
+                  setState(() {
+                    _currentIndex = 1;
+                    _routineFilter = RoutineFilter.fixedSchedule;
+                  });
+                },
+                onSupplementsTapped: () {
+                  setState(() {
+                    _currentIndex = 1;
+                    _routineFilter = RoutineFilter.supplements;
                   });
                 },
                 onClassesTapped: () {

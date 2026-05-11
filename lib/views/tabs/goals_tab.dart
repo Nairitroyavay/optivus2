@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 
 import '../../services/firestore_service.dart';
@@ -460,7 +461,7 @@ class _EmptyState extends StatelessWidget {
               color: kAmber,
               onTap: () {
                 HapticFeedback.lightImpact();
-                // Route to identity creation — stubbed for this task
+                context.push('/identities/new');
               },
             ),
           ],

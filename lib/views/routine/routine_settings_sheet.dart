@@ -20,7 +20,9 @@ String _countLabel(RoutineState s, RoutineFilter filter) {
       if (nNew > 0) return '$nNew step${nNew == 1 ? '' : 's'}';
       if (!s.skinCareSetUp) return 'Not set up yet';
       final nLeg = s.skinCarePlans.fold<int>(
-          0, (acc, d) => acc + d.morning.length + d.afternoon.length + d.night.length);
+          0,
+          (acc, d) =>
+              acc + d.morning.length + d.afternoon.length + d.night.length);
       return nLeg > 0 ? '$nLeg step${nLeg == 1 ? '' : 's'}' : 'Configured';
     case RoutineFilter.supplements:
       final n = (s.routineTemplates['supplements'] ?? const []).length;
@@ -236,11 +238,16 @@ class RoutineSettingsSheet extends ConsumerWidget {
             emoji: '🔔',
             title: 'Notification Settings',
             subtitle: 'Reminders for each routine block',
+            onTap: () {
+              Navigator.pop(context);
+              context.push('/settings/notifications');
+            },
           ),
           _buildUtilityRow(
             emoji: '📤',
             title: 'Export Schedule',
             subtitle: 'Save to calendar or share as PDF',
+            onTap: () => _showExportDeferred(context),
           ),
         ],
       ),
@@ -251,51 +258,79 @@ class RoutineSettingsSheet extends ConsumerWidget {
     required String emoji,
     required String title,
     required String subtitle,
+    VoidCallback? onTap,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF7F5F0),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: _kCard,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: const [
-                  BoxShadow(
-                      color: _kShad, blurRadius: 8, offset: Offset(0, 2)),
-                ],
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF7F5F0),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: _kCard,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: _kShad, blurRadius: 8, offset: Offset(0, 2)),
+                  ],
+                ),
+                child: Center(
+                    child: Text(emoji, style: const TextStyle(fontSize: 20))),
               ),
-              child:
-                  Center(child: Text(emoji, style: const TextStyle(fontSize: 20))),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: _kInk,
-                      )),
-                  const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: const TextStyle(fontSize: 12, color: _kSub)),
-                ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: _kInk,
+                        )),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: const TextStyle(fontSize: 12, color: _kSub)),
+                  ],
+                ),
               ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: _kSub, size: 20),
-          ],
+              const Icon(Icons.chevron_right_rounded, color: _kSub, size: 20),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  void _showExportDeferred(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E202A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Schedule export',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          'Calendar/PDF export is deferred for MVP testing. Routine data is still saved in Firestore and account export is available from Profile.',
+          style: TextStyle(color: Colors.white70, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }

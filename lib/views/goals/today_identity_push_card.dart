@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/models/goal_model.dart';
 
@@ -32,7 +33,7 @@ class TodayIdentityPushCard extends StatelessWidget {
       child: GestureDetector(
         onTap: () {
           HapticFeedback.selectionClick();
-          // Detail navigation stubbed — Task 9.3
+          context.push('/identities/${focus.goalId}');
         },
         child: LiquidCard(
           frosted: true,

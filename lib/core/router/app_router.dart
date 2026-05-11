@@ -31,6 +31,7 @@ import '../../views/fitness/fitness_goals_screen.dart';
 import '../../views/fitness/fitness_settings_screen.dart';
 import '../../views/settings/archived_identities_screen.dart';
 import '../../views/settings/notification_settings_screen.dart';
+import '../../views/settings/mvp_info_screen.dart';
 import '../../views/notifications/notification_center_screen.dart';
 
 import '../providers/bootstrap_provider.dart';
@@ -105,6 +106,26 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const HomeScreen(),
       ),
       GoRoute(
+        path: '/home/routine',
+        builder: (_, __) => const HomeScreen(initialIndex: 1),
+      ),
+      GoRoute(
+        path: '/home/tracker',
+        builder: (_, __) => const HomeScreen(initialIndex: 2),
+      ),
+      GoRoute(
+        path: '/home/coach',
+        builder: (_, __) => const HomeScreen(initialIndex: 3),
+      ),
+      GoRoute(
+        path: '/home/goals',
+        builder: (_, __) => const HomeScreen(initialIndex: 4),
+      ),
+      GoRoute(
+        path: '/home/profile',
+        builder: (_, __) => const HomeScreen(initialIndex: 5),
+      ),
+      GoRoute(
         path: '/notifications',
         builder: (_, __) => const NotificationCenterScreen(),
       ),
@@ -131,6 +152,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/identities/new',
+        builder: (_, __) => const MvpInfoScreen(
+          title: 'Add Identity',
+          icon: Icons.person_add_alt_1_rounded,
+          accentColor: Color(0xFFC48E33),
+          statusLabel: 'Identity creation is handled in onboarding',
+          body:
+              'Editing identities post-onboarding is deferred for MVP testing. This ensures focus on core tracker mechanics.',
+        ),
+      ),
+      GoRoute(
         path: '/identities/:goalId',
         builder: (_, state) => IdentityDetailScreen(
           goalId: state.pathParameters['goalId']!,
@@ -147,6 +179,72 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings/notifications',
         builder: (_, __) => const NotificationSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/settings/subscription',
+        builder: (_, __) => const MvpInfoScreen(
+          title: 'Subscription',
+          icon: Icons.workspace_premium_outlined,
+          accentColor: Color(0xFFC48E33),
+          statusLabel: 'Free internal testing build',
+          body:
+              'Subscriptions and AI usage caps are deferred for MVP testing. All enabled features remain usable without a payment step in this build.',
+        ),
+      ),
+      GoRoute(
+        path: '/settings/security',
+        builder: (_, __) => const MvpInfoScreen(
+          title: 'Security',
+          icon: Icons.lock_outline_rounded,
+          accentColor: Color(0xFFD66A3D),
+          statusLabel: 'Account security is handled by Firebase Auth',
+          body:
+              'Email and password changes are deferred for this internal build. Sign out and delete-account controls remain available from Profile.',
+        ),
+      ),
+      GoRoute(
+        path: '/support/report-bug',
+        builder: (_, __) => const MvpInfoScreen(
+          title: 'Report Bug',
+          icon: Icons.bug_report_outlined,
+          accentColor: Color(0xFFD66A3D),
+          statusLabel: 'Bug reporting page pending',
+          body:
+              'Cloudflare Pages support forms ship in the release-readiness task. For internal testing, report issues through the tester feedback channel with your device model and steps to reproduce.',
+        ),
+      ),
+      GoRoute(
+        path: '/support/help',
+        builder: (_, __) => const MvpInfoScreen(
+          title: 'Help Center',
+          icon: Icons.help_outline_rounded,
+          accentColor: Color(0xFF4B8EE3),
+          statusLabel: 'Help center page pending',
+          body:
+              'The public support page will be hosted on Cloudflare Pages before Play Store submission. Core in-app flows remain reachable from the bottom tabs and Profile settings.',
+        ),
+      ),
+      GoRoute(
+        path: '/legal/terms',
+        builder: (_, __) => const MvpInfoScreen(
+          title: 'Terms of Use',
+          icon: Icons.description_outlined,
+          accentColor: Color(0xFF4DB685),
+          statusLabel: 'Terms page pending',
+          body:
+              'The final legal page will be a Cloudflare Pages URL before release. This internal build keeps the entry point visible without using Firebase Hosting.',
+        ),
+      ),
+      GoRoute(
+        path: '/legal/privacy',
+        builder: (_, __) => const MvpInfoScreen(
+          title: 'Privacy Policy',
+          icon: Icons.privacy_tip_outlined,
+          accentColor: Color(0xFF5E4B9C),
+          statusLabel: 'Privacy page pending',
+          body:
+              'The final privacy policy will be hosted on Cloudflare Pages and aligned with Play Store Data Safety. The app stores user data under the signed-in user document in Firestore and uses Cloudflare Workers/R2 for enabled backend and file flows.',
+        ),
       ),
       GoRoute(
         path: '/settings/fixed-schedule',

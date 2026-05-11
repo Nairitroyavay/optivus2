@@ -42,11 +42,15 @@ const _weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 class HomeTab extends ConsumerStatefulWidget {
   final VoidCallback? onSkinCareTapped;
+  final VoidCallback? onFixedScheduleTapped;
+  final VoidCallback? onSupplementsTapped;
   final VoidCallback? onClassesTapped;
   final VoidCallback? onEatingTapped;
   const HomeTab({
     super.key,
     this.onSkinCareTapped,
+    this.onFixedScheduleTapped,
+    this.onSupplementsTapped,
     this.onClassesTapped,
     this.onEatingTapped,
   });
@@ -778,6 +782,10 @@ class _HomeTabState extends ConsumerState<HomeTab>
                     final routineType = t.type.toJson();
                     if (routineType == 'skin_care') {
                       widget.onSkinCareTapped?.call();
+                    } else if (routineType == 'fixed') {
+                      widget.onFixedScheduleTapped?.call();
+                    } else if (t.identityTags.contains('supplements')) {
+                      widget.onSupplementsTapped?.call();
                     } else if (routineType == 'class') {
                       widget.onClassesTapped?.call();
                     } else if (routineType == 'eating') {
@@ -939,6 +947,12 @@ class _TaskRow extends StatelessWidget {
     if (routineType == 'skin_care') {
       emoji = '🌿';
       orbColor = const Color(0xFF60D4A0);
+    } else if (routineType == 'fixed') {
+      emoji = '📅';
+      orbColor = const Color(0xFF8B7FFF);
+    } else if (t.identityTags.contains('supplements')) {
+      emoji = '💊';
+      orbColor = const Color(0xFF14B8A6);
     } else if (routineType == 'class') {
       emoji = '🎓';
       orbColor = const Color(0xFF60B8FF);
