@@ -1907,10 +1907,10 @@ Routine schema/materialization and onboarding completion.
 
 #### Done Criteria
 
-- [ ] Onboarding/settings use compatible fields.
-- [ ] Validation is consistent.
-- [ ] Existing templates are not corrupted.
-- [ ] Timeline reflects saved changes.
+- [x] Onboarding/settings use compatible fields.
+- [x] Validation is consistent.
+- [x] Existing templates are not corrupted.
+- [x] Timeline reflects saved changes.
 
 ### Task 1.18 — Productionize manual skin routine setup
 
