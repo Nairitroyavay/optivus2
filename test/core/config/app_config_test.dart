@@ -113,8 +113,165 @@ void main() {
       expect(withToken.mapboxMapsReady, isTrue);
       expect(withToken.coachEnabled, isTrue);
     });
+
+    test('per-type image flags are independent — enabling one does not leak', () {
+      final remote = _remoteConfig(
+        aiFeaturesEnabled: true,
+        aiRoutineSuggestionsEnabled: true,
+        routineImportWorkerEnabled: true,
+        r2UploadsEnabled: true,
+        imageRoutineImportEnabled: true,
+        skinProductImageImportEnabled: true,
+        classTimetableImageImportEnabled: false,
+        hostelMessImageImportEnabled: false,
+      );
+
+      final flags = AppFeatureFlags.fromConfig(
+        build: _buildConfig(
+          enableR2Uploads: true,
+          enableImageRoutineImport: true,
+          enableSkinProductImageImport: true,
+          enableClassTimetableImageImport: true,
+          enableHostelMessImageImport: true,
+          routineImportEndpoint: 'https://routine.example',
+          signedUploadEndpoint: 'https://r2.example/sign',
+        ),
+        remote: remote,
+      );
+
+      expect(flags.imageRoutineImportReady, isTrue);
+      expect(flags.skinProductImageImportReady, isTrue,
+          reason: 'skin enabled in both compile and remote');
+      expect(flags.classTimetableImageImportReady, isFalse,
+          reason: 'class remote flag is off');
+      expect(flags.hostelMessImageImportReady, isFalse,
+          reason: 'hostel remote flag is off');
+    });
+
+    test('R2 on but per-type compile flags off keeps per-type flags false', () {
+      final remote = _remoteConfig(
+        aiFeaturesEnabled: true,
+        aiRoutineSuggestionsEnabled: true,
+        routineImportWorkerEnabled: true,
+        r2UploadsEnabled: true,
+        imageRoutineImportEnabled: true,
+        skinProductImageImportEnabled: true,
+        classTimetableImageImportEnabled: true,
+        hostelMessImageImportEnabled: true,
+      );
+
+      final flags = AppFeatureFlags.fromConfig(
+        build: _buildConfig(
+          enableR2Uploads: true,
+          enableImageRoutineImport: true,
+          // Per-type compile flags all OFF (defaults)
+          routineImportEndpoint: 'https://routine.example',
+          signedUploadEndpoint: 'https://r2.example/sign',
+        ),
+        remote: remote,
+      );
+
+      expect(flags.r2UploadsReady, isTrue);
+      expect(flags.imageRoutineImportReady, isTrue);
+      expect(flags.skinProductImageImportReady, isFalse,
+          reason: 'skin compile flag is off');
+      expect(flags.classTimetableImageImportReady, isFalse,
+          reason: 'class compile flag is off');
+      expect(flags.hostelMessImageImportReady, isFalse,
+          reason: 'hostel compile flag is off');
+    });
+
+    test('remote config r2UploadsEnabled=false kills all image flags even with '
+        'compile flags and endpoints configured', () {
+      final remote = _remoteConfig(
+        aiFeaturesEnabled: true,
+        aiRoutineSuggestionsEnabled: true,
+        routineImportWorkerEnabled: true,
+        r2UploadsEnabled: false, // ← remote kill switch
+        imageRoutineImportEnabled: true,
+        skinProductImageImportEnabled: true,
+        classTimetableImageImportEnabled: true,
+        hostelMessImageImportEnabled: true,
+      );
+
+      final flags = AppFeatureFlags.fromConfig(
+        build: _buildConfig(
+          enableR2Uploads: true,
+          enableImageRoutineImport: true,
+          enableSkinProductImageImport: true,
+          enableClassTimetableImageImport: true,
+          enableHostelMessImageImport: true,
+          routineImportEndpoint: 'https://routine.example',
+          signedUploadEndpoint: 'https://r2.example/sign',
+        ),
+        remote: remote,
+      );
+
+      expect(flags.r2UploadsReady, isFalse,
+          reason: 'remote r2UploadsEnabled is false');
+      expect(flags.imageRoutineImportReady, isFalse,
+          reason: 'imageRoutineImport depends on r2UploadsReady');
+      expect(flags.skinProductImageImportReady, isFalse,
+          reason: 'skin depends on imageRoutineImportReady');
+      expect(flags.classTimetableImageImportReady, isFalse,
+          reason: 'class depends on imageRoutineImportReady');
+      expect(flags.hostelMessImageImportReady, isFalse,
+          reason: 'hostel depends on imageRoutineImportReady');
+    });
+
+    test('missing R2 signed upload endpoint kills r2UploadsReady even with '
+        'all flags enabled', () {
+      final remote = _remoteConfig(
+        aiFeaturesEnabled: true,
+        aiRoutineSuggestionsEnabled: true,
+        routineImportWorkerEnabled: true,
+        r2UploadsEnabled: true,
+        imageRoutineImportEnabled: true,
+        skinProductImageImportEnabled: true,
+      );
+
+      final flags = AppFeatureFlags.fromConfig(
+        build: _buildConfig(
+          enableR2Uploads: true,
+          enableImageRoutineImport: true,
+          enableSkinProductImageImport: true,
+          routineImportEndpoint: 'https://routine.example',
+          // signedUploadEndpoint intentionally absent
+        ),
+        remote: remote,
+      );
+
+      expect(flags.r2UploadsReady, isFalse,
+          reason: 'no R2 signed upload endpoint configured');
+      expect(flags.imageRoutineImportReady, isFalse);
+      expect(flags.skinProductImageImportReady, isFalse);
+    });
+
+    test('routineImportWorkerReady stays false when aiFeaturesEnabled is off '
+        'even with endpoint and Worker flag configured', () {
+      final remote = _remoteConfig(
+        aiFeaturesEnabled: false, // ← AI kill switch is off
+        aiRoutineSuggestionsEnabled: true,
+        routineImportWorkerEnabled: true,
+      );
+
+      final flags = AppFeatureFlags.fromConfig(
+        build: _buildConfig(
+          routineImportEndpoint: 'https://routine.example',
+        ),
+        remote: remote,
+      );
+
+      expect(flags.routineImportWorkerReady, isFalse,
+          reason: 'aiFeaturesEnabled is false');
+      expect(flags.aiRoutineSuggestionsReady, isFalse,
+          reason: 'depends on routineImportWorkerReady');
+      expect(flags.imageRoutineImportReady, isFalse,
+          reason: 'depends on routineImportWorkerReady');
+    });
   });
 }
+
 
 AppBuildConfig _buildConfig({
   bool enableR2Uploads = false,

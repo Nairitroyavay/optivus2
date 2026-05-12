@@ -1609,7 +1609,12 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
             ),
             const SizedBox(width: 10),
             FilledButton.icon(
-              onPressed: _isImportingPhoto ? null : _showImportOptions,
+              onPressed: _isImportingPhoto ||
+                      !ref
+                          .watch(appFeatureFlagsProvider)
+                          .classTimetableImageImportReady
+                  ? null
+                  : _showImportOptions,
               icon: _isImportingPhoto
                   ? const SizedBox(
                       width: 16,

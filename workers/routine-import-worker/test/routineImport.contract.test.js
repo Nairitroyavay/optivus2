@@ -353,6 +353,146 @@ test("rejects forbidden Firebase Storage image URLs before Gemini call", async (
   assert.equal(state.geminiCalls, 0);
 });
 
+test("rejects forbidden GCS direct image URLs before Gemini call", async () => {
+  const state = mockFetchState({ templates: [skinCareTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "eating_mess_photo",
+    routineType: "eating",
+    imageMetadata: {
+      url: "https://storage.googleapis.com/optivus-bucket/photo.jpg"
+    }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 422, JSON.stringify(body));
+  assertErrorShape(
+    body,
+    "IMAGE_REJECTED",
+    "We could not read that photo. Try a clearer image with product labels visible.",
+    422
+  );
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("rejects firebasestorage.app image URLs before Gemini call", async () => {
+  const state = mockFetchState({ templates: [eatingTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "eating_mess_photo",
+    routineType: "eating",
+    imageMetadata: {
+      url: "https://optivus.firebasestorage.app/o/photo.jpg"
+    }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 422, JSON.stringify(body));
+  assertErrorShape(
+    body,
+    "IMAGE_REJECTED",
+    "We could not read that photo. Try a clearer image with product labels visible.",
+    422
+  );
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("accepts R2 image metadata with ocrText for photo modes", async () => {
+  const state = mockFetchState({ templates: [skinCareTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "skin_care_photo",
+    routineType: "skin_care",
+    imageMetadata: {
+      objectKey: "users/test_uid/uploads/skin_care/12345.jpg",
+      path: "users/test_uid/uploads/skin_care/12345.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 45000,
+      provider: "cloudflare_r2",
+      ocrText: "cleanser serum moisturiser"
+    }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.ok, true);
+  assert.equal(body.mode, "skin_care_photo");
+  assert.equal(body.templates.length, 1);
+  assert.equal(state.geminiCalls, 1);
+});
+
+test("rejects Firebase Storage URLs for class_timetable_photo before Gemini call", async () => {
+  const state = mockFetchState({ templates: [classTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "class_timetable_photo",
+    routineType: "classes",
+    imageMetadata: {
+      url: "https://firebasestorage.googleapis.com/v0/b/optivus/o/timetable.jpg"
+    }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 422, JSON.stringify(body));
+  assertErrorShape(
+    body,
+    "IMAGE_REJECTED",
+    "We could not read that photo. Try a clearer image with product labels visible.",
+    422
+  );
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("rejects Firebase Storage URLs for eating_mess_photo before Gemini call", async () => {
+  const state = mockFetchState({ templates: [eatingTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "eating_mess_photo",
+    routineType: "eating",
+    imageMetadata: {
+      url: "https://firebasestorage.googleapis.com/v0/b/optivus/o/mess_menu.jpg"
+    }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 422, JSON.stringify(body));
+  assertErrorShape(
+    body,
+    "IMAGE_REJECTED",
+    "We could not read that photo. Try a clearer image with product labels visible.",
+    422
+  );
+  assert.equal(state.geminiCalls, 0);
+});
+
+test("rejects GCS direct URLs for eating_mess_photo before Gemini call", async () => {
+  const state = mockFetchState({ templates: [eatingTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "eating_mess_photo",
+    routineType: "eating",
+    imageMetadata: {
+      url: "https://storage.googleapis.com/optivus-bucket/mess_menu.jpg"
+    }
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 422, JSON.stringify(body));
+  assertErrorShape(
+    body,
+    "IMAGE_REJECTED",
+    "We could not read that photo. Try a clearer image with product labels visible.",
+    422
+  );
+  assert.equal(state.geminiCalls, 0);
+});
+
 async function callWorker(body) {
   const token = await firebaseToken();
   return worker.fetch(

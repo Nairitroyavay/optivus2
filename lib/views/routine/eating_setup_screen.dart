@@ -903,6 +903,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       );
       return;
     }
+    final photoReady = flags.hostelMessImageImportReady;
     final source = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -910,14 +911,34 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_camera_rounded),
-              title: const Text('Mess Photo from Camera'),
-              onTap: () => Navigator.of(ctx).pop('camera'),
+              leading: Icon(
+                Icons.photo_camera_rounded,
+                color: photoReady ? null : const Color(0xFF94A3B8),
+              ),
+              title: Text(
+                photoReady
+                    ? 'Mess Photo from Camera'
+                    : 'Mess Photo from Camera (Coming Soon)',
+              ),
+              enabled: photoReady,
+              onTap: photoReady
+                  ? () => Navigator.of(ctx).pop('camera')
+                  : null,
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_rounded),
-              title: const Text('Mess Photo from Gallery'),
-              onTap: () => Navigator.of(ctx).pop('gallery'),
+              leading: Icon(
+                Icons.photo_library_rounded,
+                color: photoReady ? null : const Color(0xFF94A3B8),
+              ),
+              title: Text(
+                photoReady
+                    ? 'Mess Photo from Gallery'
+                    : 'Mess Photo from Gallery (Coming Soon)',
+              ),
+              enabled: photoReady,
+              onTap: photoReady
+                  ? () => Navigator.of(ctx).pop('gallery')
+                  : null,
             ),
             ListTile(
               leading: const Icon(Icons.text_snippet_rounded),
@@ -1041,6 +1062,19 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
   }
 
   Future<void> _pickUploadAndImportMessPhoto(ImageSource source) async {
+    // Belt-and-suspenders: block photo import if hostel mess flag is off.
+    if (!ref.read(appFeatureFlagsProvider).hostelMessImageImportReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Mess photo import is coming soon. Use text import or manual entry.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     setState(() {
       _isImportingPhoto = true;
       _importError = null;
@@ -1573,7 +1607,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
         onPressed: _isImportingPhoto ? null : _showImportOptions,
         icon: const Icon(Icons.auto_awesome_rounded),
         label: Text(
-            ref.watch(appFeatureFlagsProvider).hostelMessImageImportReady
+            ref.watch(appFeatureFlagsProvider).routineImportWorkerReady
                 ? 'AI / Menu'
                 : 'Coming soon'),
       ),

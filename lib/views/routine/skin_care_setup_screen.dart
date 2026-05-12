@@ -979,6 +979,12 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
 
   Future<void> _generatePhotoSkinCareReview() async {
     if (_isGenerating) return;
+    // Belt-and-suspenders: block generation if the image import flag was
+    // turned off after a photo was previously uploaded.
+    if (!ref.read(appFeatureFlagsProvider).skinProductImageImportReady) {
+      _showPhotoAiComingSoon();
+      return;
+    }
     final imageMetadata = _photoImportMetadata;
     if (imageMetadata == null) {
       setState(() {
@@ -1682,17 +1688,99 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                         border: Border.all(
                             color: Colors.white.withValues(alpha: 0.85)),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: _isUploadingPhoto || _isGenerating
+                      child: !ref
+                              .watch(appFeatureFlagsProvider)
+                              .skinProductImageImportReady
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24.0),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.auto_awesome_rounded,
+                                      size: 48, color: Color(0xFF94A3B8)),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Product Photo AI is coming soon.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Use Text AI or manual setup for now.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: _isUploadingPhoto ||
+                                                _isGenerating
+                                            ? null
+                                            : _pickSkinCarePhoto,
+                                        icon: _isUploadingPhoto
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
+                                              )
+                                            : Icon(_photoImportMetadata == null
+                                                ? Icons.add_a_photo_rounded
+                                                : Icons.check_circle_rounded),
+                                        label: Text(_photoImportMetadata == null
+                                            ? 'Add product photo'
+                                            : _photoUploadLabel(
+                                                _photoImportMetadata!)),
+                                      ),
+                                    ),
+                                    if (_photoImportMetadata != null) ...[
+                                      const SizedBox(width: 8),
+                                      Tooltip(
+                                        message: 'Remove photo',
+                                        child: IconButton.filledTonal(
+                                          onPressed: _isUploadingPhoto ||
+                                                  _isGenerating
+                                              ? null
+                                              : _removeSkinCarePhoto,
+                                          icon: const Icon(Icons.close_rounded),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (_generationError != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _generationError!,
+                                    style: const TextStyle(
+                                      color: Color(0xFFB91C1C),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 10),
+                                FilledButton.icon(
+                                  onPressed: _isGenerating ||
+                                          _isUploadingPhoto ||
+                                          _photoImportMetadata == null
                                       ? null
-                                      : _pickSkinCarePhoto,
-                                  icon: _isUploadingPhoto
+                                      : _generatePhotoSkinCareReview,
+                                  icon: _isGenerating
                                       ? const SizedBox(
                                           width: 16,
                                           height: 16,
@@ -1700,76 +1788,11 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                                             strokeWidth: 2,
                                           ),
                                         )
-                                      : Icon(_photoImportMetadata == null
-                                          ? Icons.add_a_photo_rounded
-                                          : Icons.check_circle_rounded),
-                                  label: Text(_photoImportMetadata == null
-                                      ? ref
-                                              .watch(appFeatureFlagsProvider)
-                                              .skinProductImageImportReady
-                                          ? 'Add product photo'
-                                          : 'Coming soon'
-                                      : _photoUploadLabel(
-                                          _photoImportMetadata!)),
-                                ),
-                              ),
-                              if (_photoImportMetadata != null) ...[
-                                const SizedBox(width: 8),
-                                Tooltip(
-                                  message: 'Remove photo',
-                                  child: IconButton.filledTonal(
-                                    onPressed:
-                                        _isUploadingPhoto || _isGenerating
-                                            ? null
-                                            : _removeSkinCarePhoto,
-                                    icon: const Icon(Icons.close_rounded),
-                                  ),
+                                      : const Icon(Icons.auto_awesome_rounded),
+                                  label: const Text('Generate'),
                                 ),
                               ],
-                            ],
-                          ),
-                          if (_generationError != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              _generationError!,
-                              style: const TextStyle(
-                                color: Color(0xFFB91C1C),
-                                fontWeight: FontWeight.w700,
-                              ),
                             ),
-                          ],
-                          if (!ref
-                              .watch(appFeatureFlagsProvider)
-                              .skinProductImageImportReady) ...[
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Photo AI is coming soon. Use Text AI or manual setup for now.',
-                              style: TextStyle(
-                                color: Color(0xFF334155),
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          FilledButton.icon(
-                            onPressed: _isGenerating ||
-                                    _isUploadingPhoto ||
-                                    _photoImportMetadata == null
-                                ? null
-                                : _generatePhotoSkinCareReview,
-                            icon: _isGenerating
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.auto_awesome_rounded),
-                            label: const Text('Generate'),
-                          ),
-                        ],
-                      ),
                     ),
                   ),
                 const SizedBox(height: 12),
