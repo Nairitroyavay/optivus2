@@ -94,15 +94,8 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
         reminderEnabled: item['reminderEnabled'] == true,
       );
     }));
-    if (_items.isEmpty) {
-      _items.add(_SupplementItem(
-        templateId: generateId(),
-        title: 'Vitamin D',
-        dosage: '1000 IU',
-        time: '08:00',
-        notes: 'With breakfast',
-      ));
-    }
+    // Do NOT seed a default entry for new users; they start with an empty list
+    // and add items manually via the + button.
   }
 
   @override
@@ -309,7 +302,41 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
     }
   }
 
+  /// Returns a user-facing error string if any supplement entry has invalid
+  /// fields, or null when everything is valid.
+  String? _validate() {
+    for (var i = 0; i < _items.length; i++) {
+      final item = _items[i];
+      final label = 'Supplement ${i + 1}';
+      if (item.title.trim().isEmpty) {
+        return '$label: name is required.';
+      }
+      if (item.dosage.trim().isEmpty) {
+        return '$label (${item.title.trim()}): dosage is required.';
+      }
+      // Time must be HH:MM (24-hour).
+      final timeOk = RegExp(r'^\d{2}:\d{2}$').hasMatch(item.time);
+      if (!timeOk) {
+        return '$label (${item.title.trim()}): time must be in HH:MM format.';
+      }
+    }
+    return null;
+  }
+
   Future<void> _save() async {
+    if (_items.isEmpty) {
+      // Allow saving an empty list (user deleted all supplements).
+    } else {
+      final error = _validate();
+      if (error != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error)),
+          );
+        }
+        return;
+      }
+    }
     final templates = _items
         .where((item) => item.title.trim().isNotEmpty)
         .map((item) => item.toTemplate())

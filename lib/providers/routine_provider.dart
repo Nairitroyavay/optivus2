@@ -91,6 +91,14 @@ String _routineSlug(String value) {
   return slug.isEmpty ? 'template' : slug;
 }
 
+/// Capitalizes the first character of [value]; leaves the rest unchanged.
+String _capitalize(String value) {
+  if (value.isEmpty) return value;
+  return value[0].toUpperCase() + value.substring(1);
+}
+
+
+
 List<FixedScheduleTemplate> canonicalizeFixedScheduleTemplates(
   List<FixedScheduleTemplate> templates, {
   bool touchUpdatedAt = false,
@@ -1215,6 +1223,13 @@ List<_MaterializationCandidate> _candidatesForDate(
             Subtask(id: _routineSlug(step), title: step.trim()),
         if (_cleanRoutineString(template['dosage']).isNotEmpty)
           Subtask(id: 'dosage', title: _cleanRoutineString(template['dosage'])),
+        // timingRule: surface "After breakfast" / "Before bed" as a subtask
+        // so the timeline task is self-descriptive without AI.
+        if (_cleanRoutineString(template['timingRule']).isNotEmpty)
+          Subtask(
+            id: 'timing',
+            title: _capitalize(_cleanRoutineString(template['timingRule'])),
+          ),
         if (_cleanRoutineString(template['room']).isNotEmpty)
           Subtask(id: 'room', title: _cleanRoutineString(template['room'])),
         if (_cleanRoutineString(template['professor']).isNotEmpty)
@@ -1222,7 +1237,16 @@ List<_MaterializationCandidate> _candidatesForDate(
             id: 'professor',
             title: _cleanRoutineString(template['professor']),
           ),
+        // notes: surface user's free-text note only when no steps are present
+        // (steps already convey the detail).
+        if (_cleanRoutineString(template['notes']).isNotEmpty &&
+            (template['steps'] as List? ?? const []).isEmpty)
+          Subtask(
+            id: 'notes',
+            title: _cleanRoutineString(template['notes']),
+          ),
       ];
+
       addCandidate(
         routineType: candidateRoutineType,
         templateId: templateId,
