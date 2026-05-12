@@ -89,74 +89,105 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
   Map<String, dynamic>? _photoImportMetadata;
   bool _isUploadingPhoto = false;
   bool _isGenerating = false;
+  bool _isSaving = false;
   String? _generationError;
 
   @override
+  @override
   void initState() {
     super.initState();
-    // Initialize 7 days
     weeklyRoutines = {};
     for (int i = 0; i < 7; i++) {
-      weeklyRoutines[i] = [
-        SkinCareRoutineBlock(
-          id: 'morning_$i',
-          title: 'Morning Ritual',
-          start: 1.0, // 7:00 AM (6 AM + 1 hr)
-          duration: 0.5,
-          icon: Icons.wb_sunny_rounded,
-          color: const Color(0xFFF59E0B), // Orange
-          hasTopTape: true,
-          hasBottomTape: true,
-          steps: [
-            SkinCareStep('Cleanse'),
-            SkinCareStep('Vitamin C Serum'),
-            SkinCareStep('SPF 50 Protect'),
-          ],
-        ),
-        SkinCareRoutineBlock(
-          id: 'add1_$i',
+      weeklyRoutines[i] = [];
+    }
+    
+    final templates = ref.read(routineProvider).routineTemplates['skin_care'] ?? const [];
+    
+    for (final template in templates) {
+      if (template['isActive'] == false) continue;
+      
+      final repeatRule = template['repeatRule']?.toString() ?? '';
+      List<int> days;
+      if (repeatRule.startsWith('weekly:')) {
+        days = repeatRule.substring(7).split(',').map((e) => int.tryParse(e) ?? 1).map((d) => d - 1).toList();
+      } else if (repeatRule == 'weekdays') {
+        days = [0, 1, 2, 3, 4];
+      } else if (repeatRule == 'weekends') {
+        days = [5, 6];
+      } else {
+        days = [0, 1, 2, 3, 4, 5, 6];
+      }
+
+      final startTime = template['startTime']?.toString() ?? '07:30';
+      final endTime = template['endTime']?.toString() ?? '07:45';
+      final parsedStart = _parseHoursFrom6AM(startTime);
+      final parsedEnd = _parseHoursFrom6AM(endTime);
+      double duration = parsedEnd - parsedStart;
+      if (duration <= 0) duration += 24;
+
+      final title = template['title']?.toString() ?? '';
+      final id = template['templateId']?.toString() ?? 'skin_${DateTime.now().microsecondsSinceEpoch}';
+
+      final List<dynamic> rawSteps = template['steps'] is List ? template['steps'] : [];
+      final steps = rawSteps.map((s) {
+        if (s is Map) return SkinCareStep(s['name']?.toString() ?? '');
+        return SkinCareStep(s.toString());
+      }).toList();
+
+      final block = SkinCareRoutineBlock(
+        id: id,
+        title: title,
+        start: parsedStart,
+        duration: duration,
+        icon: Icons.spa_rounded,
+        color: _cycleColors[_colorIndex++ % _cycleColors.length],
+        hasTopTape: true,
+        hasBottomTape: true,
+        steps: steps,
+        reminderEnabled: template['reminderEnabled'] == true,
+      );
+
+      for (final day in days) {
+        if (day >= 0 && day <= 6) {
+          weeklyRoutines[day]!.add(SkinCareRoutineBlock(
+            id: 'skin_${day}_$id',
+            title: block.title,
+            start: block.start,
+            duration: block.duration,
+            icon: block.icon,
+            color: block.color,
+            hasTopTape: block.hasTopTape,
+            hasBottomTape: block.hasBottomTape,
+            steps: block.steps.map((s) => SkinCareStep(s.name)).toList(),
+            reminderEnabled: block.reminderEnabled,
+          ));
+        }
+      }
+    }
+
+    for (int i = 0; i < 7; i++) {
+      weeklyRoutines[i]!.sort((a, b) => a.start.compareTo(b.start));
+      if (weeklyRoutines[i]!.isEmpty) {
+        weeklyRoutines[i]!.add(SkinCareRoutineBlock(
+          id: 'add_$i',
           title: '',
-          start: 6.0, // 12:00 PM (6 AM + 6 hrs)
+          start: 2.0, // 8:00 AM
           isAdd: true,
-        ),
-        SkinCareRoutineBlock(
-          id: 'evening_$i',
-          title: 'Evening Recovery',
-          start: 14.0, // 8:00 PM (6 AM + 14 hrs)
-          duration: 0.75, // 45 mins
-          icon: Icons.nightlight_round,
-          color: const Color(0xFF3B82F6), // Blue
-          hasTopTape: true,
-          hasBottomTape: true,
-          steps: [
-            SkinCareStep('Water Cleanse'),
-            SkinCareStep('Toner'),
-            SkinCareStep('Retinol Treatment'),
-            SkinCareStep('Night Cream'),
-          ],
-        ),
-        SkinCareRoutineBlock(
-          id: 'add2_$i',
+        ));
+      } else {
+        final last = weeklyRoutines[i]!.last;
+        double nextStart = last.start + last.duration + 0.5;
+        if (nextStart > 23.5) nextStart = 23.5;
+        weeklyRoutines[i]!.add(SkinCareRoutineBlock(
+          id: 'add_$i',
           title: '',
-          start: 15.0, // 9:00 PM (6 AM + 15 hrs)
+          start: nextStart,
           isAdd: true,
-        ),
-        SkinCareRoutineBlock(
-          id: 'mask_$i',
-          title: 'Self-Care: Mask',
-          start: 15.5, // 9:30 PM (6 AM + 15.5 hrs)
-          duration: 0.5,
-          icon: Icons.face_retouching_natural_rounded,
-          color: const Color(0xFF10B981), // Green
-          hasTopTape: true,
-          hasBottomTape: true,
-          steps: [
-            SkinCareStep('Calming Face Mask'),
-          ],
-        ),
-      ];
+        ));
+      }
     }
   }
+
 
   @override
   void dispose() {
@@ -824,8 +855,13 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
     );
   }
 
+  // ── Placeholder title guard — titles users leave as the dialog default ──
+  static const _kPlaceholderTitles = {'New Block', 'new block'};
+
   // BUILD
   Future<void> _save(WidgetRef ref) async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
     final notifier = ref.read(routineProvider.notifier);
     final templates = <Map<String, dynamic>>[];
     String format24h(double hoursFrom6AM) {
@@ -835,31 +871,48 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
       return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
     }
 
-    for (int d = 0; d < 7; d++) {
-      final itemsForDay = weeklyRoutines[d] ?? [];
-      final morning = <SkinStep>[];
-      final afternoon = <SkinStep>[];
-      final night = <SkinStep>[];
+    try {
+      for (int d = 0; d < 7; d++) {
+        final itemsForDay = weeklyRoutines[d] ?? [];
+        final morning = <SkinStep>[];
+        final afternoon = <SkinStep>[];
+        final night = <SkinStep>[];
 
-      for (final item in itemsForDay) {
-        if (!item.isAdd) {
+        for (final item in itemsForDay) {
+          if (item.isAdd) continue;
+          // Skip blocks with blank or placeholder titles — do not save sample data.
+          final cleanTitle = item.title.trim();
+          if (cleanTitle.isEmpty || _kPlaceholderTitles.contains(cleanTitle)) {
+            continue;
+          }
           templates.add({
-            'templateId': 'skin_${d + 1}_${item.id}',
-            'title': item.title,
+            // Use a stable, compact templateId built from day + title slug.
+            'templateId':
+                'skin_d${d + 1}_${cleanTitle.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_')}',
+            'title': cleanTitle,
             'routineType': 'skin_care',
             'startTime': format24h(item.start),
             'endTime': format24h(item.start + item.duration),
             'repeatRule': 'weekly:${d + 1}',
-            'steps': item.steps.map((step) => {'name': step.name}).toList(),
-            'notes': item.steps.map((step) => step.name).join(', '),
+            'steps': item.steps
+                .map((s) => s.name.trim())
+                .where((n) => n.isNotEmpty)
+                .map((n) => {'name': n})
+                .toList(),
+            'notes': item.steps
+                .map((s) => s.name.trim())
+                .where((n) => n.isNotEmpty)
+                .join(', '),
             'reminderEnabled': item.reminderEnabled,
             'isActive': true,
             'createdAt': DateTime.now().toIso8601String(),
             'updatedAt': DateTime.now().toIso8601String(),
           });
           for (final step in item.steps) {
+            final stepName = step.name.trim();
+            if (stepName.isEmpty) continue;
             final skinStep =
-                SkinStep(emoji: '✨', name: step.name, tag: item.title);
+                SkinStep(emoji: '✨', name: stepName, tag: cleanTitle);
             if (item.start < 6.0) {
               morning.add(skinStep);
             } else if (item.start < 11.0) {
@@ -869,16 +922,32 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
             }
           }
         }
+        notifier.setSkinCarePlan(
+            d, DaySkinPlan(morning: morning, afternoon: afternoon, night: night));
       }
-      notifier.setSkinCarePlan(
-          d, DaySkinPlan(morning: morning, afternoon: afternoon, night: night));
+      // Always mark skin care as set up, even on an empty save, so the
+      // legacy DaySkinPlan fallback path is not used by the materializer.
+      notifier.markSkinCareSetUp();
+      await notifier.setRoutineTemplates(
+        'skin_care',
+        templates,
+        importMetadata: _pendingImportMetadata,
+      );
+      widget.onComplete();
+    } catch (e) {
+      debugPrint('[SkinCareSetup] _save failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not save skin care routine. Please try again.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-    await notifier.setRoutineTemplates(
-      'skin_care',
-      templates,
-      importMetadata: _pendingImportMetadata,
-    );
-    widget.onComplete();
   }
 
   Future<List<Map<String, dynamic>>> _previewGeneratedSkinTemplates(
@@ -1437,15 +1506,30 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
                           letterSpacing: 1.5,
                         ),
                       ),
-                      LiquidIconBtn(
-                        icon: Icons.check_rounded,
-                        size: 44,
-                        onTap: () async {
-                          await _save(ref);
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                        },
-                      ),
+                      _isSaving
+                          ? const SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : LiquidIconBtn(
+                              icon: Icons.check_rounded,
+                              size: 44,
+                              onTap: () async {
+                                await _save(ref);
+                                // _save calls widget.onComplete() on success;
+                                // on error it shows a snackbar and stays open.
+                              },
+                            ),
                     ],
                   ),
                 ),

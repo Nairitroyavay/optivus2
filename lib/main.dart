@@ -5,7 +5,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'config/firebase_options.dart';
 import 'core/router/app_router.dart';
 import 'core/providers.dart';
@@ -19,7 +19,7 @@ void main() async {
   const mapboxAccessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
 
   if (mapboxAccessToken.isNotEmpty) {
-    MapboxOptions.setAccessToken(mapboxAccessToken);
+    mapbox.MapboxOptions.setAccessToken(mapboxAccessToken);
     debugPrint('[Mapbox] access token configured');
   } else {
     debugPrint('[Mapbox] MAPBOX_ACCESS_TOKEN missing; Mapbox map will not load');

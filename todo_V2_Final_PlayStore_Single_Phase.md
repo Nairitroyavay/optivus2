@@ -1916,7 +1916,7 @@ Routine schema/materialization and onboarding completion.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -2013,10 +2013,10 @@ Routine template schema and materialization.
 
 #### Done Criteria
 
-- [ ] Manual skin setup saves canonical templates.
-- [ ] AI/R2 disabled path works.
-- [ ] No sample data is saved accidentally.
-- [ ] Timeline tasks materialize correctly.
+- [x] Manual skin setup saves canonical templates.
+- [x] AI/R2 disabled path works.
+- [x] No sample data is saved accidentally.
+- [x] Timeline tasks materialize correctly.
 
 ### Task 1.19 — Productionize manual supplement routine setup
 
