@@ -220,6 +220,7 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
     TextEditingController endTimeCtrl =
         TextEditingController(text: item.displayEndTime);
     bool tempReminder = item.reminderEnabled;
+    final formKey = GlobalKey<FormState>();
 
     await showDialog(
         context: context,
@@ -235,104 +236,123 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                 content: SizedBox(
                   width: double.maxFinite,
                   child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: subjectCtrl,
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700),
-                          decoration: InputDecoration(
-                            labelText: 'Subject',
-                            filled: true,
-                            fillColor: const Color(0xFFF1F5F9),
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none),
+                    child: Form(
+                      key: formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextFormField(
+                            controller: subjectCtrl,
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w700),
+                            decoration: InputDecoration(
+                              labelText: 'Subject',
+                              filled: true,
+                              fillColor: const Color(0xFFF1F5F9),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none),
+                            ),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Subject is required'
+                                : null,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: roomCtrl,
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600),
-                                decoration: InputDecoration(
-                                  labelText: 'Room',
-                                  filled: true,
-                                  fillColor: const Color(0xFFF1F5F9),
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide.none),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: roomCtrl,
+                                  style: const TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w600),
+                                  decoration: InputDecoration(
+                                    labelText: 'Room',
+                                    filled: true,
+                                    fillColor: const Color(0xFFF1F5F9),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none),
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: profCtrl,
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600),
-                                decoration: InputDecoration(
-                                  labelText: 'Professor',
-                                  filled: true,
-                                  fillColor: const Color(0xFFF1F5F9),
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide.none),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: profCtrl,
+                                  style: const TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w600),
+                                  decoration: InputDecoration(
+                                    labelText: 'Professor',
+                                    filled: true,
+                                    fillColor: const Color(0xFFF1F5F9),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: startTimeCtrl,
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600),
-                                decoration: InputDecoration(
-                                  labelText: 'Start (e.g. 9:00 AM)',
-                                  filled: true,
-                                  fillColor: const Color(0xFFF1F5F9),
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide.none),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: startTimeCtrl,
+                                  style: const TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w600),
+                                  decoration: InputDecoration(
+                                    labelText: 'Start (e.g. 9:00 AM)',
+                                    filled: true,
+                                    fillColor: const Color(0xFFF1F5F9),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none),
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.trim().isEmpty) return 'Required';
+                                    final regex = RegExp(r'^\d{1,2}:\d{2}\s*(AM|PM|am|pm)$');
+                                    if (!regex.hasMatch(v.trim())) return 'Use HH:MM AM';
+                                    return null;
+                                  },
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: endTimeCtrl,
-                                style: const TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w600),
-                                decoration: InputDecoration(
-                                  labelText: 'End (e.g. 10:00 AM)',
-                                  filled: true,
-                                  fillColor: const Color(0xFFF1F5F9),
-                                  border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide.none),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: endTimeCtrl,
+                                  style: const TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w600),
+                                  decoration: InputDecoration(
+                                    labelText: 'End (e.g. 10:00 AM)',
+                                    filled: true,
+                                    fillColor: const Color(0xFFF1F5F9),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none),
+                                  ),
+                                  validator: (v) {
+                                    if (v == null || v.trim().isEmpty) return 'Required';
+                                    final regex = RegExp(r'^\d{1,2}:\d{2}\s*(AM|PM|am|pm)$');
+                                    if (!regex.hasMatch(v.trim())) return 'Use HH:MM AM';
+                                    return null;
+                                  },
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        SwitchListTile.adaptive(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Reminder'),
-                          value: tempReminder,
-                          onChanged: (value) {
-                            setDialogState(() => tempReminder = value);
-                          },
-                        ),
-                      ],
+                            ],
+                          ),
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Reminder'),
+                            value: tempReminder,
+                            onChanged: (value) {
+                              setDialogState(() => tempReminder = value);
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -362,12 +382,11 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                             borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () {
+                        if (!formKey.currentState!.validate()) return;
                         setState(() {
-                          item.subject = subjectCtrl.text.isEmpty
-                              ? 'New Class'
-                              : subjectCtrl.text;
-                          item.room = roomCtrl.text;
-                          item.professor = profCtrl.text;
+                          item.subject = subjectCtrl.text.trim();
+                          item.room = roomCtrl.text.trim();
+                          item.professor = profCtrl.text.trim();
                           item.reminderEnabled = tempReminder;
 
                           double parsedStart =
