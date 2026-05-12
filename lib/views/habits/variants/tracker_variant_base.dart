@@ -101,6 +101,13 @@ class TrackerVariantView extends ConsumerWidget {
                     : _logPoints(logs);
                 final todayValue = points[_dateString(DateTime.now())] ?? 0;
 
+                HabitLog? latestLog;
+                for (final log in logs) {
+                  if (latestLog == null || log.occurredAt.isAfter(latestLog.occurredAt)) {
+                    latestLog = log;
+                  }
+                }
+
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -134,6 +141,15 @@ class TrackerVariantView extends ConsumerWidget {
                           ? () => _log(context, ref)
                           : null,
                     ),
+                    if (latestLog != null) ...[
+                      const SizedBox(height: 8),
+                      Center(
+                        child: TextButton(
+                          onPressed: () => _undoLatest(context, ref, latestLog!),
+                          child: const Text('Undo latest log'),
+                        ),
+                      ),
+                    ],
                   ],
                 );
               },
@@ -169,6 +185,30 @@ class TrackerVariantView extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Log failed: $e'),
+            backgroundColor: kCoral,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _undoLatest(BuildContext context, WidgetRef ref, HabitLog log) async {
+    try {
+      await ref.read(habitServiceProvider).deleteLog(
+            habit.id,
+            log.logId,
+            confirmDestructive: true,
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Latest habit log removed.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to undo latest log: $e'),
             backgroundColor: kCoral,
           ),
         );

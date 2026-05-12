@@ -419,79 +419,132 @@ class _LifecycleActions extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.only(top: 2),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: LiquidButton.outline(
-              label: paused ? 'Resume' : 'Pause',
-              color: paused ? kMint : kAmber,
-              height: 50,
-              onTap: archived
-                  ? null
-                  : () async {
-                      try {
-                        if (paused) {
-                          await service.resumeHabit(habit.id);
-                        } else {
-                          await service.pauseHabit(habit.id);
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Habit update failed: $e'),
-                              backgroundColor: kCoral,
+          Row(
+            children: [
+              Expanded(
+                child: LiquidButton.outline(
+                  label: paused ? 'Resume' : 'Pause',
+                  color: paused ? kMint : kAmber,
+                  height: 50,
+                  onTap: archived
+                      ? null
+                      : () async {
+                          try {
+                            if (paused) {
+                              await service.resumeHabit(habit.id);
+                            } else {
+                              await service.pauseHabit(habit.id);
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Habit update failed: $e'),
+                                  backgroundColor: kCoral,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: LiquidButton(
+                  label: archived ? 'Archived' : 'Archive',
+                  color: kCoral,
+                  height: 50,
+                  onTap: archived
+                      ? null
+                      : () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Archive habit?'),
+                              content: const Text(
+                                'Archived habits stop appearing in active daily cards.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Archive'),
+                                ),
+                              ],
                             ),
                           );
-                        }
-                      }
-                    },
-            ),
+                          if (confirm != true) return;
+                          try {
+                            await service.archiveHabit(habit.id);
+                            if (context.mounted) context.pop();
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Archive failed: $e'),
+                                  backgroundColor: kCoral,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: LiquidButton(
-              label: archived ? 'Archived' : 'Archive',
-              color: kCoral,
-              height: 50,
-              onTap: archived
-                  ? null
-                  : () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Archive habit?'),
-                          content: const Text(
-                            'Archived habits stop appearing in active daily cards.',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancel'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Archive'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm != true) return;
-                      try {
-                        await service.archiveHabit(habit.id);
-                        if (context.mounted) context.pop();
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Archive failed: $e'),
-                              backgroundColor: kCoral,
-                            ),
-                          );
-                        }
-                      }
-                    },
-            ),
+          const SizedBox(height: 12),
+          LiquidButton.outline(
+            label: 'Delete Habit',
+            color: kCoral,
+            height: 50,
+            onTap: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Delete habit?'),
+                  content: const Text(
+                    'This is destructive and cannot be undone. Logs will be preserved for audit but the habit will be gone.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: FilledButton.styleFrom(backgroundColor: kCoral),
+                      child: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm != true) return;
+              try {
+                await service.deleteHabit(habit.id, confirmDestructive: true);
+                if (context.mounted) {
+                  context.pop();
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/habits');
+                  }
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Delete failed: $e'),
+                      backgroundColor: kCoral,
+                    ),
+                  );
+                }
+              }
+            },
           ),
         ],
       ),

@@ -482,6 +482,27 @@ class NotificationService {
     return false;
   }
 
+  Future<bool> areNotificationsEnabled() async {
+    if (kIsWeb) return false;
+    if (!_isInitialized) await init();
+
+    if (Platform.isIOS) {
+      // iOS doesn't have a direct synchronous getter without a different package,
+      // but flutter_local_notifications doesn't expose it directly for iOS.
+      // We can assume true for iOS until requested, or use another mechanism.
+      return true;
+    } else if (Platform.isMacOS) {
+      return true;
+    } else if (Platform.isAndroid) {
+      final enabled = await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.areNotificationsEnabled();
+      return enabled ?? false;
+    }
+    return false;
+  }
+
   Future<bool> sendTestNotification(String uid) async {
     if (kIsWeb) {
       debugPrint('[NotificationService] Test notification unsupported on web.');

@@ -2679,7 +2679,7 @@ Event validator and Firestore schema.
 
 #### Status
 
-- [ ] Not started
+- [x] Completed
 
 #### Priority
 
@@ -2782,10 +2782,10 @@ Android notification permissions, Remote Config defaults, task/habit events.
 
 #### Done Criteria
 
-- [ ] Permission UX is clear.
-- [ ] Alarms/reminders schedule and cancel correctly.
-- [ ] Quiet hours and budgets work.
-- [ ] Play Store permission justification is ready.
+- [x] Permission UX is clear.
+- [x] Alarms/reminders schedule and cancel correctly.
+- [x] Quiet hours and budgets work.
+- [x] Play Store permission justification is ready.
 
 ### Task 1.26 — Complete smoking tracker MVP
 

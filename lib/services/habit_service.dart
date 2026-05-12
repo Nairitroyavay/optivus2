@@ -125,8 +125,10 @@ class HabitService {
 
     num total = 0;
     for (final doc in snap.docs) {
-      final data = doc.data();
-      total += (data['quantity'] as num?) ?? 1;
+      final log = HabitLog.fromFirestore(doc);
+      if (!log.isDismissed) {
+        total += log.quantity ?? 1;
+      }
     }
     return total.round();
   }
@@ -143,9 +145,9 @@ class HabitService {
 
     num total = 0;
     for (final doc in snap.docs) {
-      final data = doc.data();
-      if (data['logType'] == 'slip') continue;
-      total += (data['quantity'] as num?) ?? (data['amount'] as num?) ?? 1;
+      final log = HabitLog.fromFirestore(doc);
+      if (log.logType == 'slip' || log.isDismissed) continue;
+      total += log.quantity ?? 1;
     }
     return total;
   }
@@ -803,7 +805,10 @@ class HabitService {
         .get();
     num total = 0;
     for (final doc in snap.docs) {
-      total += (doc.data()['quantity'] as num?) ?? 1;
+      final log = HabitLog.fromFirestore(doc);
+      if (!log.isDismissed) {
+        total += log.quantity ?? 1;
+      }
     }
     return total.round();
   }

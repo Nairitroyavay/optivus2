@@ -25,6 +25,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/constants/event_names.dart';
 import '../core/errors/app_errors.dart';
+import '../models/habit_log_model.dart';
 import '../models/habit_model.dart';
 import '../models/streak_model.dart';
 import 'event_service.dart';
@@ -106,9 +107,9 @@ class StreakService {
 
     num total = 0;
     for (final doc in snap.docs) {
-      final data = doc.data();
-      if (data['logType'] == 'good') {
-        total += (data['quantity'] as num?) ?? 1;
+      final log = HabitLog.fromFirestore(doc);
+      if (log.logType == 'good' && !log.isDismissed) {
+        total += log.quantity ?? 1;
       }
     }
     return total;
@@ -128,8 +129,9 @@ class StreakService {
 
     int count = 0;
     for (final doc in snap.docs) {
-      if (doc.data()['logType'] == 'slip') {
-        count++;
+      final log = HabitLog.fromFirestore(doc);
+      if (log.logType == 'slip' && !log.isDismissed) {
+        count += (log.quantity ?? 1).toInt();
       }
     }
     return count;

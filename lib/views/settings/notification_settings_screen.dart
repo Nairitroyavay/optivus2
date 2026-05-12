@@ -25,6 +25,7 @@ class _NotificationSettingsScreenState
   bool _loading = true;
   bool _saving = false;
   bool _testing = false;
+  bool _notificationsEnabled = true;
 
   @override
   void initState() {
@@ -71,6 +72,8 @@ class _NotificationSettingsScreenState
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
                   children: [
+                    if (!_notificationsEnabled) _permissionBanner(),
+                    if (!_notificationsEnabled) const SizedBox(height: 16),
                     _budgetSection(),
                     const SizedBox(height: 16),
                     _categorySection(),
@@ -400,11 +403,14 @@ class _NotificationSettingsScreenState
     }
 
     final doc = await _profileRef(uid).get();
+    final enabled =
+        await ref.read(notificationServiceProvider).areNotificationsEnabled();
     if (!mounted) return;
     setState(() {
       _settings = _NotificationSettingsDraft.fromProfile(
         doc.data() ?? const <String, dynamic>{},
       );
+      _notificationsEnabled = enabled;
       _loading = false;
     });
   }
@@ -504,6 +510,70 @@ class _NotificationSettingsScreenState
     batch.set(eventRef, event);
     batch.set(userRef.collection('events_recent').doc(eventRef.id), event);
     await batch.commit();
+  }
+
+  Widget _permissionBanner() {
+    return LiquidCard.solid(
+      radius: 18,
+      padding: const EdgeInsets.all(16),
+      tint: kCoral.withValues(alpha: 0.1),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_rounded, color: kCoral),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Notifications disabled',
+                  style: TextStyle(
+                    color: kCoral,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Optivus needs permission to send you task alarms and habit reminders.',
+                  style: TextStyle(
+                    color: kInk.withValues(alpha: 0.8),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.tonal(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: kCoral.withValues(alpha: 0.15),
+                    foregroundColor: kCoral,
+                  ),
+                  onPressed: _requestPermission,
+                  child: const Text('Enable notifications'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _requestPermission() async {
+    final granted =
+        await ref.read(notificationServiceProvider).requestPermissions();
+    if (!mounted) return;
+    if (granted) {
+      setState(() => _notificationsEnabled = true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enable notifications in your device settings.'),
+          backgroundColor: kCoral,
+        ),
+      );
+    }
   }
 }
 

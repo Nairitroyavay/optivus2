@@ -167,7 +167,9 @@ class _HabitEditorScreenState extends ConsumerState<HabitEditorScreen> {
         trackerType: _category,
         dailyGoal: _kind == HabitKind.good ? target : null,
         goalType: _kind == HabitKind.bad ? _badGoalType : null,
-        target: _kind == HabitKind.bad ? target : null,
+        target: _kind == HabitKind.bad
+            ? (_badGoalType == BadHabitGoalType.reduceToTarget ? target : null)
+            : null,
         costPerUnit: cost,
         scheduleDays: _scheduleDays.toList()..sort(),
         remindersEnabled: _remindersEnabled,
