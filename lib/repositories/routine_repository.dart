@@ -109,6 +109,7 @@ class RoutineRepository {
     required String mode,
     String? sourceText,
     Map<String, dynamic>? imageMetadata,
+    bool sensitiveContext = false,
   }) async {
     final endpoint = _buildConfig.cloudflare.normalizedRoutineImportEndpoint;
     final flags = _featureFlags;
@@ -133,6 +134,7 @@ class RoutineRepository {
         'routineType': routineType,
         'mode': mode,
         'commit': false,
+        if (sensitiveContext) 'sensitiveContext': true,
         if (sourceText != null && sourceText.trim().isNotEmpty)
           'sourceText': sourceText.trim(),
         if (imageMetadata != null) 'imageMetadata': imageMetadata,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:optivus2/core/liquid_ui/liquid_ui.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/core/providers.dart';
+import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/providers/routine_provider.dart';
 import 'package:optivus2/services/image_upload_service.dart';
 import 'package:image_picker/image_picker.dart';
@@ -83,77 +84,34 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
   final ImageUploadService _imageUploadService = ImageUploadService();
   bool _isImportingPhoto = false;
   String? _importError;
+  bool _sensitiveMode = false;
 
   @override
   void initState() {
     super.initState();
-    weeklyRoutines = {};
-    for (int i = 0; i < 7; i++) {
-      weeklyRoutines[i] = [
-        EatingRoutineBlock(
-          id: 'breakfast_$i',
-          mealName: 'Breakfast',
-          foodName: 'Oatmeal & Berries',
-          start: 2.0, // 8:00 AM (6 AM + 2 hrs)
-          duration: 1.0,
-          emoji: '🥣',
-          color: const Color(0xFFFFB830),
-          hasTopTape: true,
-          hasBottomTape: true,
-        ),
-        EatingRoutineBlock(
-          id: 'add1_$i',
-          mealName: '',
-          start: 5.0, // 11:00 AM
-          isAdd: true,
-        ),
-        EatingRoutineBlock(
-          id: 'lunch_$i',
-          mealName: 'Lunch',
-          foodName: 'Grilled Chicken Salad',
-          start: 7.0, // 1:00 PM
-          duration: 1.0,
-          emoji: '🥗',
-          color: const Color(0xFF60D4A0),
-          hasTopTape: true,
-          hasBottomTape: true,
-        ),
-        EatingRoutineBlock(
-          id: 'add2_$i',
-          mealName: '',
-          start: 9.5, // 3:30 PM
-          isAdd: true,
-        ),
-        EatingRoutineBlock(
-          id: 'snack_$i',
-          mealName: 'Snack',
-          foodName: 'Green Apple & Walnuts',
-          start: 11.0, // 5:00 PM
-          duration: 0.5,
-          emoji: '🍎',
-          color: const Color(0xFFFF9560),
-          hasTopTape: true,
-          hasBottomTape: true,
-        ),
-        EatingRoutineBlock(
-          id: 'add3_$i',
-          mealName: '',
-          start: 13.0, // 7:00 PM
-          isAdd: true,
-        ),
-        EatingRoutineBlock(
-          id: 'dinner_$i',
-          mealName: 'Dinner',
-          foodName: 'Salmon with Asparagus',
-          start: 14.5, // 8:30 PM
-          duration: 1.0,
-          emoji: '🍣',
-          color: const Color(0xFF9B8FFF),
-          hasTopTape: true,
-          hasBottomTape: true,
-        ),
-      ];
-    }
+    // Start with an empty grid — one Add placeholder per day.
+    // No pre-seeded sample meals so fresh users don't accidentally
+    // persist fake data on first Save.
+    weeklyRoutines = {
+      for (int i = 0; i < 7; i++)
+        i: [
+          EatingRoutineBlock(
+            id: 'add_initial_$i',
+            mealName: '',
+            start: 2.0, // default position: 8 AM
+            isAdd: true,
+          ),
+        ],
+    };
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Read the sensitive-context flag synchronously (cached by StreamProvider).
+    final container = ProviderScope.containerOf(context, listen: false);
+    _sensitiveMode =
+        container.read(eatingDisorderFlagProvider).valueOrNull ?? false;
   }
 
   List<EatingRoutineBlock> get items => weeklyRoutines[_day]!;
@@ -209,6 +167,8 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
 
   Future<void> _showEditDialog(int index) async {
     final item = items[index];
+    final isSensitive =
+        ref.read(eatingDisorderFlagProvider).valueOrNull ?? false;
 
     TextEditingController nameCtrl = TextEditingController(text: item.mealName);
     TextEditingController foodCtrl = TextEditingController(text: item.foodName);
@@ -218,6 +178,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     TextEditingController endTimeCtrl =
         TextEditingController(text: item.displayEndTime);
     bool tempReminder = item.reminderEnabled;
+    String? dialogError;
 
     await showDialog(
         context: context,
@@ -280,8 +241,12 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                           style: const TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w600),
                           decoration: InputDecoration(
-                            labelText:
-                                'Food Detail (e.g. Grilled Chicken Salad)',
+                            labelText: isSensitive
+                                ? 'Notes (optional — how did this meal feel?)'
+                                : 'Food Detail (e.g. Grilled Chicken Salad)',
+                            hintText: isSensitive
+                                ? 'e.g. felt calm, felt rushed…'
+                                : 'e.g. Rice, Dal, Salad',
                             filled: true,
                             fillColor: const Color(0xFFF1F5F9),
                             border: OutlineInputBorder(
@@ -333,6 +298,17 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                             setDialogState(() => tempReminder = value);
                           },
                         ),
+                        if (dialogError != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            dialogError!,
+                            style: const TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -363,32 +339,34 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                             borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () {
+                        // Validate inputs before saving.
+                        final nameText = nameCtrl.text.trim();
+                        if (nameText.isEmpty) {
+                          setDialogState(() => dialogError = 'Meal name cannot be empty.');
+                          return;
+                        }
+                        final parsedStart =
+                            _parseHoursFrom6AM(startTimeCtrl.text);
+                        var parsedEnd =
+                            _parseHoursFrom6AM(endTimeCtrl.text);
+                        if (parsedEnd <= parsedStart) parsedEnd += 24;
+                        if (parsedEnd - parsedStart < 0.1) {
+                          setDialogState(() => dialogError = 'End time must be after start time.');
+                          return;
+                        }
                         setState(() {
-                          item.mealName = nameCtrl.text.isEmpty
-                              ? 'New Meal'
-                              : nameCtrl.text;
-                          item.foodName = foodCtrl.text;
+                          item.mealName = nameText;
+                          item.foodName = foodCtrl.text.trim();
                           item.emoji =
-                              emojiCtrl.text.isEmpty ? '🍽️' : emojiCtrl.text;
+                              emojiCtrl.text.trim().isEmpty ? '🍽️' : emojiCtrl.text.trim();
                           item.reminderEnabled = tempReminder;
-
-                          double parsedStart =
-                              _parseHoursFrom6AM(startTimeCtrl.text);
-                          double parsedEnd =
-                              _parseHoursFrom6AM(endTimeCtrl.text);
-                          if (parsedEnd <= parsedStart && parsedEnd != 0.0) {
-                            parsedEnd += 24;
-                          }
                           item.start = parsedStart;
-                          item.duration = parsedEnd - parsedStart > 0.5
-                              ? parsedEnd - parsedStart
-                              : 0.5;
+                          item.duration = (parsedEnd - parsedStart).clamp(0.5, 12.0).toDouble();
 
                           if (item.isAdd) {
                             item.isAdd = false;
                             item.hasTopTape = true;
                             item.hasBottomTape = true;
-                            item.duration = 1.0;
                             item.color =
                                 _cycleColors[_colorIndex % _cycleColors.length];
                             _colorIndex++;
@@ -409,6 +387,128 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                 ]);
           });
         });
+  }
+
+  // ── Local mess-menu text parser (hostel fallback when Worker is off) ────────
+  //
+  // Splits raw text into meal blocks for the current selected day.
+  // Recognises common patterns: "Breakfast: ...", "Lunch - ...", plain lines.
+  // No network call needed — works offline.
+  List<EatingRoutineBlock> _parseMessMenuTextLocally(String text) {
+    final lines = text
+        .split(RegExp(r'[\n;]'))
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+
+    final mealDefaults = <String, (double, double)>{
+      'breakfast': (2.0, 3.0),  // 8–9 AM
+      'morning': (2.0, 3.0),
+      'lunch': (7.0, 8.0),      // 1–2 PM
+      'afternoon': (7.0, 8.0),
+      'snack': (10.0, 10.5),    // 4–4:30 PM
+      'tea': (10.0, 10.5),
+      'dinner': (14.0, 15.0),   // 8–9 PM
+      'supper': (14.0, 15.0),
+      'night': (14.0, 15.0),
+    };
+
+    final blocks = <EatingRoutineBlock>[];
+    double lastEnd = 2.0;
+    int idx = 0;
+
+    for (final line in lines) {
+      final lower = line.toLowerCase();
+      final separator = RegExp(r'[:–\-]');
+      final sepMatch = separator.firstMatch(line);
+
+      String mealName;
+      String foodDetail;
+      double start;
+      double duration;
+
+      if (sepMatch != null) {
+        mealName = line.substring(0, sepMatch.start).trim();
+        foodDetail = line.substring(sepMatch.end).trim();
+      } else {
+        mealName = line;
+        foodDetail = '';
+      }
+
+      // Look up default times by meal keyword.
+      double? foundStart;
+      double? foundEnd;
+      for (final entry in mealDefaults.entries) {
+        if (lower.contains(entry.key)) {
+          foundStart = entry.value.$1;
+          foundEnd = entry.value.$2;
+          break;
+        }
+      }
+
+      if (foundStart != null && foundEnd != null) {
+        start = foundStart;
+        duration = foundEnd - foundStart;
+      } else {
+        // Assign sequentially if no keyword matched.
+        start = lastEnd.clamp(0.0, 22.0).toDouble();
+        duration = 1.0;
+      }
+      lastEnd = start + duration + 0.5;
+
+      blocks.add(EatingRoutineBlock(
+        id: 'local_parsed_${_day}_${idx}_${DateTime.now().microsecondsSinceEpoch}',
+        mealName: mealName.isEmpty ? 'Meal' : mealName,
+        foodName: foodDetail,
+        start: start,
+        duration: duration,
+        emoji: '🍽️',
+        color: _cycleColors[(_colorIndex + idx) % _cycleColors.length],
+        hasTopTape: true,
+        hasBottomTape: true,
+      ));
+      idx++;
+    }
+    return blocks;
+  }
+
+  // ── Sensitive-context banner widget ──────────────────────────────────────────
+  Widget _buildSensitiveBanner() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Container(
+        width: double.infinity,
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF60D4A0).withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: const Color(0xFF60D4A0).withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.health_and_safety_rounded,
+                size: 18, color: Color(0xFF22C55E)),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Mindful Eating mode is active. '  
+                'Focus on meal timing and how you feel — '  
+                'not specific foods or portions.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildDroplet(double size,
@@ -738,6 +838,9 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
 
   Future<void> _save(WidgetRef ref) async {
     final notifier = ref.read(routineProvider.notifier);
+    // Re-read the sensitive flag at save time (may have changed since screen opened).
+    final isSensitive =
+        ref.read(eatingDisorderFlagProvider).valueOrNull ?? false;
     final templates = <Map<String, dynamic>>[];
     String format24h(double hoursFrom6AM) {
       final totalMinutes = ((hoursFrom6AM + 6) * 60).round();
@@ -753,22 +856,28 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
         if (!item.isAdd) {
           templates.add({
             'templateId': 'eating_${d + 1}_${item.id}',
-            'title': item.mealName,
+            'title': item.mealName.trim(),
             'routineType': 'eating',
             'startTime': format24h(item.start),
             'endTime': format24h(item.start + item.duration),
             'repeatRule': 'mess_menu_weekday:${d + 1}',
-            'mealType': item.mealName,
-            'notes': item.foodName,
+            'mealType': item.mealName.trim(),
+            // notes: for sensitive users store the user's own text (not AI-generated)
+            // but mark the template so the Worker never overwrites with calorie content.
+            'notes': item.foodName.trim(),
             'emoji': item.emoji,
             'reminderEnabled': item.reminderEnabled,
             'isActive': true,
+            // Safety gate: Worker and adaptive logic must respect this flag.
+            if (isSensitive) 'sensitiveMode': true,
             'createdAt': DateTime.now().toIso8601String(),
             'updatedAt': DateTime.now().toIso8601String(),
           });
           meals.add(MealItem(
             emoji: item.emoji,
-            name: item.foodName.isNotEmpty ? item.foodName : item.mealName,
+            name: item.foodName.trim().isNotEmpty
+                ? item.foodName.trim()
+                : item.mealName.trim(),
             time: item.displayStartTime,
           ));
         }
@@ -785,11 +894,16 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
 
   Future<void> _showImportOptions() async {
     if (_isImportingPhoto) return;
-    if (!ref.read(appFeatureFlagsProvider).hostelMessImageImportReady) {
-      _showImageImportComingSoon();
+    final flags = ref.read(appFeatureFlagsProvider);
+    if (!flags.routineImportWorkerReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI import is coming soon. Please add meals manually.'),
+        ),
+      );
       return;
     }
-    final source = await showModalBottomSheet<ImageSource>(
+    final source = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
@@ -798,19 +912,124 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
             ListTile(
               leading: const Icon(Icons.photo_camera_rounded),
               title: const Text('Mess Photo from Camera'),
-              onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+              onTap: () => Navigator.of(ctx).pop('camera'),
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_rounded),
               title: const Text('Mess Photo from Gallery'),
-              onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+              onTap: () => Navigator.of(ctx).pop('gallery'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.text_snippet_rounded),
+              title: const Text('Paste Mess Menu Text'),
+              onTap: () => Navigator.of(ctx).pop('text'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: const Text('Generate Adaptive Meal Plan (Coming Soon)'),
+              onTap: () => Navigator.of(ctx).pop('adaptive'),
             ),
           ],
         ),
       ),
     );
     if (source == null) return;
-    await _pickUploadAndImportMessPhoto(source);
+    if (source == 'camera') {
+      await _pickUploadAndImportMessPhoto(ImageSource.camera);
+    } else if (source == 'gallery') {
+      await _pickUploadAndImportMessPhoto(ImageSource.gallery);
+    } else if (source == 'text') {
+      await _showTextInputDialog();
+    } else if (source == 'adaptive') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Adaptive eating plan is coming soon.')),
+      );
+    }
+  }
+
+  Future<void> _showTextInputDialog() async {
+    final controller = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Paste Mess Menu'),
+        content: TextField(
+          controller: controller,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            hintText: 'Paste your weekly mess menu here...',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+    if (submitted == true && controller.text.trim().isNotEmpty) {
+      await _importMessMenuText(controller.text.trim());
+    }
+  }
+
+  Future<void> _importMessMenuText(String text) async {
+    setState(() {
+      _isImportingPhoto = true;
+      _importError = null;
+    });
+    try {
+      final flags = ref.read(appFeatureFlagsProvider);
+      final eatFlag = ref.read(eatingDisorderFlagProvider).valueOrNull ?? false;
+
+      if (!flags.routineImportWorkerReady) {
+        // ── Local fallback: parse text without Worker (hostel/mess offline mode)
+        final blocks = _parseMessMenuTextLocally(text);
+        if (blocks.isEmpty) {
+          setState(() {
+            _importError =
+                'Could not parse any meals from the text. Try using the format:\n'
+                '"Breakfast: Idli, Sambar\nLunch: Dal, Rice"';
+          });
+          return;
+        }
+        setState(() {
+          // Replace current day with parsed blocks + trailing Add button.
+          weeklyRoutines[_day] = _withAddButtons(blocks, _day);
+          _colorIndex += blocks.length;
+          _pendingImportMetadata = {
+            'mode': 'eating_mess_text_local',
+            'parsedMeals': blocks.length,
+            if (eatFlag) 'sensitiveMode': true,
+          };
+        });
+        return;
+      }
+
+      // Worker is ready — call remote endpoint.
+      final generated = await ref.read(routineRepositoryProvider).previewRoutineImport(
+        routineType: 'eating',
+        mode: 'eating_mess_text',
+        sourceText: text,
+        sensitiveContext: eatFlag,
+      );
+      if (!mounted) return;
+      await _processImportedTemplates(generated, null, {'mode': 'eating_mess_text'});
+    } catch (e) {
+      debugPrint('[EatingSetup] mess text import failed: $e');
+      if (mounted) {
+        setState(() {
+          _importError = 'Mess menu text import failed. Check the text and endpoint configuration.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isImportingPhoto = false);
+    }
   }
 
   void _showImageImportComingSoon() {
@@ -844,42 +1063,27 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
         'uploadedAt': DateTime.now().toIso8601String(),
       };
 
-      final generated = await _previewMessPhotoImport(
-        storagePath: storagePath,
-        imageMetadata: imageMetadata,
+      final eatFlag = ref.read(eatingDisorderFlagProvider).valueOrNull ?? false;
+      final generated = await ref.read(routineRepositoryProvider).previewRoutineImport(
+        routineType: 'eating',
+        mode: 'eating_mess_photo',
+        sensitiveContext: eatFlag,
+        imageMetadata: {
+          ...imageMetadata,
+          'storagePath': storagePath,
+        },
       );
       if (!mounted) return;
 
-      final grid = _weeklyBlocksFromTemplates(generated);
-      final totalMeals = grid.values.fold<int>(
-        0,
-        (sum, dayBlocks) => sum + dayBlocks.length,
+      await _processImportedTemplates(
+        generated,
+        imageMetadata,
+        {
+          'mode': 'eating_mess_photo',
+          'storagePath': storagePath,
+          'imageMetadata': imageMetadata,
+        },
       );
-      if (totalMeals == 0) {
-        await _deleteUploadedImageQuietly(imageMetadata);
-        if (!mounted) return;
-        setState(() {
-          _importError =
-              'No mess menu meals were detected. Try a clearer weekly menu photo.';
-        });
-        return;
-      }
-
-      final suggestionIds = generated
-          .map((template) => template['_suggestionId']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toSet()
-          .toList();
-      final accepted = await _showMessMenuReview(grid, {
-        'mode': 'eating_mess_photo',
-        'storagePath': storagePath,
-        'imageMetadata': imageMetadata,
-        if (suggestionIds.isNotEmpty) 'suggestionIds': suggestionIds,
-        'createdAt': DateTime.now().toIso8601String(),
-      });
-      if (accepted != true) {
-        await _deleteUploadedImageQuietly(imageMetadata);
-      }
     } catch (e) {
       debugPrint('[EatingSetup] mess photo import failed: $e');
       await _deleteUploadedImageQuietly(imageMetadata);
@@ -894,18 +1098,39 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _previewMessPhotoImport({
-    required String storagePath,
-    required Map<String, dynamic> imageMetadata,
-  }) async {
-    return ref.read(routineRepositoryProvider).previewRoutineImport(
-      routineType: 'eating',
-      mode: 'eating_mess_photo',
-      imageMetadata: {
-        ...imageMetadata,
-        'storagePath': storagePath,
-      },
+  Future<void> _processImportedTemplates(
+    List<Map<String, dynamic>> generated,
+    Map<String, dynamic>? imageMetadata,
+    Map<String, dynamic> metadataBase,
+  ) async {
+    final grid = _weeklyBlocksFromTemplates(generated);
+    final totalMeals = grid.values.fold<int>(
+      0,
+      (sum, dayBlocks) => sum + dayBlocks.length,
     );
+    if (totalMeals == 0) {
+      if (imageMetadata != null) await _deleteUploadedImageQuietly(imageMetadata);
+      if (!mounted) return;
+      setState(() {
+        _importError =
+            'No mess menu meals were detected. Try a clearer menu input.';
+      });
+      return;
+    }
+
+    final suggestionIds = generated
+        .map((template) => template['_suggestionId']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    final accepted = await _showMessMenuReview(grid, {
+      ...metadataBase,
+      if (suggestionIds.isNotEmpty) 'suggestionIds': suggestionIds,
+      'createdAt': DateTime.now().toIso8601String(),
+    });
+    if (accepted != true && imageMetadata != null) {
+      await _deleteUploadedImageQuietly(imageMetadata);
+    }
   }
 
   Future<void> _deleteUploadedImageQuietly(
@@ -1449,6 +1674,8 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // Safety banner for sensitive users
+                if (_sensitiveMode) _buildSensitiveBanner(),
                 if (_isImportingPhoto || _importError != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
