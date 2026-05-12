@@ -25,8 +25,18 @@ const modeFixtures = {
     ai: { templates: [classTemplate()] },
     responseKey: "templates"
   },
+  class_timetable_text: {
+    request: { mode: "class_timetable_text", routineType: "classes", sourceText: "Mon Physics 9:00-10:00 A-101 Dr Rao" },
+    ai: { templates: [classTemplate()] },
+    responseKey: "templates"
+  },
   eating_mess_photo: {
     request: { mode: "eating_mess_photo", routineType: "eating", imageMetadata: { ocrText: "Breakfast poha" } },
+    ai: { templates: [eatingTemplate()] },
+    responseKey: "templates"
+  },
+  eating_mess_text: {
+    request: { mode: "eating_mess_text", routineType: "eating", sourceText: "Breakfast: Idli, Sambar\nLunch: Dal, Rice" },
     ai: { templates: [eatingTemplate()] },
     responseKey: "templates"
   },
@@ -113,6 +123,39 @@ test("supports current Flutter mode aliases", async () => {
   assert.equal(body.ok, true);
   assert.equal(body.mode, "supplement_text");
   assert.equal(body.templates[0].dosage, "1000 IU");
+});
+
+test("supports eating mess text mode alias", async () => {
+  const state = mockFetchState({ templates: [eatingTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "eating_mess_text",
+    routineType: "eating",
+    sourceText: "Breakfast: Poha"
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.ok, true);
+  assert.equal(body.mode, "eating_mess_text");
+});
+
+test("supports classes text AI mode alias", async () => {
+  const state = mockFetchState({ templates: [classTemplate()] });
+  globalThis.fetch = createMockFetch(state);
+
+  const response = await callWorker({
+    mode: "text_ai",
+    routineType: "classes",
+    sourceText: "Mon Physics 9:00-10:00 A-101 Dr Rao"
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.ok, true);
+  assert.equal(body.mode, "class_timetable_text");
+  assert.equal(body.templates[0].subject, "Physics");
 });
 
 test("rejects malformed AI output with a safe error", async () => {

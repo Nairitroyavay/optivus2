@@ -152,6 +152,13 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
         .toList();
     if (suggestionIds.isNotEmpty) {
       importMetadata['suggestionIds'] = suggestionIds;
+      for (final suggestionId in suggestionIds) {
+        await ref.read(eventServiceProvider).emit(
+              eventName: EventNames.suggestionGenerated,
+              source: 'supplement_setup',
+              payload: {'suggestionId': suggestionId},
+            );
+      }
     }
 
     if (!mounted) return;
@@ -171,6 +178,15 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
     );
     if (accepted == true && mounted) {
       Navigator.pop(context);
+    } else if (mounted && suggestionIds.isNotEmpty) {
+      // Review was dismissed — emit suggestion_dismissed.
+      for (final suggestionId in suggestionIds) {
+        await ref.read(eventServiceProvider).emit(
+              eventName: EventNames.suggestionDismissed,
+              source: 'supplement_setup',
+              payload: {'suggestionId': suggestionId},
+            );
+      }
     }
   }
 
@@ -270,6 +286,15 @@ class _SupplementSetupScreenState extends ConsumerState<SupplementSetupScreen> {
           importMetadata: importMetadata,
         );
     await _markSuggestionsAccepted(reviewed);
+    await ref.read(eventServiceProvider).emit(
+      eventName: EventNames.routineTemplateCreated,
+      source: 'supplement_setup',
+      payload: {
+        'routineType': 'supplements',
+        'source': importMetadata['mode'] ?? 'ai_import',
+        'count': templates.length,
+      },
+    );
     widget.onComplete();
   }
 

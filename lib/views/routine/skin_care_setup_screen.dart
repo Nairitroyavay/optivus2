@@ -1048,6 +1048,13 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
         .toList();
     if (suggestionIds.isNotEmpty) {
       importMetadata['suggestionIds'] = suggestionIds;
+      for (final suggestionId in suggestionIds) {
+        await ref.read(eventServiceProvider).emit(
+              eventName: EventNames.suggestionGenerated,
+              source: 'skin_care_setup',
+              payload: {'suggestionId': suggestionId},
+            );
+      }
     }
 
     if (!mounted) return;
@@ -1071,6 +1078,19 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
     );
     if (accepted == true && mounted) {
       Navigator.pop(context);
+    } else if (mounted) {
+      // Review was dismissed — emit suggestion_dismissed.
+      final dismissedIds = (importMetadata['suggestionIds'] as List?)
+              ?.cast<String>()
+              .where((id) => id.isNotEmpty) ??
+          const <String>[];
+      for (final suggestionId in dismissedIds) {
+        await ref.read(eventServiceProvider).emit(
+              eventName: EventNames.suggestionDismissed,
+              source: 'skin_care_setup',
+              payload: {'suggestionId': suggestionId},
+            );
+      }
     }
   }
 
@@ -1376,6 +1396,15 @@ class _SkinCareSetupScreenState extends ConsumerState<SkinCareSetupScreen> {
           importMetadata: importMetadata,
         );
     await _markSuggestionsAccepted(reviewed);
+    await ref.read(eventServiceProvider).emit(
+      eventName: EventNames.routineTemplateCreated,
+      source: 'skin_care_setup',
+      payload: {
+        'routineType': 'skin_care',
+        'source': importMetadata['mode'] ?? 'ai_import',
+        'count': templates.length,
+      },
+    );
     widget.onComplete();
   }
 

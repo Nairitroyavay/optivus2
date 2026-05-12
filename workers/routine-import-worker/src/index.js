@@ -32,11 +32,23 @@ const modeContracts = {
     input: "photo",
     title: "class timetable from photo"
   },
+  class_timetable_text: {
+    routineType: "classes",
+    outputKey: "templates",
+    input: "text",
+    title: "class timetable from text"
+  },
   eating_mess_photo: {
     routineType: "eating",
     outputKey: "templates",
     input: "photo",
     title: "mess menu from photo"
+  },
+  eating_mess_text: {
+    routineType: "eating",
+    outputKey: "templates",
+    input: "text",
+    title: "mess menu from text"
   },
   eating_goal_text: {
     routineType: "eating",
@@ -62,9 +74,14 @@ const modeAliases = {
   "classes:timetable_image": "class_timetable_photo",
   "classes:photo_ai": "class_timetable_photo",
   "classes:photo": "class_timetable_photo",
+  "classes:text_ai": "class_timetable_text",
+  "classes:text": "class_timetable_text",
+  "classes:timetable_text": "class_timetable_text",
   "eating:photo_ai": "eating_mess_photo",
   "eating:mess_photo": "eating_mess_photo",
   "eating:photo": "eating_mess_photo",
+  "eating:eating_mess_text": "eating_mess_text",
+  "eating:mess_text": "eating_mess_text",
   "eating:text_ai": "eating_goal_text",
   "eating:text": "eating_goal_text",
   "routine:suggestions": "routine_goal_suggestions",
@@ -214,7 +231,7 @@ export default {
         suggestionIds: []
       };
 
-      if (mode === "class_timetable_photo") {
+      if (mode === "class_timetable_photo" || mode === "class_timetable_text") {
         output.classes = safePreview.map(classOutputItem);
       }
 
@@ -517,8 +534,8 @@ function validateAiOutput(parsed, mode, contract) {
       ? parsed.items
       : Array.isArray(parsed.blocks)
         ? parsed.blocks
-        : mode === "class_timetable_photo" && Array.isArray(parsed.classes)
-          ? parsed.classes
+        : (mode === "class_timetable_photo" || mode === "class_timetable_text") && Array.isArray(parsed.classes)
+           ? parsed.classes
           : mode === "eating_mess_photo" && Array.isArray(parsed.weeklyGrid)
             ? parsed.weeklyGrid
             : null;
@@ -550,7 +567,7 @@ function validateRawTemplateForMode(item, mode, index) {
     throw new AiOutputValidationError(`Template at index ${index} must be an object`);
   }
 
-  if (mode === "class_timetable_photo") {
+  if (mode === "class_timetable_photo" || mode === "class_timetable_text") {
     if (!stringField(item.subject || item.title || item.name)) {
       throw new AiOutputValidationError(`Missing class subject at index ${index}`);
     }
@@ -566,7 +583,7 @@ function validateRawTemplateForMode(item, mode, index) {
     return;
   }
 
-  if (mode === "eating_mess_photo") {
+  if (mode === "eating_mess_photo" || mode === "eating_mess_text") {
     if (_eatingWeekdayFromItem(item) === 0) {
       throw new AiOutputValidationError(`Missing or invalid eating weekday at index ${index}`);
     }
@@ -614,7 +631,7 @@ function validateRawTemplateForMode(item, mode, index) {
     throw new AiOutputValidationError(`Invalid supplement timingRule at index ${index}`);
   }
 
-  if ((mode === "eating_mess_photo" || mode === "eating_goal_text")
+  if ((mode === "eating_mess_photo" || mode === "eating_mess_text" || mode === "eating_goal_text")
     && !stringField(item.mealType || item.type)) {
     throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
   }
@@ -671,11 +688,11 @@ function validateTemplateForMode(template, mode, index) {
     throw new AiOutputValidationError(`Invalid supplement timingRule at index ${index}`);
   }
 
-  if ((mode === "eating_mess_photo" || mode === "eating_goal_text") && !template.mealType) {
+  if ((mode === "eating_mess_photo" || mode === "eating_mess_text") && !template.mealType) {
     throw new AiOutputValidationError(`Missing eating mealType at index ${index}`);
   }
 
-  if (mode === "eating_mess_photo") {
+  if (mode === "eating_mess_photo" || mode === "eating_mess_text") {
     if (!template.weekday || !/^mess_menu_weekday:[1-7]$/.test(template.repeatRule)) {
       throw new AiOutputValidationError(`Missing eating mess weekday at index ${index}`);
     }
@@ -684,7 +701,7 @@ function validateTemplateForMode(template, mode, index) {
     }
   }
 
-  if (mode === "class_timetable_photo" && (!template.weekday || !template.subject)) {
+  if ((mode === "class_timetable_photo" || mode === "class_timetable_text") && (!template.weekday || !template.subject)) {
     throw new AiOutputValidationError(`Missing class weekday or subject at index ${index}`);
   }
 }
@@ -727,7 +744,7 @@ function normalizeTemplate(item, routineType, index, mode = "") {
     : routineType === "eating"
       ? _eatingWeekdayFromItem(item)
       : 0;
-  const repeatRule = mode === "eating_mess_photo" && weekday > 0
+  const repeatRule = (mode === "eating_mess_photo" || mode === "eating_mess_text") && weekday > 0
     ? `mess_menu_weekday:${weekday}`
     : routineType === "classes" && weekday > 0
       ? `weekly:${weekday}`
@@ -1055,10 +1072,18 @@ For supplements, create one template per named supplement. Use only these timing
       return `JSON schema:
 {"classes":[{"weekday":1,"subject":"Physics","room":"A-101","professor":"Dr Rao","start":"09:00","end":"10:00"}]}
 For class timetable photos, use weekday 1=Monday through 7=Sunday. Return one item per recurring weekly class period, including blank strings for unknown room or professor.`;
+    case "class_timetable_text":
+      return `JSON schema:
+{"classes":[{"weekday":1,"subject":"Physics","room":"A-101","professor":"Dr Rao","start":"09:00","end":"10:00"}]}
+For class timetable text, parse each line or entry into one item per recurring weekly class period. Use weekday 1=Monday through 7=Sunday. Extract subject, room, professor, and start/end times. Use blank strings for unknown room or professor.`;
     case "eating_mess_photo":
       return `JSON schema:
 {"weeklyGrid":[{"weekday":1,"mealTime":"Breakfast","mealName":"Breakfast","items":["Idli","Sambar"],"startTime":"08:00","endTime":"08:30","repeatRule":"mess_menu_weekday:1","notes":"","reminderEnabled":false}]}
 For mess menu photos, OCR the weekly sheet into one item per weekday and meal slot. Use weekday 1=Monday through 7=Sunday. Put the visible meal slot in mealTime, the visible menu label in mealName when present, and each visible dish in items. Use repeatRule "mess_menu_weekday:N" for each item. If the photo is unreadable or is not a mess menu, return {"weeklyGrid":[]}.`;
+    case "eating_mess_text":
+      return `JSON schema:
+{"templates":[{"templateId":"stable_id","title":"Breakfast","mealType":"Breakfast","mealTime":"Breakfast","weekday":1,"items":["Idli","Sambar"],"startTime":"08:00","endTime":"08:30","repeatRule":"mess_menu_weekday:1","notes":"","reminderEnabled":false}]}
+For mess menu text, parse each meal line into one template per weekday and meal slot. Use weekday 1=Monday through 7=Sunday. Put the meal slot in mealTime, the dishes in items. Use repeatRule "mess_menu_weekday:N" for each item. If the text is unreadable or contains no meals, return {"templates":[]}.`;
     case "eating_goal_text":
       return `JSON schema:
 {"templates":[{"templateId":"stable_id","title":"Breakfast","mealType":"Breakfast","startTime":"08:00","endTime":"08:30","repeatRule":"daily","notes":"","reminderEnabled":false}]}`;
@@ -1215,7 +1240,7 @@ function currentMonthKey(date = new Date()) {
 }
 
 function maxItemsForMode(mode) {
-  return mode === "eating_mess_photo" ? 42 : maxItemsPerMode;
+  return (mode === "eating_mess_photo" || mode === "eating_mess_text") ? 42 : maxItemsPerMode;
 }
 
 function normalizeRoutineTime(value, fallback) {

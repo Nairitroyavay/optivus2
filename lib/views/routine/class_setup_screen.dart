@@ -84,6 +84,15 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
   String _setupMode = 'Manual';
   bool _isImportingPhoto = false;
   String? _photoImportError;
+  final TextEditingController _textImportCtrl = TextEditingController();
+  bool _isParsingText = false;
+  String? _textImportError;
+
+  @override
+  void dispose() {
+    _textImportCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -838,6 +847,164 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
     widget.onComplete();
   }
 
+  Future<void> _generateTextClasses() async {
+    final text = _textImportCtrl.text.trim();
+    if (text.isEmpty || _isParsingText) return;
+
+    setState(() {
+      _isParsingText = true;
+      _textImportError = null;
+    });
+
+    try {
+      final flags = ref.read(appFeatureFlagsProvider);
+      List<ClassRoutineBlock> blocks;
+      String mode;
+      List<String> suggestionIds = const [];
+
+      if (flags.routineImportWorkerReady) {
+        // Worker-first: call remote AI endpoint for class text parsing.
+        try {
+          final generated = await ref
+              .read(routineRepositoryProvider)
+              .previewRoutineImport(
+                routineType: 'classes',
+                mode: 'class_timetable_text',
+                sourceText: text,
+              );
+          blocks = generated
+              .asMap()
+              .entries
+              .map((entry) => _classBlockFromTemplate(entry.value, entry.key))
+              .where((block) => block.subject.trim().isNotEmpty)
+              .toList();
+          mode = 'class_timetable_text';
+          suggestionIds = generated
+              .map((t) => t['_suggestionId']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList();
+        } catch (e) {
+          debugPrint('[ClassSetup] Worker class_timetable_text failed: $e');
+          // Fall back to local parser.
+          blocks = _parseClassTimetableTextLocally(text);
+          mode = 'class_timetable_text_local';
+          if (mounted) {
+            setState(() => _textImportError =
+                'AI endpoint failed. Showing a local draft you can still edit.');
+          }
+        }
+      } else {
+        // Worker not ready — use local parser directly.
+        blocks = _parseClassTimetableTextLocally(text);
+        mode = 'class_timetable_text_local';
+      }
+
+      if (blocks.isEmpty) {
+        setState(() {
+          _textImportError = 'Could not read any classes from that text.';
+        });
+        return;
+      }
+
+      // Emit suggestion_generated for Worker-sourced suggestions.
+      for (final suggestionId in suggestionIds) {
+        await ref.read(eventServiceProvider).emit(
+              eventName: EventNames.suggestionGenerated,
+              source: 'class_setup',
+              payload: {'suggestionId': suggestionId},
+            );
+      }
+
+      final importMetadata = <String, dynamic>{
+        'mode': mode,
+        if (suggestionIds.isNotEmpty) 'suggestionIds': suggestionIds,
+        'createdAt': DateTime.now().toIso8601String(),
+      };
+
+      final accepted = await _showClassReview(blocks, importMetadata);
+      
+      if (accepted == true) {
+        _textImportCtrl.clear();
+        setState(() => _setupMode = 'Manual');
+      } else if (suggestionIds.isNotEmpty) {
+        // Review was dismissed — emit suggestion_dismissed.
+        for (final suggestionId in suggestionIds) {
+          await ref.read(eventServiceProvider).emit(
+                eventName: EventNames.suggestionDismissed,
+                source: 'class_setup',
+                payload: {'suggestionId': suggestionId},
+              );
+        }
+      }
+    } catch (e) {
+      debugPrint('[ClassSetup] text parsing failed: $e');
+      setState(() => _textImportError = 'Failed to parse text.');
+    } finally {
+      if (mounted) setState(() => _isParsingText = false);
+    }
+  }
+
+  List<ClassRoutineBlock> _parseClassTimetableTextLocally(String source) {
+    final blocks = <ClassRoutineBlock>[];
+    final lines = source.split(RegExp(r'\n|;')).map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    
+    int classIndex = 0;
+    for (final line in lines) {
+      int? foundWeekday;
+      final lowerLine = line.toLowerCase();
+      const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      for (int i = 0; i < weekdays.length; i++) {
+        if (lowerLine.contains(weekdays[i])) {
+          foundWeekday = i + 1;
+          break;
+        }
+      }
+      
+      final timeMatch = RegExp(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:-|to)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)', caseSensitive: false).firstMatch(line);
+      double start = 3.0; // 9:00 AM default
+      double duration = 1.0;
+      
+      if (timeMatch != null) {
+        start = _parseHoursFrom6AM(timeMatch.group(1)!);
+        double end = _parseHoursFrom6AM(timeMatch.group(2)!);
+        duration = (end - start).clamp(0.5, 18.0).toDouble();
+      }
+
+      String cleanedLine = line;
+      if (timeMatch != null) {
+        cleanedLine = cleanedLine.replaceRange(timeMatch.start, timeMatch.end, '');
+      }
+      if (foundWeekday != null) {
+        final dayMatch = RegExp(r'\b(?:mon|tue|wed|thu|fri|sat|sun)(?:day|nes)?(?:day)?\b', caseSensitive: false).firstMatch(cleanedLine);
+        if (dayMatch != null) {
+          cleanedLine = cleanedLine.replaceRange(dayMatch.start, dayMatch.end, '');
+        }
+      }
+      
+      final roomMatch = RegExp(r'\b(?:room|hall|lab)\s*([a-z0-9-]+)\b', caseSensitive: false).firstMatch(cleanedLine);
+      String room = '';
+      if (roomMatch != null) {
+        room = roomMatch.group(1) ?? '';
+        cleanedLine = cleanedLine.replaceRange(roomMatch.start, roomMatch.end, '');
+      }
+
+      final subject = cleanedLine.replaceAll(RegExp(r'[^a-zA-Z0-9\s]'), '').trim();
+      if (subject.isEmpty && timeMatch == null) continue;
+      
+      blocks.add(ClassRoutineBlock(
+        id: 'parsed_${DateTime.now().microsecondsSinceEpoch}_$classIndex',
+        subject: subject.isNotEmpty ? subject : 'Class ${classIndex + 1}',
+        start: start,
+        duration: duration,
+        room: room,
+        weekday: foundWeekday ?? _day + 1,
+      ));
+      classIndex++;
+    }
+    return blocks;
+  }
+
   Future<void> _showImportOptions() async {
     if (_isImportingPhoto) return;
     if (!ref.read(appFeatureFlagsProvider).classTimetableImageImportReady) {
@@ -923,18 +1090,36 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
         return;
       }
 
+      final suggestionIds = blocks
+          .map((block) => block.suggestionId ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+
+      for (final suggestionId in suggestionIds) {
+        await ref.read(eventServiceProvider).emit(
+              eventName: EventNames.suggestionGenerated,
+              source: 'class_setup',
+              payload: {'suggestionId': suggestionId},
+            );
+      }
+
       final accepted = await _showClassReview(blocks, {
         'mode': 'class_timetable_photo',
         'imageMetadata': imageMetadata,
-        'suggestionIds': blocks
-            .map((block) => block.suggestionId ?? '')
-            .where((id) => id.isNotEmpty)
-            .toSet()
-            .toList(),
+        'suggestionIds': suggestionIds,
         'createdAt': DateTime.now().toIso8601String(),
       });
       if (accepted != true) {
         await _deleteUploadedImageQuietly(imageMetadata);
+        // Emit suggestion_dismissed for Worker-sourced suggestions.
+        for (final suggestionId in suggestionIds) {
+          await ref.read(eventServiceProvider).emit(
+                eventName: EventNames.suggestionDismissed,
+                source: 'class_setup',
+                payload: {'suggestionId': suggestionId},
+              );
+        }
       }
     } catch (e) {
       debugPrint('[ClassSetup] routineImport preview failed: $e');
@@ -1242,6 +1427,15 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                                       _pendingImportMetadata = importMetadata;
                                       _colorIndex += accepted.length;
                                     });
+                                    await ref.read(eventServiceProvider).emit(
+                                      eventName: EventNames.routineTemplateCreated,
+                                      source: 'class_setup',
+                                      payload: {
+                                        'routineType': 'classes',
+                                        'source': importMetadata['mode'] ?? 'class_import',
+                                        'count': accepted.length,
+                                      },
+                                    );
                                     if (!ctx.mounted) return;
                                     Navigator.pop(ctx, true);
                                   },
@@ -1365,6 +1559,8 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
           children: [
             tab('Manual', Icons.edit_calendar_rounded),
             const SizedBox(width: 4),
+            tab('Text AI', Icons.text_snippet_rounded),
+            const SizedBox(width: 4),
             tab('Photo OCR', Icons.document_scanner_rounded),
           ],
         ),
@@ -1425,6 +1621,64 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTextAiPanel() {
+    if (_setupMode != 'Text AI') return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _textImportCtrl,
+            minLines: 3,
+            maxLines: 5,
+            decoration: InputDecoration(
+              hintText: 'Mon Physics 9:00 AM - 10:00 AM A101 Dr Rao\nTue Chemistry 11:00-12:30',
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.82),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              suffixIcon: IconButton(
+                onPressed: _isParsingText ? null : _generateTextClasses,
+                icon: _isParsingText
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.auto_awesome_rounded),
+              ),
+            ),
+          ),
+          if (_textImportError != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _textImportError!,
+              style: const TextStyle(
+                color: Color(0xFFB91C1C),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: _isParsingText ? null : _generateTextClasses,
+            icon: _isParsingText
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_awesome_rounded),
+            label: const Text('Parse text'),
+          ),
+        ],
       ),
     );
   }
@@ -1521,7 +1775,8 @@ class _ClassSetupScreenState extends ConsumerState<ClassSetupScreen> {
                 const SizedBox(height: 12),
                 _buildModeTabs(),
                 _buildPhotoOcrPanel(),
-                const SizedBox(height: 20),
+                _buildTextAiPanel(),
+                const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Container(

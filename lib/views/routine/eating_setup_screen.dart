@@ -1123,13 +1123,31 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
         .where((id) => id.isNotEmpty)
         .toSet()
         .toList();
+
+    for (final suggestionId in suggestionIds) {
+      await ref.read(eventServiceProvider).emit(
+            eventName: EventNames.suggestionGenerated,
+            source: 'eating_setup',
+            payload: {'suggestionId': suggestionId},
+          );
+    }
     final accepted = await _showMessMenuReview(grid, {
       ...metadataBase,
       if (suggestionIds.isNotEmpty) 'suggestionIds': suggestionIds,
       'createdAt': DateTime.now().toIso8601String(),
     });
-    if (accepted != true && imageMetadata != null) {
-      await _deleteUploadedImageQuietly(imageMetadata);
+    if (accepted != true) {
+      if (imageMetadata != null) {
+        await _deleteUploadedImageQuietly(imageMetadata);
+      }
+      // Emit suggestion_dismissed for Worker-sourced suggestions.
+      for (final suggestionId in suggestionIds) {
+        await ref.read(eventServiceProvider).emit(
+              eventName: EventNames.suggestionDismissed,
+              source: 'eating_setup',
+              payload: {'suggestionId': suggestionId},
+            );
+      }
     }
   }
 
@@ -1447,6 +1465,15 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                                       _pendingImportMetadata = importMetadata;
                                       _colorIndex += accepted.length;
                                     });
+                                    await ref.read(eventServiceProvider).emit(
+                                      eventName: EventNames.routineTemplateCreated,
+                                      source: 'eating_setup',
+                                      payload: {
+                                        'routineType': 'eating',
+                                        'source': importMetadata['mode'] ?? 'eating_import',
+                                        'count': accepted.length,
+                                      },
+                                    );
                                     if (!ctx.mounted) return;
                                     Navigator.pop(ctx, true);
                                   },
