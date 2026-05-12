@@ -5,6 +5,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'config/firebase_options.dart';
 import 'core/router/app_router.dart';
 import 'core/providers.dart';
@@ -14,6 +15,15 @@ import 'services/remote_config_service.dart';
 void main() async {
   // Ensure WidgetsFlutterBinding.ensureInitialized() runs first.
   WidgetsFlutterBinding.ensureInitialized();
+
+  const mapboxAccessToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
+
+  if (mapboxAccessToken.isNotEmpty) {
+    MapboxOptions.setAccessToken(mapboxAccessToken);
+    debugPrint('[Mapbox] access token configured');
+  } else {
+    debugPrint('[Mapbox] MAPBOX_ACCESS_TOKEN missing; Mapbox map will not load');
+  }
 
   // ① Hook error handlers early so no error slips
   // through during the Firebase / plugin bootstrap sequence.
