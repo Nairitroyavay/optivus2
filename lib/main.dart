@@ -29,14 +29,7 @@ void main() async {
   // through during the Firebase / plugin bootstrap sequence.
   GlobalErrorHandler.initialize();
 
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.dark,
-    systemNavigationBarColor: Colors.transparent,
-    systemNavigationBarDividerColor: Colors.transparent,
-    systemNavigationBarIconBrightness: Brightness.dark,
-  ));
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
   RemoteConfigService? remoteConfigService;
   var appRemoteConfig = AppRemoteConfig.defaults();
