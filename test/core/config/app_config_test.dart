@@ -4,6 +4,28 @@ import 'package:optivus2/services/remote_config_service.dart';
 
 void main() {
   group('AppFeatureFlags', () {
+    test('Cloudflare config reads and normalizes COACH_REPLY_ENDPOINT', () {
+      const config = CloudflareEndpointConfig(
+        coachReplyEndpoint: '  https://coach.example/reply  ',
+        aiGenerateEndpoint: '',
+        routineImportEndpoint: '',
+      );
+
+      expect(
+        config.normalizedCoachReplyEndpoint,
+        'https://coach.example/reply',
+      );
+      expect(config.hasCoachReplyEndpoint, isTrue);
+
+      const missing = CloudflareEndpointConfig(
+        coachReplyEndpoint: '   ',
+        aiGenerateEndpoint: '',
+        routineImportEndpoint: '',
+      );
+      expect(missing.normalizedCoachReplyEndpoint, isEmpty);
+      expect(missing.hasCoachReplyEndpoint, isFalse);
+    });
+
     test('defaults fail closed for unsafe AI, R2, and image features', () {
       final flags = AppFeatureFlags.fromConfig(
         build: _buildConfig(),
@@ -114,7 +136,8 @@ void main() {
       expect(withToken.coachEnabled, isTrue);
     });
 
-    test('per-type image flags are independent — enabling one does not leak', () {
+    test('per-type image flags are independent — enabling one does not leak',
+        () {
       final remote = _remoteConfig(
         aiFeaturesEnabled: true,
         aiRoutineSuggestionsEnabled: true,
@@ -181,7 +204,8 @@ void main() {
           reason: 'hostel compile flag is off');
     });
 
-    test('remote config r2UploadsEnabled=false kills all image flags even with '
+    test(
+        'remote config r2UploadsEnabled=false kills all image flags even with '
         'compile flags and endpoints configured', () {
       final remote = _remoteConfig(
         aiFeaturesEnabled: true,
@@ -219,7 +243,8 @@ void main() {
           reason: 'hostel depends on imageRoutineImportReady');
     });
 
-    test('missing R2 signed upload endpoint kills r2UploadsReady even with '
+    test(
+        'missing R2 signed upload endpoint kills r2UploadsReady even with '
         'all flags enabled', () {
       final remote = _remoteConfig(
         aiFeaturesEnabled: true,
@@ -247,7 +272,8 @@ void main() {
       expect(flags.skinProductImageImportReady, isFalse);
     });
 
-    test('routineImportWorkerReady stays false when aiFeaturesEnabled is off '
+    test(
+        'routineImportWorkerReady stays false when aiFeaturesEnabled is off '
         'even with endpoint and Worker flag configured', () {
       final remote = _remoteConfig(
         aiFeaturesEnabled: false, // ← AI kill switch is off
@@ -271,7 +297,6 @@ void main() {
     });
   });
 }
-
 
 AppBuildConfig _buildConfig({
   bool enableR2Uploads = false,

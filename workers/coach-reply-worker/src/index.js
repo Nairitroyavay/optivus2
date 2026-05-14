@@ -45,14 +45,6 @@ export default {
     }
 
     const uid = authResult.decodedToken.sub;
-    const userIdFromBody = stringField(body.userId);
-    if (!userIdFromBody) {
-      return errorResponse("INVALID_INPUT", "userId is required", 400, corsHeaders);
-    }
-    if (userIdFromBody !== uid) {
-      return errorResponse("AUTH_USER_MISMATCH", "userId does not match Firebase token", 403, corsHeaders);
-    }
-
     const text = stringField(body.text || body.message);
     const mode = stringField(body.mode) || "chat";
     const threadId = stringField(body.threadId) || "main_thread";

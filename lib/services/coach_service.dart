@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:optivus2/core/config/app_config.dart';
 import 'package:optivus2/core/constants/event_names.dart';
 import 'package:optivus2/models/context_snapshot.dart';
+import 'package:optivus2/services/cloudflare_api_service.dart';
 import 'package:optivus2/services/task_service.dart';
 import 'package:optivus2/services/streak_service.dart';
 import 'package:optivus2/services/habit_service.dart';
@@ -14,6 +15,19 @@ import 'package:optivus2/models/event_model.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/services/gemini_service.dart';
+
+typedef CoachReplyClient = Future<CoachReplyResult> Function({
+  required String threadId,
+  required String text,
+  required String mode,
+});
+
+typedef CoachEventEmitter = Future<void> Function(
+  String eventName,
+  Map<String, dynamic> payload, {
+  String priority,
+  String source,
+});
 
 enum CoachTopicMode {
   recovery(
@@ -103,12 +117,21 @@ class CoachMessagePage {
 
 class CoachService {
   static const String mainThreadId = 'main_thread';
+  static const String aiDisabledFallbackText =
+      'AI coach replies are off right now, but your message is saved. Try one small next step you can do in the next few minutes.';
+  static const String missingEndpointFallbackText =
+      'AI coach is not connected in this build yet, but your message is saved. Try one small next step you can do in the next few minutes.';
 
   final TaskService _taskService;
   final StreakService _streakService;
   final HabitService _habitService;
   final UserRepository _userRepo;
   final AppFeatureFlags? _featureFlags;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
+  final CoachReplyClient? _coachReplyClient;
+  final CoachEventEmitter? _eventEmitter;
+  final AppBuildConfig _buildConfig;
 
   CoachService({
     required TaskService taskService,
@@ -116,14 +139,24 @@ class CoachService {
     required HabitService habitService,
     required UserRepository userRepo,
     AppFeatureFlags? featureFlags,
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+    CoachReplyClient? coachReplyClient,
+    CoachEventEmitter? eventEmitter,
+    AppBuildConfig? buildConfig,
   })  : _taskService = taskService,
         _streakService = streakService,
         _habitService = habitService,
         _userRepo = userRepo,
-        _featureFlags = featureFlags;
+        _featureFlags = featureFlags,
+        _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance,
+        _coachReplyClient = coachReplyClient,
+        _eventEmitter = eventEmitter,
+        _buildConfig = buildConfig ?? AppBuildConfig.current;
 
   String get _uid {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _auth.currentUser;
     if (user == null) {
       throw Exception('Cannot use coach chat without authentication');
     }
@@ -131,10 +164,7 @@ class CoachService {
   }
 
   CollectionReference<Map<String, dynamic>> _messagesRef(String uid) =>
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('coach_messages');
+      _firestore.collection('users').doc(uid).collection('coach_messages');
 
   Future<String> loadCoachName() async {
     final onboardingSnapshot = await _userRepo.getOnboardingData();
@@ -237,58 +267,114 @@ class CoachService {
   }) async {
     final uid = _uid;
     if (!(_featureFlags?.aiCoachMessagesReady ?? false)) {
-      throw StateError('AI coach replies are disabled.');
+      final hasEndpoint = _buildConfig.cloudflare.hasCoachReplyEndpoint;
+      return _saveAssistantMessage(
+        uid: uid,
+        text:
+            hasEndpoint ? aiDisabledFallbackText : missingEndpointFallbackText,
+        mode: mode,
+        threadId: threadId,
+        source: hasEndpoint ? 'local_ai_disabled' : 'local_missing_endpoint',
+        aiGenerated: false,
+        emitEvent: false,
+      );
     }
-    final result = await GeminiService().coachReply(
-      userId: uid,
+
+    final CoachReplyResult result;
+    try {
+      final replyClient = _coachReplyClient;
+      result = replyClient == null
+          ? await GeminiService().coachReply(
+              threadId: threadId,
+              text: userText,
+              mode: mode.key,
+            )
+          : await replyClient(
+              threadId: threadId,
+              text: userText,
+              mode: mode.key,
+            );
+    } on CloudflareConfigException {
+      return _saveAssistantMessage(
+        uid: uid,
+        text: missingEndpointFallbackText,
+        mode: mode,
+        threadId: threadId,
+        source: 'local_missing_endpoint',
+        aiGenerated: false,
+        emitEvent: false,
+      );
+    }
+
+    return _saveAssistantMessage(
+      uid: uid,
+      text: result.text,
+      mode: mode,
       threadId: threadId,
-      text: userText,
-      mode: mode.key,
+      messageId: result.messageId,
+      suggestedActions: result.suggestedActions,
+      safetyBranch: result.safetyBranch ?? 'normal',
     );
+  }
+
+  Future<CoachChatMessage> _saveAssistantMessage({
+    required String uid,
+    required String text,
+    required CoachTopicMode mode,
+    required String threadId,
+    String? messageId,
+    List<String> suggestedActions = const [],
+    String safetyBranch = 'normal',
+    String source = 'cloudflare_coach_reply',
+    bool? aiGenerated,
+    bool emitEvent = true,
+  }) async {
     final now = DateTime.now();
-    final messageId = (result.messageId?.trim().isNotEmpty ?? false)
-        ? result.messageId!.trim()
+    final resolvedMessageId = (messageId?.trim().isNotEmpty ?? false)
+        ? messageId!.trim()
         : generateId();
-    final safetyBranch = result.safetyBranch ?? 'normal';
+    final trimmed = text.trim();
     final isCrisis = safetyBranch == 'crisis';
 
     final data = <String, dynamic>{
-      'id': messageId,
-      'messageId': messageId,
+      'id': resolvedMessageId,
+      'messageId': resolvedMessageId,
       'uid': uid,
       'userId': uid,
       'threadId': threadId,
       'sessionId': threadId,
       'role': 'coach',
       'isUser': false,
-      'text': result.text,
-      'message': result.text,
-      'body': result.text,
+      'text': trimmed,
+      'message': trimmed,
+      'body': trimmed,
       'messageType': isCrisis ? 'safety_crisis' : 'coach_reply',
       'mode': mode.key,
-      'source': 'cloudflare_coach_reply',
+      'source': source,
       'deliveryType': 'interactive_https',
       'timestamp': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
-      'aiGenerated': !isCrisis,
-      'suggestedActions': result.suggestedActions,
+      'aiGenerated': aiGenerated ?? !isCrisis,
+      'suggestedActions': suggestedActions,
       'safetyBranch': safetyBranch,
       'schemaVersion': 1,
     };
 
     // TODO(server-trust): move this assistant write and coach_replied event
     // into the Cloudflare Worker once it has a trusted Firebase Admin path.
-    await _messagesRef(uid).doc(messageId).set(data);
-    await _emitCoachEvent(
-      EventNames.coachReplied,
-      {'turnId': messageId},
-      priority: isCrisis ? 'high' : 'normal',
-      source: 'cloudflare_client',
-    );
+    await _messagesRef(uid).doc(resolvedMessageId).set(data);
+    if (emitEvent) {
+      await _emitCoachEvent(
+        EventNames.coachReplied,
+        {'turnId': resolvedMessageId},
+        priority: isCrisis ? 'high' : 'normal',
+        source: 'cloudflare_client',
+      );
+    }
 
     return CoachChatMessage(
-      id: messageId,
-      text: result.text,
+      id: resolvedMessageId,
+      text: trimmed,
       isUser: false,
       createdAt: now,
       mode: mode,
@@ -304,12 +390,22 @@ class CoachService {
     String source = 'ui',
   }) async {
     try {
-      await EventService().emit(
-        eventName: eventName,
-        payload: payload,
-        priority: priority,
-        source: source,
-      );
+      final eventEmitter = _eventEmitter;
+      if (eventEmitter == null) {
+        await EventService(auth: _auth, firestore: _firestore).emit(
+          eventName: eventName,
+          payload: payload,
+          priority: priority,
+          source: source,
+        );
+      } else {
+        await eventEmitter(
+          eventName,
+          payload,
+          priority: priority,
+          source: source,
+        );
+      }
     } catch (e) {
       debugPrint('[CoachService] $eventName event failed: $e');
     }
@@ -424,7 +520,7 @@ Return only the final coach message text, with no JSON or markdown.''';
       // If no snapshot or it doesn't have the lock, check Firestore directly
       // (important for one-off calls outside the aggregator flow).
       if (snapshot == null) {
-        final profileSnap = await FirebaseFirestore.instance
+        final profileSnap = await _firestore
             .collection('users')
             .doc(resolvedUid)
             .collection('profile')
@@ -438,10 +534,8 @@ Return only the final coach message text, with no JSON or markdown.''';
         }
       }
 
-      final userSnap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(resolvedUid)
-          .get();
+      final userSnap =
+          await _firestore.collection('users').doc(resolvedUid).get();
       final root = userSnap.data() ?? const <String, dynamic>{};
 
       // ── Priority 2: Generic root-level override ────────────────────────
@@ -449,7 +543,7 @@ Return only the final coach message text, with no JSON or markdown.''';
       if (rootTone != null) return rootTone;
 
       // ── Priority 3: profile/main override ──────────────────────────────
-      final profileSnap = await FirebaseFirestore.instance
+      final profileSnap = await _firestore
           .collection('users')
           .doc(resolvedUid)
           .collection('profile')

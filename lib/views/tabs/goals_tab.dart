@@ -83,6 +83,7 @@ class GoalsTab extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        bottom: false,
         child: goals.isEmpty && goalsAsync.isLoading
             ? const _GoalsShimmer()
             : goals.isEmpty

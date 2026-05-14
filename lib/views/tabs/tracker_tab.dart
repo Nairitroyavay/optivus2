@@ -87,6 +87,7 @@ class _TrackerTabState extends ConsumerState<TrackerTab> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
+        bottom: false,
         child: habitsAsync.when(
           loading: () => const _TrackerShimmer(),
           error: (err, _) => Center(

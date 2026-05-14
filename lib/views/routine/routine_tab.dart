@@ -123,6 +123,71 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     };
   }
 
+  // ── Fix D: UI-level deduplication safety net ───────────────────────────────
+  //
+  // Groups Firestore tasks by a compound key of (parentRoutine|title, hour,
+  // minute). For each group, keeps the single highest-priority task so that
+  // even if the storage layer has leftover duplicate documents (e.g. from a
+  // pre-fix onboarding run), the user only ever sees one card per slot.
+  //
+  // Priority: completed > started/paused > scheduled/other. Within the same
+  // priority level, the oldest createdAt wins (most canonical).
+  List<TaskModel> _deduplicateFirestoreTasks(List<TaskModel> tasks) {
+    final best = <String, TaskModel>{};
+    for (final task in tasks) {
+      final key = _firestoreTaskDedupeKey(task);
+      final existing = best[key];
+      if (existing == null ||
+          _taskDedupeScore(task) > _taskDedupeScore(existing)) {
+        best[key] = task;
+      } else if (_taskDedupeScore(task) == _taskDedupeScore(existing) &&
+          task.createdAt.isBefore(existing.createdAt)) {
+        // Same priority — prefer the oldest (most canonical) document.
+        best[key] = task;
+      }
+    }
+    return best.values.toList();
+  }
+
+  /// Dedup key: routineSlot = (parentRoutine if set, else normalized title) +
+  /// plannedStart hour + minute. This is stable across re-materializations
+  /// and matches the RoutineNotifier's deterministic ID convention.
+  String _firestoreTaskDedupeKey(TaskModel task) {
+    final slot = (task.parentRoutine?.isNotEmpty == true)
+        ? task.parentRoutine!
+        : _routineSlug(task.title);
+    final h = task.plannedStart.hour.toString().padLeft(2, '0');
+    final m = task.plannedStart.minute.toString().padLeft(2, '0');
+    return '${task.type.toJson()}_${slot}_${h}_$m';
+  }
+
+  /// Higher score = higher priority to keep.
+  int _taskDedupeScore(TaskModel task) {
+    switch (task.state) {
+      case TaskState.completed:
+        return 4;
+      case TaskState.started:
+        return 3;
+      case TaskState.paused:
+        return 2;
+      case TaskState.scheduled:
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
+  String _routineSlug(String value) {
+    final slug = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    return slug.isEmpty ? 'task' : slug;
+  }
+
+  // ── End of Fix D helpers ────────────────────────────────────────────────────
+
   List<DisplayBlock> _buildBlocksForDay(
     RoutineState s,
     DateTime date, {
@@ -131,17 +196,30 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
     final dayIdx = (date.weekday - 1).clamp(0, 6);
     final blocks = <DisplayBlock>[];
 
-    // Collect Firestore task IDs so we can deduplicate against routine blocks
-    final firestoreTaskTimes = <String>{};
+    // Fix D: deduplicate Firestore tasks before rendering so any storage-level
+    // duplicates (e.g. legacy `onboarding_` docs alongside new `routine_` docs)
+    // are collapsed to a single canonical card per slot.
+    final uniqueFirestoreTasks = _deduplicateFirestoreTasks(firestoreTasks);
+
+    // Fix C: use a two-tier dedup key set.
+    //   tier1Key: 'HH:MM_parentRoutine'  — template-aware, immune to title edits
+    //   tier2Key: 'HH:MM_normalizedTitle' — title fallback for tasks without parentRoutine
+    // A Firestore task registers BOTH keys so that the static fallback block
+    // loop below always finds a match regardless of which key it tests.
+    final firestoreTaskKeys = <String>{};
 
     // 1) First generate a flat list of actual scheduled events
     final scheduled = <DisplayBlock>[];
 
     // 1a) Inject Firestore-backed tasks (these carry lifecycle state)
-    for (final task in firestoreTasks) {
+    for (final task in uniqueFirestoreTasks) {
       final timeStr =
           tlFmtMin(task.plannedStart.hour * 60 + task.plannedStart.minute);
-      firestoreTaskTimes.add('${timeStr}_${task.title}');
+      // Register both the parentRoutine-based key and the title-based key.
+      if (task.parentRoutine?.isNotEmpty == true) {
+        firestoreTaskKeys.add('${timeStr}_tpl_${task.parentRoutine}');
+      }
+      firestoreTaskKeys.add('${timeStr}_${task.title}');
 
       Color accent;
       String emoji;
@@ -192,6 +270,11 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         taskState: task.state,
         actualStart: task.actualStart,
         hasAlarm: task.alarmTier != AlarmTier.gentle,
+        durationMinutes: task.plannedEnd
+            .difference(task.plannedStart)
+            .inMinutes
+            .clamp(1, 24 * 60)
+            .toInt(),
       ));
     }
 
@@ -200,7 +283,13 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         _filter == RoutineFilter.fixedSchedule) {
       for (final fb in s.fixedBlocks) {
         final timeStr = tlFmtMin(fb.startMinute);
-        if (firestoreTaskTimes.contains('${timeStr}_${fb.title}')) continue;
+        // Fix C: check both the template-ID key and the title key.
+        final templateKey = '${timeStr}_tpl_${fb.id}';
+        final titleKey = '${timeStr}_${fb.title}';
+        if (firestoreTaskKeys.contains(templateKey) ||
+            firestoreTaskKeys.contains(titleKey)) {
+          continue;
+        }
 
         scheduled.add(DisplayBlock(
             time: timeStr,
@@ -208,7 +297,11 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
             subtitle: '${fb.startLabel} – ${fb.endLabel}',
             accentColor: tlHexColor(fb.colorHex),
             emoji: fb.emoji,
-            type: RoutineFilter.all));
+            type: RoutineFilter.all,
+            durationMinutes: timelineDurationBetween(
+              fb.startMinute,
+              fb.endMinute,
+            )));
       }
     }
 
@@ -225,7 +318,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                 .where((e) => e.isNotEmpty)
                 .toList()
             : <String>[];
-        if (firestoreTaskTimes.contains('${startTime}_$title')) continue;
+        if (firestoreTaskKeys.contains('${startTime}_$title')) continue;
         scheduled.add(DisplayBlock(
           time: startTime,
           title: title,
@@ -234,13 +327,14 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
           emoji: '🌿',
           type: RoutineFilter.skinCare,
           subtasks: steps,
+          durationMinutes: timelineDurationFromTimes(startTime, endTime),
         ));
       }
     }
 
     if (_filter == RoutineFilter.all || _filter == RoutineFilter.classes) {
       for (final c in s.classesForDay(date.weekday)) {
-        if (firestoreTaskTimes.contains('${c.startTime}_${c.subject}')) {
+        if (firestoreTaskKeys.contains('${c.startTime}_${c.subject}')) {
           continue;
         }
 
@@ -258,7 +352,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
       for (final m in s.mealPlanForDay(dayIdx).all) {
         // Normalize time to HH:MM 24h for consistent display and sorting
         final normalizedTime = tlNormalizeTime(m.time);
-        if (firestoreTaskTimes.contains('${normalizedTime}_${m.name}')) {
+        if (firestoreTaskKeys.contains('${normalizedTime}_${m.name}')) {
           continue;
         }
 
@@ -283,7 +377,7 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         // If the date is within the goal's duration
         if (!targetDate.isBefore(start) && !targetDate.isAfter(end)) {
           final timeStr = g.dailyTaskTime ?? '00:00';
-          if (firestoreTaskTimes.contains('${timeStr}_${g.title}')) continue;
+          if (firestoreTaskKeys.contains('${timeStr}_${g.title}')) continue;
 
           scheduled.add(DisplayBlock(
             time: timeStr,
@@ -333,10 +427,13 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
         date.month == now.month &&
         date.day == now.day) {
       final nowMin = now.hour * 60 + now.minute;
-      for (int i = 0; i < blocks.length - 1; i++) {
-        if (nowMin >= tlParseMin(blocks[i].time) &&
-            nowMin < tlParseMin(blocks[i + 1].time)) {
-          final b = blocks[i];
+      for (int i = 0; i < blocks.length; i++) {
+        final b = blocks[i];
+        final startMin = tlParseMin(b.time);
+        final nextStartMin =
+            i < blocks.length - 1 ? tlParseMin(blocks[i + 1].time) : 1440;
+
+        if (nowMin >= startMin && nowMin < nextStartMin) {
           blocks[i] = DisplayBlock(
               time: b.time,
               title: b.title,
@@ -346,10 +443,12 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
               type: b.type,
               subtasks: b.subtasks,
               isNow: true,
+              isEmptyPlaceholder: b.isEmptyPlaceholder,
               taskId: b.taskId,
               taskState: b.taskState,
               actualStart: b.actualStart,
-              hasAlarm: b.hasAlarm);
+              hasAlarm: b.hasAlarm,
+              durationMinutes: nextStartMin - startMin);
           break;
         }
       }
@@ -1122,75 +1221,78 @@ class _RoutineTabState extends ConsumerState<RoutineTab> {
                                                   padding:
                                                       const EdgeInsets.only(
                                                           bottom: 24),
-                                                  sliver: SliverList(
-                                                    delegate:
-                                                        SliverChildBuilderDelegate(
-                                                      (_, i) {
-                                                        final now = DateTime.now();
-                                                        final entryDay = DateTime(
+                                                  sliver: SliverToBoxAdapter(
+                                                    child: Builder(
+                                                      builder: (_) {
+                                                        final now =
+                                                            DateTime.now();
+                                                        final entryDay =
+                                                            DateTime(
                                                           entry.key.year,
                                                           entry.key.month,
                                                           entry.key.day,
                                                         );
-                                                        final todayDay = DateTime(
+                                                        final todayDay =
+                                                            DateTime(
                                                           now.year,
                                                           now.month,
                                                           now.day,
                                                         );
-                                                        final isPastDate = entryDay.isBefore(todayDay);
-                                                        return TimelineRow(
-                                                        block: entry.value[i],
-                                                        index: i,
-                                                        showHourLabel: i == 0 ||
-                                                            entry.value[i].time
-                                                                        .split(
-                                                                            ':')[
-                                                                    0] !=
-                                                                entry
-                                                                    .value[
-                                                                        i - 1]
-                                                                    .time
-                                                                    .split(
-                                                                        ':')[0],
-                                                        isLast: i ==
-                                                            entry.value.length -
-                                                                1,
-                                                        onStart: isPastDate ? null : (taskId) =>
-                                                            _handleStartTask(
-                                                          taskId,
-                                                          tasksById[taskId],
-                                                        ),
-                                                        onComplete: isPastDate ? null : (taskId) =>
-                                                            _handleTaskAction(() => ref
-                                                            .read(
-                                                                taskServiceProvider)
-                                                            .completeTask(
-                                                                taskId)),
-                                                        onPause: isPastDate ? null : (taskId) =>
-                                                            _handleTaskAction(() => ref
-                                                            .read(
-                                                                taskServiceProvider)
-                                                            .pauseTask(taskId)),
-                                                        onResume: isPastDate ? null : (taskId) =>
-                                                            _handleTaskAction(() => ref
-                                                            .read(
-                                                                taskServiceProvider)
-                                                            .resumeTask(taskId)),
-                                                        onSkip: isPastDate ? null : (taskId) =>
-                                                            _handleTaskAction(() => ref
-                                                            .read(
-                                                                taskServiceProvider)
-                                                            .skipTask(taskId)),
-                                                        onAbandon: isPastDate ? null : (taskId) =>
-                                                            _handleTaskAction(() => ref
-                                                            .read(
-                                                                taskServiceProvider)
-                                                            .abandonTask(
-                                                                taskId)),
-                                                      );
+                                                        final isPastDate =
+                                                            entryDay.isBefore(
+                                                                todayDay);
+                                                        return TimelineDaySchedule(
+                                                          blocks: entry.value,
+                                                          selectedDate:
+                                                              entry.key,
+                                                          onStart: isPastDate
+                                                              ? null
+                                                              : (taskId) =>
+                                                                  _handleStartTask(
+                                                                    taskId,
+                                                                    tasksById[
+                                                                        taskId],
+                                                                  ),
+                                                          onComplete: isPastDate
+                                                              ? null
+                                                              : (taskId) => _handleTaskAction(() => ref
+                                                                  .read(
+                                                                      taskServiceProvider)
+                                                                  .completeTask(
+                                                                      taskId)),
+                                                          onPause: isPastDate
+                                                              ? null
+                                                              : (taskId) =>
+                                                                  _handleTaskAction(() => ref
+                                                                      .read(
+                                                                          taskServiceProvider)
+                                                                      .pauseTask(
+                                                                          taskId)),
+                                                          onResume: isPastDate
+                                                              ? null
+                                                              : (taskId) =>
+                                                                  _handleTaskAction(() => ref
+                                                                      .read(
+                                                                          taskServiceProvider)
+                                                                      .resumeTask(
+                                                                          taskId)),
+                                                          onSkip: isPastDate
+                                                              ? null
+                                                              : (taskId) =>
+                                                                  _handleTaskAction(() => ref
+                                                                      .read(
+                                                                          taskServiceProvider)
+                                                                      .skipTask(
+                                                                          taskId)),
+                                                          onAbandon: isPastDate
+                                                              ? null
+                                                              : (taskId) => _handleTaskAction(() => ref
+                                                                  .read(
+                                                                      taskServiceProvider)
+                                                                  .abandonTask(
+                                                                      taskId)),
+                                                        );
                                                       },
-                                                      childCount:
-                                                          entry.value.length,
                                                     ),
                                                   ),
                                                 ),
@@ -1588,7 +1690,7 @@ class _DateStrip extends StatelessWidget {
     final days = List.generate(14, (index) => today.add(Duration(days: index)));
 
     return SizedBox(
-      height: 54,
+      height: 64,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),

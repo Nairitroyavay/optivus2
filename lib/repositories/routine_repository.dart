@@ -183,6 +183,24 @@ class RoutineRepository {
     };
   }
 
+  /// Returns the raw Firestore data for all task documents whose plannedStart
+  /// falls within [from, to). Used by the duplicate repair helper to obtain
+  /// full document data (not just state strings) for grouping and dedup scoring.
+  Future<Map<String, Map<String, dynamic>>> rawTasksForDateRange(
+    DateTime from,
+    DateTime to,
+  ) async {
+    final snap = await _service.userDoc
+        .collection('tasks')
+        .where('plannedStart',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(from))
+        .where('plannedStart', isLessThan: Timestamp.fromDate(to))
+        .get();
+    return {
+      for (final d in snap.docs) d.id: d.data(),
+    };
+  }
+
   /// Reads the lifecycle state for one task ID. This keeps materialisation
   /// idempotent even if a previous task's planned time changed and no longer
   /// falls into the date-range query used as the fast path above.

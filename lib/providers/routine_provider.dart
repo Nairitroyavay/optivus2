@@ -134,12 +134,7 @@ String? validateFixedScheduleTemplateDraft({
   );
 }
 
-String _routineTaskId({
-  required String scheduledDate,
-  required String routineType,
-  required String templateId,
-}) =>
-    'routine_${scheduledDate}_${_routineSlug(routineType)}_${_routineSlug(templateId)}';
+
 
 DateTime _dateTimeFromRoutineTime(DateTime date, String value,
     {required String fallback}) {
@@ -965,10 +960,13 @@ List<_MaterializationCandidate> _candidatesForDate(
     final cleanTitle = title.trim();
     if (cleanTitle.isEmpty || !plannedEnd.isAfter(plannedStart)) return;
 
-    final id = _routineTaskId(
+    final id = buildRoutineInstanceKey(
       scheduledDate: scheduledDate,
-      routineType: routineType,
+      sourceRoutineType: routineType,
       templateId: templateId,
+      title: cleanTitle,
+      plannedStart: plannedStart,
+      plannedEnd: plannedEnd,
     );
     if (!seenIds.add(id)) return;
 
@@ -1480,6 +1478,118 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
     final tomorrow =
         DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
     await materializeForWindow(tomorrow, days: days);
+  }
+
+  /// Scans all task documents whose plannedStart falls on [date], groups them
+  /// by a stable content key (type + parentRoutine/title + hour + minute), and
+  /// hard-deletes non-canonical duplicates that are still in a non-terminal
+  /// state (scheduled/started/paused only — completed/skipped/abandoned tasks
+  /// are NEVER removed).
+  ///
+  /// Within each group the canonical task is chosen as:
+  ///   1. Highest lifecycle priority (completed > started > paused > scheduled)
+  ///   2. Oldest createdAt within the same priority level
+  ///
+  /// Call this once after materialization for dates where duplicates are known
+  /// to exist (e.g. users who completed onboarding before the Fix A patch).
+  /// Do NOT run automatically across all historical dates — only on-demand or
+  /// for the currently-selected date.
+  Future<int> repairDuplicateRoutineTasksForDate(DateTime date) async {
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    // Fetch all tasks for the day (raw Firestore docs).
+    final snap = await _repo.rawTasksForDateRange(dayStart, dayEnd);
+    if (snap.length <= 1) return 0;
+
+    // Build a stable content key identical to the UI dedup key:
+    //   'type_parentRoutine-or-slug(title)_HH_MM'
+    String contentKey(Map<String, dynamic> d, String docId) {
+      final type = (d['type'] as String? ?? 'custom');
+      final parent = (d['parentRoutine'] as String? ?? '').trim();
+      final title = (d['title'] as String? ?? '').trim().toLowerCase();
+      final slot = parent.isNotEmpty
+          ? parent
+          : title
+              .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+              .replaceAll(RegExp(r'^_+|_+$'), '');
+      final ps = d['plannedStart'];
+      DateTime? start;
+      if (ps is Timestamp) start = ps.toDate();
+      final h = (start?.hour ?? 0).toString().padLeft(2, '0');
+      final m = (start?.minute ?? 0).toString().padLeft(2, '0');
+      return '${type}_${slot.isEmpty ? docId : slot}_${h}_$m';
+    }
+
+    int priority(Map<String, dynamic> d) {
+      final s = ((d['state'] as String?) ?? (d['status'] as String?) ?? '')
+          .toLowerCase();
+      if (s == 'completed') return 4;
+      if (s == 'started') return 3;
+      if (s == 'paused') return 2;
+      if (s == 'scheduled') return 1;
+      return 0;
+    }
+
+    // Group by content key. Each entry: {docId, data, priority, createdAt}.
+    final groups = <String, List<({String id, Map<String, dynamic> d})>>{};
+    for (final entry in snap.entries) {
+      final key = contentKey(entry.value, entry.key);
+      groups.putIfAbsent(key, () => []).add((id: entry.key, d: entry.value));
+    }
+
+    int deletedCount = 0;
+    for (final group in groups.values) {
+      if (group.length <= 1) continue;
+
+      // Sort: highest priority first, oldest createdAt as tiebreaker.
+      group.sort((a, b) {
+        final pa = priority(a.d);
+        final pb = priority(b.d);
+        if (pa != pb) return pb.compareTo(pa); // descending priority
+        final ca = _asDateTimeSafe(a.d['createdAt']);
+        final cb = _asDateTimeSafe(b.d['createdAt']);
+        return ca.compareTo(cb); // ascending createdAt (older first)
+      });
+
+      // Keep group[0] (canonical). Delete the rest if non-terminal.
+      for (int i = 1; i < group.length; i++) {
+        final dup = group[i];
+        final state = ((dup.d['state'] as String?) ??
+                (dup.d['status'] as String?) ??
+                'scheduled')
+            .toLowerCase();
+        // Never delete completed/skipped/abandoned history.
+        if (_kTerminalTaskStates.contains(state)) continue;
+        try {
+          await _taskService.deleteTask(dup.id);
+          deletedCount++;
+          debugPrint(
+            '[RoutineNotifier] repairDuplicates: deleted dup ${dup.id} '
+            '(kept ${group[0].id})',
+          );
+        } catch (e) {
+          debugPrint(
+            '[RoutineNotifier] repairDuplicates: failed to delete ${dup.id}: $e',
+          );
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      debugPrint(
+        '[RoutineNotifier] repairDuplicateRoutineTasksForDate '
+        '(${_routineDateKey(date)}): removed $deletedCount duplicate(s)',
+      );
+    }
+    return deletedCount;
+  }
+
+  static DateTime _asDateTimeSafe(Object? value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value) ?? DateTime(2000);
+    return DateTime(2000);
   }
 
   // ── Fixed schedule templates ───────────────────────────────────────────────

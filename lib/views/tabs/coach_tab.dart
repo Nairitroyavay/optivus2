@@ -1599,6 +1599,8 @@ class _CoachTabState extends ConsumerState<CoachTab> {
   }
 
   Widget _buildHeader() {
+    final aiReady = ref.watch(appFeatureFlagsProvider).aiCoachMessagesReady;
+    final statusLabel = aiReady ? 'Online' : 'Manual';
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
       child: Row(
@@ -1650,7 +1652,7 @@ class _CoachTabState extends ConsumerState<CoachTab> {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'Online · ${_mode.label}',
+                        '$statusLabel · ${_mode.label}',
                         style: TextStyle(
                             fontSize: 14,
                             color:

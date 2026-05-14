@@ -94,11 +94,10 @@ class _Harness {
   CollectionReference<Map<String, dynamic>> get _events =>
       fakeFirestore.collection('users').doc(_uid).collection('events');
 
-  CollectionReference<Map<String, dynamic>> get _notifications =>
-      fakeFirestore
-          .collection('users')
-          .doc(_uid)
-          .collection('scheduled_notifications');
+  CollectionReference<Map<String, dynamic>> get _notifications => fakeFirestore
+      .collection('users')
+      .doc(_uid)
+      .collection('scheduled_notifications');
 
   Future<List<Map<String, dynamic>>> tasksForDate(DateTime date) async {
     final dayStart = DateTime(date.year, date.month, date.day);
@@ -118,9 +117,7 @@ class _Harness {
   }
 
   Future<List<Map<String, dynamic>>> eventsWhere(String eventName) async {
-    final snap = await _events
-        .where('eventName', isEqualTo: eventName)
-        .get();
+    final snap = await _events.where('eventName', isEqualTo: eventName).get();
     return snap.docs.map((d) => d.data()).toList();
   }
 
@@ -191,8 +188,7 @@ void main() {
         (s) => (s as Map)['id'] == 'dosage',
         orElse: () => null,
       );
-      expect(dosageSubtask, isNotNull,
-          reason: 'Expected a dosage subtask');
+      expect(dosageSubtask, isNotNull, reason: 'Expected a dosage subtask');
       expect((dosageSubtask as Map)['title'], '1000 IU');
 
       h.dispose();
@@ -366,7 +362,8 @@ void main() {
   // ── 4. Reminder notification ────────────────────────────────────────────────
 
   group('Supplement materialization — reminder notification', () {
-    test('reminderEnabled=true creates a scheduled_notifications doc', () async {
+    test('reminderEnabled=true creates a scheduled_notifications doc',
+        () async {
       final h = await _Harness.create();
       await h.notifier.setRoutineTemplates(
         'supplements',
@@ -422,7 +419,8 @@ void main() {
       expect(events, hasLength(2),
           reason: 'One routine_template_created per template');
 
-      final ids = events.map((e) => (e['payload'] as Map)['templateId']).toSet();
+      final ids =
+          events.map((e) => (e['payload'] as Map)['templateId']).toSet();
       expect(ids, containsAll(['vit_d', 'creatine']));
 
       h.dispose();
@@ -435,7 +433,8 @@ void main() {
         [_suppTemplate()],
         materializeDays: 0,
       );
-      final countAfterFirst = (await h.eventsWhere('routine_template_created')).length;
+      final countAfterFirst =
+          (await h.eventsWhere('routine_template_created')).length;
 
       // Save the same template again.
       await h.notifier.setRoutineTemplates(
@@ -582,7 +581,8 @@ void main() {
           .get();
 
       expect(doc.exists, isTrue);
-      final templates = (doc.data()!['templates'] as Map)['supplements'] as List;
+      final templates =
+          (doc.data()!['templates'] as Map)['supplements'] as List;
       expect(templates, hasLength(1));
       expect(templates.first['title'], 'Vitamin D');
       expect(templates.first['dosage'], '1000 IU');
@@ -590,7 +590,8 @@ void main() {
       h.dispose();
     });
 
-    test('materialized task is stored at /users/{uid}/tasks/{taskId}', () async {
+    test('materialized task is stored at /users/{uid}/tasks/{taskId}',
+        () async {
       final h = await _Harness.create();
       await h.notifier.setRoutineTemplates(
         'supplements',
@@ -601,7 +602,7 @@ void main() {
       final date = DateTime(2025, 6, 10);
       await h.notifier.materializeForDate(date);
 
-      const expectedId = 'routine_2025-06-10_supplements_vitamin_d';
+      const expectedId = 'routine_2025-06-10_supplements_vitamin_d_0800_0805';
       final task = await h.taskById(expectedId);
       expect(task, isNotNull);
       expect(task!['title'], 'Vitamin D');

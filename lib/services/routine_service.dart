@@ -703,6 +703,19 @@ class RoutineService {
     if (templatesRoot is! Map) return;
 
     final dateStr = _formatDate(date);
+
+    // Pre-fetch all tasks for the date to enable duplicate checking
+    final startBoundary = Timestamp.fromDate(DateTime(date.year, date.month, date.day));
+    final endBoundary = Timestamp.fromDate(DateTime(date.year, date.month, date.day).add(const Duration(days: 1)));
+    final existingTasksSnap = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('tasks')
+        .where('plannedStart', isGreaterThanOrEqualTo: startBoundary)
+        .where('plannedStart', isLessThan: endBoundary)
+        .get();
+    final existingTasks = existingTasksSnap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+
     for (final entry in templatesRoot.entries) {
       final routineType = entry.key.toString();
       if (entry.value is! List) continue;
@@ -753,17 +766,38 @@ class RoutineService {
           plannedEnd = plannedStart.add(const Duration(minutes: 30));
         }
 
-        final taskId =
-            'routine_${dateStr}_${_slug(candidateRoutineType)}_${_slug(templateId)}';
-        final taskRef = _firestore
-            .collection('users')
-            .doc(uid)
-            .collection('tasks')
-            .doc(taskId);
-        final taskSnap = await taskRef.get();
-        if (taskSnap.exists) {
-          final existingData = taskSnap.data() ?? const <String, dynamic>{};
-          final stateStr = _taskState(existingData);
+        final taskId = buildRoutineInstanceKey(
+          scheduledDate: dateStr,
+          sourceRoutineType: candidateRoutineType,
+          templateId: templateId,
+          title: title,
+          plannedStart: plannedStart,
+          plannedEnd: plannedEnd,
+        );
+
+        // Pre-write duplicate check
+        Map<String, dynamic>? matchedTask;
+        for (final t in existingTasks) {
+          if (t['id'] == taskId) {
+            matchedTask = t;
+            break;
+          }
+          // Fallback check for legacy IDs
+          final tStart = t['plannedStart'];
+          final tStartDt = tStart is Timestamp ? tStart.toDate() : null;
+          
+          if (t['sourceRoutineType'] == candidateRoutineType &&
+              ((t['routineTemplateId'] == templateId && templateId.isNotEmpty) || 
+               (t['title'] == title && tStartDt?.hour == plannedStart.hour && tStartDt?.minute == plannedStart.minute))) {
+            matchedTask = t;
+            break;
+          }
+        }
+
+        final taskRef = _firestore.collection('users').doc(uid).collection('tasks').doc(matchedTask?['id'] ?? taskId);
+
+        if (matchedTask != null) {
+          final stateStr = _taskState(matchedTask);
           if (_isTerminalTaskState(stateStr)) continue;
 
           // Preserve user-edited fields: only write metadata that the

@@ -70,7 +70,6 @@ class GeminiService {
   /// The Worker verifies the Firebase ID token and calls Gemini server-side so
   /// the Gemini key is never shipped in Flutter.
   Future<CoachReplyResult> coachReply({
-    required String userId,
     required String threadId,
     required String text,
     required String mode,
@@ -81,7 +80,6 @@ class GeminiService {
       missingEndpointMessage:
           'COACH_REPLY_ENDPOINT is not configured. $_localRunDartDefines',
       payload: {
-        'userId': userId,
         'threadId': threadId,
         'text': text,
         'mode': mode,
@@ -228,8 +226,7 @@ class GeminiChatSession {
 
   Future<String> sendMessage(String message) async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
+      if (FirebaseAuth.instance.currentUser == null) {
         throw Exception('Cannot send coach message without auth');
       }
 
@@ -244,7 +241,6 @@ class GeminiChatSession {
       }
 
       final result = await service.coachReply(
-        userId: user.uid,
         threadId: threadId,
         text: message,
         mode: mode,

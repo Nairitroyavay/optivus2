@@ -81,7 +81,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
   ];
   int _colorIndex = 0;
   Map<String, dynamic>? _pendingImportMetadata;
-  final ImageUploadService _imageUploadService = ImageUploadService();
+  late final ImageUploadService _imageUploadService = ImageUploadService();
   bool _isImportingPhoto = false;
   String? _importError;
   bool _sensitiveMode = false;
@@ -342,26 +342,30 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                         // Validate inputs before saving.
                         final nameText = nameCtrl.text.trim();
                         if (nameText.isEmpty) {
-                          setDialogState(() => dialogError = 'Meal name cannot be empty.');
+                          setDialogState(
+                              () => dialogError = 'Meal name cannot be empty.');
                           return;
                         }
                         final parsedStart =
                             _parseHoursFrom6AM(startTimeCtrl.text);
-                        var parsedEnd =
-                            _parseHoursFrom6AM(endTimeCtrl.text);
+                        var parsedEnd = _parseHoursFrom6AM(endTimeCtrl.text);
                         if (parsedEnd <= parsedStart) parsedEnd += 24;
                         if (parsedEnd - parsedStart < 0.1) {
-                          setDialogState(() => dialogError = 'End time must be after start time.');
+                          setDialogState(() => dialogError =
+                              'End time must be after start time.');
                           return;
                         }
                         setState(() {
                           item.mealName = nameText;
                           item.foodName = foodCtrl.text.trim();
-                          item.emoji =
-                              emojiCtrl.text.trim().isEmpty ? '🍽️' : emojiCtrl.text.trim();
+                          item.emoji = emojiCtrl.text.trim().isEmpty
+                              ? '🍽️'
+                              : emojiCtrl.text.trim();
                           item.reminderEnabled = tempReminder;
                           item.start = parsedStart;
-                          item.duration = (parsedEnd - parsedStart).clamp(0.5, 12.0).toDouble();
+                          item.duration = (parsedEnd - parsedStart)
+                              .clamp(0.5, 12.0)
+                              .toDouble();
 
                           if (item.isAdd) {
                             item.isAdd = false;
@@ -402,13 +406,13 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
         .toList();
 
     final mealDefaults = <String, (double, double)>{
-      'breakfast': (2.0, 3.0),  // 8–9 AM
+      'breakfast': (2.0, 3.0), // 8–9 AM
       'morning': (2.0, 3.0),
-      'lunch': (7.0, 8.0),      // 1–2 PM
+      'lunch': (7.0, 8.0), // 1–2 PM
       'afternoon': (7.0, 8.0),
-      'snack': (10.0, 10.5),    // 4–4:30 PM
+      'snack': (10.0, 10.5), // 4–4:30 PM
       'tea': (10.0, 10.5),
-      'dinner': (14.0, 15.0),   // 8–9 PM
+      'dinner': (14.0, 15.0), // 8–9 PM
       'supper': (14.0, 15.0),
       'night': (14.0, 15.0),
     };
@@ -478,13 +482,12 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Container(
         width: double.infinity,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: const Color(0xFF60D4A0).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-              color: const Color(0xFF60D4A0).withValues(alpha: 0.6)),
+          border:
+              Border.all(color: const Color(0xFF60D4A0).withValues(alpha: 0.6)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,8 +497,8 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
-                'Mindful Eating mode is active. '  
-                'Focus on meal timing and how you feel — '  
+                'Mindful Eating mode is active. '
+                'Focus on meal timing and how you feel — '
                 'not specific foods or portions.',
                 style: TextStyle(
                   fontSize: 12,
@@ -921,9 +924,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                     : 'Mess Photo from Camera (Coming Soon)',
               ),
               enabled: photoReady,
-              onTap: photoReady
-                  ? () => Navigator.of(ctx).pop('camera')
-                  : null,
+              onTap: photoReady ? () => Navigator.of(ctx).pop('camera') : null,
             ),
             ListTile(
               leading: Icon(
@@ -936,9 +937,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                     : 'Mess Photo from Gallery (Coming Soon)',
               ),
               enabled: photoReady,
-              onTap: photoReady
-                  ? () => Navigator.of(ctx).pop('gallery')
-                  : null,
+              onTap: photoReady ? () => Navigator.of(ctx).pop('gallery') : null,
             ),
             ListTile(
               leading: const Icon(Icons.text_snippet_rounded),
@@ -954,7 +953,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
         ),
       ),
     );
-    if (source == null) return;
+    if (!mounted || source == null) return;
     if (source == 'camera') {
       await _pickUploadAndImportMessPhoto(ImageSource.camera);
     } else if (source == 'gallery') {
@@ -979,7 +978,7 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
           maxLines: 8,
           decoration: const InputDecoration(
             hintText: 'Paste your weekly mess menu here...',
-            border: const OutlineInputBorder(),
+            border: OutlineInputBorder(),
           ),
         ),
         actions: [
@@ -1033,32 +1032,27 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       }
 
       // Worker is ready — call remote endpoint.
-      final generated = await ref.read(routineRepositoryProvider).previewRoutineImport(
-        routineType: 'eating',
-        mode: 'eating_mess_text',
-        sourceText: text,
-        sensitiveContext: eatFlag,
-      );
+      final generated =
+          await ref.read(routineRepositoryProvider).previewRoutineImport(
+                routineType: 'eating',
+                mode: 'eating_mess_text',
+                sourceText: text,
+                sensitiveContext: eatFlag,
+              );
       if (!mounted) return;
-      await _processImportedTemplates(generated, null, {'mode': 'eating_mess_text'});
+      await _processImportedTemplates(
+          generated, null, {'mode': 'eating_mess_text'});
     } catch (e) {
       debugPrint('[EatingSetup] mess text import failed: $e');
       if (mounted) {
         setState(() {
-          _importError = 'Mess menu text import failed. Check the text and endpoint configuration.';
+          _importError =
+              'Mess menu text import failed. Check the text and endpoint configuration.';
         });
       }
     } finally {
       if (mounted) setState(() => _isImportingPhoto = false);
     }
-  }
-
-  void _showImageImportComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Mess photo import is coming soon. Add meals manually.'),
-      ),
-    );
   }
 
   Future<void> _pickUploadAndImportMessPhoto(ImageSource source) async {
@@ -1098,7 +1092,8 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       };
 
       final eatFlag = ref.read(eatingDisorderFlagProvider).valueOrNull ?? false;
-      final generated = await ref.read(routineRepositoryProvider).previewRoutineImport(
+      final generated =
+          await ref.read(routineRepositoryProvider).previewRoutineImport(
         routineType: 'eating',
         mode: 'eating_mess_photo',
         sensitiveContext: eatFlag,
@@ -1143,7 +1138,9 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       (sum, dayBlocks) => sum + dayBlocks.length,
     );
     if (totalMeals == 0) {
-      if (imageMetadata != null) await _deleteUploadedImageQuietly(imageMetadata);
+      if (imageMetadata != null) {
+        await _deleteUploadedImageQuietly(imageMetadata);
+      }
       if (!mounted) return;
       setState(() {
         _importError =
@@ -1160,10 +1157,10 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
 
     for (final suggestionId in suggestionIds) {
       await ref.read(eventServiceProvider).emit(
-            eventName: EventNames.suggestionGenerated,
-            source: 'eating_setup',
-            payload: {'suggestionId': suggestionId},
-          );
+        eventName: EventNames.suggestionGenerated,
+        source: 'eating_setup',
+        payload: {'suggestionId': suggestionId},
+      );
     }
     final accepted = await _showMessMenuReview(grid, {
       ...metadataBase,
@@ -1177,10 +1174,10 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       // Emit suggestion_dismissed for Worker-sourced suggestions.
       for (final suggestionId in suggestionIds) {
         await ref.read(eventServiceProvider).emit(
-              eventName: EventNames.suggestionDismissed,
-              source: 'eating_setup',
-              payload: {'suggestionId': suggestionId},
-            );
+          eventName: EventNames.suggestionDismissed,
+          source: 'eating_setup',
+          payload: {'suggestionId': suggestionId},
+        );
       }
     }
   }
@@ -1500,11 +1497,13 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                                       _colorIndex += accepted.length;
                                     });
                                     await ref.read(eventServiceProvider).emit(
-                                      eventName: EventNames.routineTemplateCreated,
+                                      eventName:
+                                          EventNames.routineTemplateCreated,
                                       source: 'eating_setup',
                                       payload: {
                                         'routineType': 'eating',
-                                        'source': importMetadata['mode'] ?? 'eating_import',
+                                        'source': importMetadata['mode'] ??
+                                            'eating_import',
                                         'count': accepted.length,
                                       },
                                     );
@@ -1606,10 +1605,9 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isImportingPhoto ? null : _showImportOptions,
         icon: const Icon(Icons.auto_awesome_rounded),
-        label: Text(
-            ref.watch(appFeatureFlagsProvider).routineImportWorkerReady
-                ? 'AI / Menu'
-                : 'Coming soon'),
+        label: Text(ref.watch(appFeatureFlagsProvider).routineImportWorkerReady
+            ? 'AI / Menu'
+            : 'Coming soon'),
       ),
       body: LiquidBg(
         child: Stack(children: [
@@ -1897,19 +1895,30 @@ class _EatingSetupScreenState extends ConsumerState<EatingSetupScreen> {
                                                 mainAxisAlignment:
                                                     MainAxisAlignment.end,
                                                 children: [
-                                                  Text(label,
+                                                  Expanded(
+                                                    child: Text(
+                                                      label,
+                                                      textAlign:
+                                                          TextAlign.right,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.clip,
                                                       style: const TextStyle(
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          color: Color(
-                                                              0xFF64748B))),
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color:
+                                                            Color(0xFF64748B),
+                                                      ),
+                                                    ),
+                                                  ),
                                                   const SizedBox(width: 6),
                                                   Container(
-                                                      width: 4,
-                                                      height: 1.5,
-                                                      color: const Color(
-                                                          0xFFCBD5E1)),
+                                                    width: 4,
+                                                    height: 1.5,
+                                                    color:
+                                                        const Color(0xFFCBD5E1),
+                                                  ),
                                                 ],
                                               ),
                                             );

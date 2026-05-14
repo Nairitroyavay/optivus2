@@ -30,11 +30,11 @@ class DisplayBlock {
   final bool isNow;
   final bool isEmptyPlaceholder; // true when rendering an empty hour slot
 
-  // ── Firestore task fields (null for legacy routine-only blocks) ──
   final String? taskId;
   final TaskState? taskState;
   final DateTime? actualStart;
   final bool hasAlarm;
+  final int durationMinutes;
 
   const DisplayBlock({
     required this.time,
@@ -50,6 +50,7 @@ class DisplayBlock {
     this.taskState,
     this.actualStart,
     this.hasAlarm = false,
+    this.durationMinutes = 60,
   });
 }
 
@@ -65,13 +66,65 @@ Color tlHexColor(String hex) {
   }
 }
 
-String tlFmtMin(int m) =>
-    '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+const double kTimelineTimeRailWidth = 64;
+const double kTimelineHourHeight = 112.0;
+const double kTimelinePixelsPerMinute = kTimelineHourHeight / 60.0;
+const double _timelineRailDotColumnWidth = 12;
+const double _timelineContentGap = 12;
+const Key kTimelineTimeRailKey = ValueKey('timeline-time-rail');
+const Key kTimelineDayScheduleKey = ValueKey('timeline-day-schedule');
+const Key kTimelineCurrentTimeIndicatorKey =
+    ValueKey('timeline-current-time-indicator');
+
+Key timelineCardKey(DisplayBlock block) =>
+    ValueKey('timeline-card-${block.taskId ?? block.title}-${block.time}');
+
+String formatTimelineTime(TimeOfDay time) {
+  final hour = time.hour.toString().padLeft(2, '0');
+  final minute = time.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
+String formatTimelineDateTime(DateTime time) => formatTimelineTime(
+      TimeOfDay(hour: time.hour, minute: time.minute),
+    );
+
+String formatTimelineMinute(int minuteOfDay) {
+  final normalized = minuteOfDay.clamp(0, 1439).toInt();
+  return formatTimelineTime(
+    TimeOfDay(hour: normalized ~/ 60, minute: normalized % 60),
+  );
+}
+
+String tlFmtMin(int m) => formatTimelineMinute(m);
 
 int tlParseMin(String t) {
   final p = t.split(':');
   return int.parse(p[0]) * 60 + int.parse(p[1]);
 }
+
+int parseTimelineMinute(String hhmm) => tlParseMin(tlNormalizeTime(hhmm));
+
+double timelineYForMinute(
+  int minute, {
+  int timelineStartMinute = 0,
+}) =>
+    (minute - timelineStartMinute) * kTimelinePixelsPerMinute;
+
+double timelineHeightForDuration(int durationMinutes) =>
+    durationMinutes * kTimelinePixelsPerMinute;
+
+int timelineDurationBetween(int startMinute, int endMinute) {
+  var duration = endMinute - startMinute;
+  if (duration <= 0) duration += 24 * 60;
+  return duration;
+}
+
+int timelineDurationFromTimes(String startTime, String endTime) =>
+    timelineDurationBetween(
+      parseTimelineMinute(startTime),
+      parseTimelineMinute(endTime),
+    );
 
 String tlMealLabel(String t) {
   final h = int.tryParse(t.split(':')[0]) ?? 0;
@@ -110,6 +163,246 @@ String _to12h(String t) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DAY TIMELINE  (fixed 24-hour coordinate plane)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TimelineDaySchedule extends StatefulWidget {
+  final List<DisplayBlock> blocks;
+  final DateTime selectedDate;
+
+  final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onPause;
+  final ValueChanged<String>? onResume;
+  final ValueChanged<String>? onComplete;
+  final ValueChanged<String>? onSkip;
+  final ValueChanged<String>? onAbandon;
+
+  const TimelineDaySchedule({
+    super.key,
+    required this.blocks,
+    required this.selectedDate,
+    this.onStart,
+    this.onPause,
+    this.onResume,
+    this.onComplete,
+    this.onSkip,
+    this.onAbandon,
+  });
+
+  @override
+  State<TimelineDaySchedule> createState() => _TimelineDayScheduleState();
+}
+
+class _TimelineDayScheduleState extends State<TimelineDaySchedule> {
+  final Map<String, Set<int>> _checkedByBlock = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final height = timelineHeightForDuration(24 * 60);
+    final contentLeft = kTimelineTimeRailWidth +
+        _timelineRailDotColumnWidth +
+        _timelineContentGap;
+    final visibleBlocks =
+        widget.blocks.where((block) => !block.isEmptyPlaceholder).toList();
+
+    return SizedBox(
+      key: kTimelineDayScheduleKey,
+      height: height,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            left:
+                kTimelineTimeRailWidth + _timelineRailDotColumnWidth / 2 - 0.6,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Container(
+                width: 1.2,
+                height: height,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      kSub.withValues(alpha: 0.10),
+                      kSub.withValues(alpha: 0.025),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          for (var hour = 0; hour < 24; hour++)
+            _HourMarker(
+              minute: hour * 60,
+              isFirst: hour == 0,
+            ),
+          for (final block in visibleBlocks)
+            _PositionedTimelineCard(
+              block: block,
+              contentLeft: contentLeft,
+              checked: _checkedByBlock.putIfAbsent(
+                block.taskId ?? '${block.time}_${block.title}',
+                () => <int>{},
+              ),
+              onToggle: (index) {
+                final key = block.taskId ?? '${block.time}_${block.title}';
+                final checked = _checkedByBlock.putIfAbsent(key, () => <int>{});
+                setState(() {
+                  if (checked.contains(index)) {
+                    checked.remove(index);
+                  } else {
+                    checked.add(index);
+                  }
+                });
+              },
+              onStart: widget.onStart,
+              onPause: widget.onPause,
+              onResume: widget.onResume,
+              onComplete: widget.onComplete,
+              onSkip: widget.onSkip,
+              onAbandon: widget.onAbandon,
+            ),
+          Positioned.fill(
+            child: TimelineCurrentTimeIndicator(
+              selectedDate: widget.selectedDate,
+              startMinute: 0,
+              durationMinutes: 24 * 60,
+              color: kRose,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HourMarker extends StatelessWidget {
+  final int minute;
+  final bool isFirst;
+
+  const _HourMarker({
+    required this.minute,
+    required this.isFirst,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final top = timelineYForMinute(minute);
+    const dotSize = 8.0;
+
+    return Positioned(
+      top: top - dotSize / 2,
+      left: 0,
+      right: 0,
+      height: 18,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            key: isFirst ? kTimelineTimeRailKey : null,
+            width: kTimelineTimeRailWidth,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Text(
+                formatTimelineMinute(minute),
+                textAlign: TextAlign.right,
+                maxLines: 1,
+                overflow: TextOverflow.visible,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: kSub.withValues(alpha: 0.62),
+                ),
+              ),
+            ),
+          ),
+          Container(
+            width: dotSize,
+            height: dotSize,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: kSub.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: _timelineContentGap),
+          Expanded(
+            child: Container(
+              height: 1,
+              color: kSub.withValues(alpha: 0.055),
+            ),
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _PositionedTimelineCard extends StatelessWidget {
+  final DisplayBlock block;
+  final double contentLeft;
+  final Set<int> checked;
+  final ValueChanged<int> onToggle;
+  final ValueChanged<String>? onStart;
+  final ValueChanged<String>? onPause;
+  final ValueChanged<String>? onResume;
+  final ValueChanged<String>? onComplete;
+  final ValueChanged<String>? onSkip;
+  final ValueChanged<String>? onAbandon;
+
+  const _PositionedTimelineCard({
+    required this.block,
+    required this.contentLeft,
+    required this.checked,
+    required this.onToggle,
+    this.onStart,
+    this.onPause,
+    this.onResume,
+    this.onComplete,
+    this.onSkip,
+    this.onAbandon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final startMinute = parseTimelineMinute(block.time).clamp(0, 1439).toInt();
+    final durationMinutes = block.durationMinutes.clamp(1, 24 * 60).toInt();
+    final top = timelineYForMinute(startMinute);
+    final actualHeight = timelineHeightForDuration(durationMinutes);
+    final visualHeight =
+        durationMinutes < 30 && actualHeight < 44 ? 44.0 : actualHeight;
+
+    assert(() {
+      final bottom = top + actualHeight;
+      return bottom == timelineYForMinute(startMinute + durationMinutes);
+    }());
+
+    return Positioned(
+      top: top,
+      left: contentLeft,
+      right: 16,
+      height: visualHeight,
+      child: SizedBox.expand(
+        key: timelineCardKey(block),
+        child: _EventCard(
+          block: block,
+          checked: checked,
+          onToggle: onToggle,
+          onStart: onStart,
+          onPause: onPause,
+          onResume: onResume,
+          onComplete: onComplete,
+          onSkip: onSkip,
+          onAbandon: onAbandon,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TIMELINE ROW  (single animated event)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -118,6 +411,7 @@ class TimelineRow extends StatefulWidget {
   final bool showHourLabel;
   final bool isLast;
   final int index; // used for staggered entrance
+  final DateTime? selectedDate;
 
   // ── Task action callbacks (null when block has no taskId) ──
   final ValueChanged<String>? onStart;
@@ -133,6 +427,7 @@ class TimelineRow extends StatefulWidget {
     required this.showHourLabel,
     required this.isLast,
     this.index = 0,
+    this.selectedDate,
     this.onStart,
     this.onPause,
     this.onResume,
@@ -168,9 +463,13 @@ class _TimelineRowState extends State<TimelineRow>
     ).animate(CurvedAnimation(parent: _entryCtrl, curve: Curves.easeOutCubic));
 
     // stagger by index
-    Future.delayed(Duration(milliseconds: 40 * widget.index), () {
-      if (mounted) _entryCtrl.forward();
-    });
+    if (widget.index == 0) {
+      _entryCtrl.forward();
+    } else {
+      Future.delayed(Duration(milliseconds: 40 * widget.index), () {
+        if (mounted) _entryCtrl.forward();
+      });
+    }
   }
 
   @override
@@ -192,193 +491,292 @@ class _TimelineRowState extends State<TimelineRow>
   }
 
   Widget _buildRow(DisplayBlock b) {
-    if (b.isEmptyPlaceholder) {
-      return IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ── Time column ─────────────────────────────────────────────────
-            SizedBox(
-              width: 70,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 16, top: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.showHourLabel)
-                      Text(
-                        b.time,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: kSub.withValues(alpha: 0.5),
-                          letterSpacing: 0.4,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            // ── Rail ────────────────────────────────────────────────────────
-            _Rail(
-              accentColor: kSub.withValues(alpha: 0.2), // Dim dot
-              isNow: false,
-              isLast: widget.isLast,
-              isEmptyPlaceholder: true,
-            ),
-            const SizedBox(width: 10),
-            // ── Empty Space ─────────────────────────────────────────────────
-            Expanded(
-              child: SizedBox(
-                  height: 60), // Fixed height to maintain scroll proportion
-            ),
-          ],
-        ),
-      );
-    }
-
-    return IntrinsicHeight(
+    final rowContent = IntrinsicHeight(
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Time column ─────────────────────────────────────────────────
           SizedBox(
-            width: 70,
+            key: kTimelineTimeRailKey,
+            width: kTimelineTimeRailWidth,
             child: Padding(
-              padding: const EdgeInsets.only(left: 16, top: 16),
+              padding: const EdgeInsets.only(right: 10, top: 16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   if (widget.showHourLabel)
                     Text(
-                      b.time,
+                      tlFmtMin(tlParseMin(b.time)),
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.visible,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w800,
-                        color: kSub,
-                        letterSpacing: 0.4,
+                        color: kSub.withValues(alpha: 0.62),
                       ),
                     ),
-                  if (b.isNow) ...[
-                    const SizedBox(height: 5),
-                    _NowBadge(),
-                  ],
                 ],
               ),
             ),
           ),
-
           // ── Rail ────────────────────────────────────────────────────────
           _Rail(
-            accentColor: b.accentColor,
+            accentColor: b.accentColor == Colors.transparent
+                ? kSub.withValues(alpha: 0.18)
+                : b.accentColor,
             isNow: b.isNow,
             isLast: widget.isLast,
+            isEmptyPlaceholder: b.isEmptyPlaceholder,
           ),
-
-          const SizedBox(width: 10),
-
-          // ── Card ────────────────────────────────────────────────────────
+          const SizedBox(width: _timelineContentGap),
+          // ── Timeline content ────────────────────────────────────────────
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-              child: _EventCard(
-                block: b,
-                checked: _checked,
-                onToggle: (i) => setState(() {
-                  _checked.contains(i) ? _checked.remove(i) : _checked.add(i);
-                }),
-                onStart: widget.onStart,
-                onPause: widget.onPause,
-                onResume: widget.onResume,
-                onComplete: widget.onComplete,
-                onSkip: widget.onSkip,
-                onAbandon: widget.onAbandon,
-              ),
+            child: b.isEmptyPlaceholder
+                ? const SizedBox(height: 60)
+                : Padding(
+                    padding: const EdgeInsets.only(right: 16, bottom: 14),
+                    child: _EventCard(
+                      block: b,
+                      checked: _checked,
+                      onToggle: (i) {
+                        setState(() {
+                          if (_checked.contains(i)) {
+                            _checked.remove(i);
+                          } else {
+                            _checked.add(i);
+                          }
+                        });
+                      },
+                      onStart: widget.onStart,
+                      onPause: widget.onPause,
+                      onResume: widget.onResume,
+                      onComplete: widget.onComplete,
+                      onSkip: widget.onSkip,
+                      onAbandon: widget.onAbandon,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+
+    if (b.isNow) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          rowContent,
+          Positioned.fill(
+            child: TimelineCurrentTimeIndicator(
+              selectedDate: widget.selectedDate ?? DateTime.now(),
+              startMinute: tlParseMin(b.time),
+              durationMinutes: b.durationMinutes,
+              color:
+                  b.accentColor == Colors.transparent ? kRose : b.accentColor,
             ),
           ),
         ],
+      );
+    }
+    return rowContent;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CURRENT TIME INDICATOR OVERLAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TimelineCurrentTimeIndicator extends StatelessWidget {
+  final DateTime selectedDate;
+  final int startMinute;
+  final int durationMinutes;
+  final Color color;
+
+  const TimelineCurrentTimeIndicator({
+    super.key,
+    required this.selectedDate,
+    required this.startMinute,
+    required this.durationMinutes,
+    required this.color,
+  });
+
+  bool _isToday(DateTime date) {
+    final now = DateTime.now();
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isToday(selectedDate)) return const SizedBox.shrink();
+
+    return IgnorePointer(
+      child: CurrentTimeIndicatorOverlay(
+        key: kTimelineCurrentTimeIndicatorKey,
+        startMinute: startMinute,
+        durationMinutes: durationMinutes,
+        color: color,
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NOW BADGE  — pulsing red pill
-// ─────────────────────────────────────────────────────────────────────────────
+class CurrentTimeIndicatorOverlay extends StatefulWidget {
+  final int startMinute;
+  final int durationMinutes;
+  final Color color;
 
-class _NowBadge extends StatefulWidget {
+  const CurrentTimeIndicatorOverlay({
+    super.key,
+    required this.startMinute,
+    required this.durationMinutes,
+    required this.color,
+  });
+
   @override
-  State<_NowBadge> createState() => _NowBadgeState();
+  State<CurrentTimeIndicatorOverlay> createState() =>
+      _CurrentTimeIndicatorOverlayState();
 }
 
-class _NowBadgeState extends State<_NowBadge>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulse;
-  late Animation<double> _scale;
-  late Animation<double> _opacity;
+class _CurrentTimeIndicatorOverlayState
+    extends State<CurrentTimeIndicatorOverlay> {
+  Timer? _timer;
+  int _currentMinute = 0;
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
-    _scale = Tween<double>(begin: 0.85, end: 1.15)
-        .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
-    _opacity = Tween<double>(begin: 0.6, end: 1.0)
-        .animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
+    _updateTime();
+    _timer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) _updateTime();
+    });
+  }
+
+  void _updateTime() {
+    final now = DateTime.now();
+    setState(() {
+      _currentMinute = now.hour * 60 + now.minute;
+    });
   }
 
   @override
   void dispose() {
-    _pulse.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _pulse,
-      builder: (_, __) {
-        return Row(
+    // Determine the vertical fraction within this row's duration.
+    double fraction = 0;
+    if (widget.durationMinutes > 0) {
+      fraction = (_currentMinute - widget.startMinute) / widget.durationMinutes;
+      fraction = fraction.clamp(0.0, 1.0);
+    }
+
+    final displayTimeStr = tlFmtMin(_currentMinute);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final height = constraints.maxHeight;
+        final topOffset = height * fraction;
+        final dotSize = 8.0;
+
+        return Stack(
+          clipBehavior: Clip.none,
           children: [
-            Transform.scale(
-              scale: _scale.value,
-              child: Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFFF3B30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF3B30)
-                          .withValues(alpha: 0.55 * _opacity.value),
-                      blurRadius: 6,
-                      spreadRadius: 1,
+            Positioned(
+              top: topOffset - dotSize / 2,
+              left: 0,
+              right: 0,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Time Label
+                  SizedBox(
+                    width: kTimelineTimeRailWidth,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 7),
+                      child: Text(
+                        displayTimeStr,
+                        key: const ValueKey('timeline-current-time-label'),
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w900,
+                          color: widget.color,
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Opacity(
-              opacity: _opacity.value,
-              child: const Text(
-                'NOW',
-                style: TextStyle(
-                  fontSize: 8.5,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFFFF3B30),
-                  letterSpacing: 0.8,
-                ),
+                  ),
+                  // Dot on rail
+                  Container(
+                    width: dotSize,
+                    height: dotSize,
+                    margin: EdgeInsets.only(
+                      left: (_timelineRailDotColumnWidth - dotSize) / 2,
+                      right: _timelineContentGap,
+                    ),
+                    decoration: BoxDecoration(
+                      color: widget.color,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: widget.color.withValues(alpha: 0.5),
+                          blurRadius: 6,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Dotted Line
+                  Expanded(
+                    child: CustomPaint(
+                      painter: _DottedLinePainter(color: widget.color),
+                      size: const Size.fromHeight(1),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                ],
               ),
             ),
           ],
         );
       },
     );
+  }
+}
+
+class _DottedLinePainter extends CustomPainter {
+  final Color color;
+  _DottedLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.52)
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+
+    const dashWidth = 3.5;
+    const dashSpace = 5.0;
+    double startX = 0;
+
+    while (startX < size.width) {
+      canvas.drawLine(
+        Offset(startX, 0),
+        Offset(startX + dashWidth, 0),
+        paint,
+      );
+      startX += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DottedLinePainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -437,16 +835,16 @@ class _Rail extends StatelessWidget {
         if (!isLast)
           Expanded(
             child: Container(
-              width: 1.5,
+              width: 1.2,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
                     isEmptyPlaceholder
-                        ? kSub.withValues(alpha: 0.1)
-                        : accentColor.withValues(alpha: 0.30),
-                    kSub.withValues(alpha: 0.08),
+                        ? kSub.withValues(alpha: 0.055)
+                        : accentColor.withValues(alpha: 0.18),
+                    kSub.withValues(alpha: 0.025),
                   ],
                 ),
               ),
@@ -562,158 +960,180 @@ class _EventCardState extends State<_EventCard>
               ),
             ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Accent bar
-                Container(
-                  width: 3.5,
-                  height:
-                      b.subtasks.isEmpty ? 42 : 42 + b.subtasks.length * 32.0,
-                  margin: const EdgeInsets.only(right: 10, top: 2),
-                  decoration: BoxDecoration(
-                    color: b.accentColor,
-                    borderRadius: BorderRadius.circular(3),
-                    boxShadow: [
-                      BoxShadow(
-                        color: b.accentColor.withValues(alpha: 0.45),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                ),
-                // Emoji icon box
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        b.accentColor.withValues(alpha: 0.22),
-                        b.accentColor.withValues(alpha: 0.08),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(13),
-                    border: Border.all(
-                      color: b.accentColor.withValues(alpha: 0.18),
-                      width: 1.2,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(b.emoji, style: const TextStyle(fontSize: 20)),
-                  ),
-                ),
-                const SizedBox(width: 11),
-                // Text content
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Category chip (when not "all")
-                      if (b.type != RoutineFilter.all) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 2.5),
-                          decoration: BoxDecoration(
-                            color: b.accentColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(5),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.hasBoundedHeight &&
+                  constraints.maxHeight <= kTimelineHourHeight;
+              final padding = isCompact ? 10.0 : 14.0;
+              final iconSize = isCompact ? 34.0 : 42.0;
+              final titleSize = isCompact ? 13.5 : 14.5;
+              final subtitleSize = isCompact ? 11.5 : 12.0;
+              final iconRadius = isCompact ? 10.0 : 13.0;
+              final emojiSize = isCompact ? 17.0 : 20.0;
+              final contentGap = isCompact ? 8.0 : 11.0;
+              final actionGap = isCompact ? 6.0 : 10.0;
+              final showCategory = b.type != RoutineFilter.all && !isCompact;
+
+              return Padding(
+                padding: EdgeInsets.all(padding),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Accent bar
+                    Container(
+                      width: 3.5,
+                      height: b.subtasks.isEmpty
+                          ? iconSize
+                          : iconSize + b.subtasks.length * 32.0,
+                      margin: const EdgeInsets.only(right: 10, top: 2),
+                      decoration: BoxDecoration(
+                        color: b.accentColor,
+                        borderRadius: BorderRadius.circular(3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: b.accentColor.withValues(alpha: 0.45),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
                           ),
-                          child: Text(
-                            filterMetaData[b.type]?.label.toUpperCase() ?? '',
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w900,
-                              color: b.accentColor,
-                              letterSpacing: 0.7,
-                            ),
-                          ),
+                        ],
+                      ),
+                    ),
+                    // Emoji icon box
+                    Container(
+                      width: iconSize,
+                      height: iconSize,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            b.accentColor.withValues(alpha: 0.22),
+                            b.accentColor.withValues(alpha: 0.08),
+                          ],
                         ),
-                        const SizedBox(height: 5),
-                      ],
-                      Text(
-                        b.title,
-                        style: const TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          color: kInk,
-                          letterSpacing: -0.2,
+                        borderRadius: BorderRadius.circular(iconRadius),
+                        border: Border.all(
+                          color: b.accentColor.withValues(alpha: 0.18),
+                          width: 1.2,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _to12h(b.time) == b.subtitle ? b.subtitle : b.subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: kSub,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      child: Center(
+                        child: Text(b.emoji,
+                            style: TextStyle(fontSize: emojiSize)),
                       ),
-                      if (b.hasAlarm &&
-                          b.taskId != null &&
-                          (b.taskState ?? TaskState.scheduled) ==
-                              TaskState.scheduled) ...[
-                        const SizedBox(height: 7),
-                        _AlarmChip(color: b.accentColor),
-                      ],
-                      // ── Task action row ──────────────────────────────
-                      if (b.taskId != null) ...[
-                        const SizedBox(height: 10),
-                        _TaskActionRow(
-                          block: b,
-                          onStart: widget.onStart,
-                          onPause: widget.onPause,
-                          onResume: widget.onResume,
-                          onComplete: widget.onComplete,
-                          onSkip: widget.onSkip,
-                          onAbandon: widget.onAbandon,
-                        ),
-                      ],
-                      // Subtasks
-                      if (b.subtasks.isNotEmpty) ...[
-                        const SizedBox(height: 11),
-                        ...List.generate(b.subtasks.length, (i) {
-                          final done = widget.checked.contains(i);
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 7),
-                            child: GestureDetector(
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                widget.onToggle(i);
-                              },
-                              child: Row(children: [
-                                _MiniCheckbox(
-                                    value: done, color: b.accentColor),
-                                const SizedBox(width: 9),
-                                Expanded(
-                                  child: AnimatedDefaultTextStyle(
-                                    duration: const Duration(milliseconds: 200),
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w500,
-                                      color: done ? kSub : kInk,
-                                      decoration: done
-                                          ? TextDecoration.lineThrough
-                                          : TextDecoration.none,
-                                      decorationColor: kSub,
-                                    ),
-                                    child: Text(b.subtasks[i]),
-                                  ),
+                    ),
+                    SizedBox(width: contentGap),
+                    // Text content
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Category chip (when not "all")
+                          if (showCategory) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: b.accentColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                filterMetaData[b.type]?.label.toUpperCase() ??
+                                    '',
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: b.accentColor,
+                                  letterSpacing: 0.7,
                                 ),
-                              ]),
+                              ),
                             ),
-                          );
-                        }),
-                      ],
-                    ],
-                  ),
+                            const SizedBox(height: 5),
+                          ],
+                          Text(
+                            b.title,
+                            style: TextStyle(
+                              fontSize: titleSize,
+                              fontWeight: FontWeight.w800,
+                              color: kInk,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _to12h(b.time) == b.subtitle
+                                ? b.subtitle
+                                : b.subtitle,
+                            style: TextStyle(
+                              fontSize: subtitleSize,
+                              color: kSub,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (b.hasAlarm &&
+                              b.taskId != null &&
+                              (b.taskState ?? TaskState.scheduled) ==
+                                  TaskState.scheduled) ...[
+                            const SizedBox(height: 7),
+                            _AlarmChip(color: b.accentColor),
+                          ],
+                          // ── Task action row ──────────────────────────────
+                          if (b.taskId != null) ...[
+                            SizedBox(height: actionGap),
+                            _TaskActionRow(
+                              block: b,
+                              onStart: widget.onStart,
+                              onPause: widget.onPause,
+                              onResume: widget.onResume,
+                              onComplete: widget.onComplete,
+                              onSkip: widget.onSkip,
+                              onAbandon: widget.onAbandon,
+                            ),
+                          ],
+                          // Subtasks
+                          if (b.subtasks.isNotEmpty) ...[
+                            const SizedBox(height: 11),
+                            ...List.generate(b.subtasks.length, (i) {
+                              final done = widget.checked.contains(i);
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 7),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    widget.onToggle(i);
+                                  },
+                                  child: Row(children: [
+                                    _MiniCheckbox(
+                                        value: done, color: b.accentColor),
+                                    const SizedBox(width: 9),
+                                    Expanded(
+                                      child: AnimatedDefaultTextStyle(
+                                        duration:
+                                            const Duration(milliseconds: 200),
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w500,
+                                          color: done ? kSub : kInk,
+                                          decoration: done
+                                              ? TextDecoration.lineThrough
+                                              : TextDecoration.none,
+                                          decorationColor: kSub,
+                                        ),
+                                        child: Text(b.subtasks[i]),
+                                      ),
+                                    ),
+                                  ]),
+                                ),
+                              );
+                            }),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),

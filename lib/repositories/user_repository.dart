@@ -7,6 +7,7 @@ import '../models/scheduled_notification_model.dart';
 import '../models/task_model.dart';
 import '../models/user_model.dart';
 import '../models/fixed_schedule_validation.dart';
+import '../core/constants/onboarding_constants.dart';
 
 const int _maxOnboardingGoodHabits = 24;
 const int _maxOnboardingBadHabits = 24;
@@ -362,7 +363,7 @@ class UserRepository {
     final completedAt = DateTime.now().toIso8601String();
     final rootOnboarding = _buildRootOnboardingPayload(
       onboardingMap,
-      step: 10,
+      step: kOnboardingFinalPage,
       hasCompletedOnboarding: true,
       updatedAt: completedAt,
       completedAt: completedAt,
@@ -372,7 +373,7 @@ class UserRepository {
     await _service.saveUserProfile({
       'onboarding': rootOnboarding,
       'hasCompletedOnboarding': true,
-      'onboardingStep': 10, // The final step
+      'onboardingStep': kOnboardingFinalPage, // The final step
       if (timezone != null) 'timezone': timezone,
       'updatedAt': completedAt,
     }, merge: true, batch: b);
@@ -382,7 +383,7 @@ class UserRepository {
       'state',
       _buildOnboardingStateDoc(
         onboardingMap,
-        step: 10,
+        step: kOnboardingFinalPage,
         hasCompletedOnboarding: true,
         updatedAt: completedAt,
         completedAt: completedAt,
@@ -395,7 +396,7 @@ class UserRepository {
       'main',
       _buildProfileMainDoc(
         onboardingMap,
-        step: 10,
+        step: kOnboardingFinalPage,
         hasCompletedOnboarding: true,
         updatedAt: completedAt,
         completedAt: completedAt,
@@ -408,7 +409,7 @@ class UserRepository {
       'main',
       _buildIdentityProfileStub(
         onboardingMap,
-        step: 10,
+        step: kOnboardingFinalPage,
         hasCompletedOnboarding: true,
         updatedAt: completedAt,
         completedAt: completedAt,
@@ -446,6 +447,13 @@ class UserRepository {
         List<String>.from(onboardingMap['badHabits'] as List? ?? const []);
     final rawGoals =
         List<String>.from(onboardingMap['goals'] as List? ?? const []);
+    final rawCategories =
+        List<String>.from(onboardingMap['selectedCategories'] as List? ?? const []);
+
+    if (rawCategories.isEmpty || rawGoodHabits.isEmpty || rawGoals.isEmpty) {
+      throw StateError('Invalid onboarding data: required fields are missing.');
+    }
+
     final fixedSchedule = _effectiveFixedSchedule(
       _sanitizeFixedSchedule(onboardingMap['fixedSchedule']),
       completedAt,
@@ -462,11 +470,8 @@ class UserRepository {
       rawGoals,
       limit: _maxOnboardingGoals,
     );
-    final habitNames =
-        goodHabits.isNotEmpty ? goodHabits : const ['Review daily plan'];
-    final goalTitles = goals.isNotEmpty
-        ? goals
-        : const ['Complete today with one finished block'];
+    final habitNames = goodHabits;
+    final goalTitles = goals;
     final createdTasks = <TaskModel>[];
     final scheduledNotifications = <ScheduledNotification>[];
 
@@ -567,10 +572,21 @@ class UserRepository {
     );
     for (final task in todayTasks) {
       if (await _service.getUserSubdocument('tasks', task.id) != null) continue;
+      // Write the task with materialization metadata so the dedup repair
+      // helper and UI dedup can identify it by routineTemplateId / scheduledDate.
       await _service.saveUserSubdocument(
         'tasks',
         task.id,
-        task.toFirestore(),
+        {
+          ...task.toFirestore(),
+          'sourceRoutineType': 'fixed_schedule',
+          'routineTemplateId': task.parentRoutine ?? '',
+          'scheduledDate': _dateKey(
+            DateTime(completedAt.year, completedAt.month, completedAt.day),
+          ),
+          'repeatRule': 'daily',
+          'materializedFromTemplateAt': FieldValue.serverTimestamp(),
+        },
         batch: batch,
       );
       createdTasks.add(task);
@@ -652,15 +668,22 @@ class UserRepository {
   ) {
     final templates = <Map<String, dynamic>>[];
     final seenTemplateIds = <String>{};
+    // Fix B: secondary dedup by normalized (title, startTime, endTime) so
+    // two items with different IDs but identical content collapse into one.
+    final seenContentKeys = <String>{};
 
     for (final item in fixedSchedule) {
       final title = _cleanLabel(item['title']?.toString() ?? '');
       if (title.isEmpty) continue;
 
       final templateId = _cleanLabel(item['templateId']?.toString() ?? title);
-      if (seenTemplateIds.add(templateId)) {
-        templates.add(item);
-      }
+      final startTime = item['startTime']?.toString().trim() ?? '';
+      final endTime = item['endTime']?.toString().trim() ?? '';
+      final contentKey = '${_slug(title)}_${startTime}_$endTime';
+
+      if (!seenTemplateIds.add(templateId)) continue;
+      if (!seenContentKeys.add(contentKey)) continue;
+      templates.add(item);
 
       if (templates.length >= _maxOnboardingRoutineTemplates) break;
     }
@@ -674,6 +697,9 @@ class UserRepository {
   }) {
     final merged = <Map<String, dynamic>>[];
     final seenTemplateIds = <String>{};
+    // Fix B: secondary dedup by normalized content key to prevent duplicates
+    // when the same schedule item appears with different templateId values.
+    final seenContentKeys = <String>{};
 
     for (var i = 0; i < existingFixedSchedule.length; i++) {
       final normalized = normalizeFixedScheduleTemplateMap(
@@ -684,6 +710,10 @@ class UserRepository {
       final templateId =
           _cleanLabel(normalized['templateId']?.toString() ?? '');
       if (templateId.isEmpty || !seenTemplateIds.add(templateId)) continue;
+      final title = _cleanLabel(normalized['title']?.toString() ?? '');
+      final contentKey =
+          '${_slug(title)}_${normalized['startTime']?.toString().trim() ?? ''}_${normalized['endTime']?.toString().trim() ?? ''}';
+      if (!seenContentKeys.add(contentKey)) continue;
       merged.add(normalized);
     }
 
@@ -696,7 +726,12 @@ class UserRepository {
       final templateId =
           _cleanLabel(normalized['templateId']?.toString() ?? '');
       if (templateId.isEmpty || seenTemplateIds.contains(templateId)) continue;
+      final title = _cleanLabel(normalized['title']?.toString() ?? '');
+      final contentKey =
+          '${_slug(title)}_${normalized['startTime']?.toString().trim() ?? ''}_${normalized['endTime']?.toString().trim() ?? ''}';
+      if (seenContentKeys.contains(contentKey)) continue;
       seenTemplateIds.add(templateId);
+      seenContentKeys.add(contentKey);
       merged.add(normalized);
       if (merged.length >= _maxOnboardingRoutineTemplates) break;
     }
@@ -712,50 +747,7 @@ class UserRepository {
         .where(
             (item) => _cleanLabel(item['title']?.toString() ?? '').isNotEmpty)
         .toList();
-    if (nonBlank.isNotEmpty) return nonBlank;
-
-    final now = completedAt.toIso8601String();
-    return [
-      {
-        'templateId': 'starter_morning_focus',
-        'title': 'Morning Focus',
-        'routineType': 'fixed_schedule',
-        'startTime': '09:00',
-        'endTime': '09:30',
-        'repeatRule': 'daily',
-        'category': 'Focus',
-        'notes': 'Start with one clear priority.',
-        'isActive': true,
-        'createdAt': now,
-        'updatedAt': now,
-      },
-      {
-        'templateId': 'starter_habit_check',
-        'title': 'Habit Check-in',
-        'routineType': 'fixed_schedule',
-        'startTime': '13:00',
-        'endTime': '13:15',
-        'repeatRule': 'daily',
-        'category': 'Habits',
-        'notes': 'Log one habit and reset the day.',
-        'isActive': true,
-        'createdAt': now,
-        'updatedAt': now,
-      },
-      {
-        'templateId': 'starter_evening_review',
-        'title': 'Evening Review',
-        'routineType': 'fixed_schedule',
-        'startTime': '20:30',
-        'endTime': '20:45',
-        'repeatRule': 'daily',
-        'category': 'Review',
-        'notes': 'Close the day and pick tomorrow\'s first block.',
-        'isActive': true,
-        'createdAt': now,
-        'updatedAt': now,
-      },
-    ];
+    return nonBlank;
   }
 
   List<TaskModel> _buildTodayTasksFromTemplates(
@@ -778,8 +770,19 @@ class UserRepository {
       if (!plannedEnd.isAfter(plannedStart)) {
         plannedEnd = plannedEnd.add(const Duration(days: 1));
       }
+      // Fix A: use the same deterministic ID format as RoutineNotifier so
+      // subsequent materializeForWindow() calls target the same document and
+      // are truly idempotent instead of creating a second task with a
+      // different ID prefix.
       return TaskModel(
-        id: 'onboarding_${dateKey}_${_slug(templateId)}',
+        id: buildRoutineInstanceKey(
+          scheduledDate: dateKey,
+          sourceRoutineType: 'fixed_schedule',
+          templateId: templateId,
+          title: title.isNotEmpty ? title : 'Routine block',
+          plannedStart: plannedStart,
+          plannedEnd: plannedEnd,
+        ),
         type: TaskType.fixed,
         parentRoutine: templateId,
         title: title.isNotEmpty ? title : 'Routine block',

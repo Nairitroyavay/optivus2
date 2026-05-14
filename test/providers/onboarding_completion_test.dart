@@ -6,6 +6,8 @@ import 'package:optivus2/services/event_service.dart';
 import 'package:optivus2/repositories/user_repository.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/core/constants/event_names.dart';
+import 'package:optivus2/core/constants/onboarding_constants.dart';
+import 'package:optivus2/models/user_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -56,6 +58,21 @@ void main() {
       onboardingNotifier.updateGoodHabits(['Drink Water']);
       onboardingNotifier.updateBadHabits(['Scroll Social Media']);
       onboardingNotifier.updateGoals(['Get fit']);
+      onboardingNotifier.updateCoachStyle('Supportive');
+      onboardingNotifier.updateCoachName('AI Coach');
+      onboardingNotifier.updateAccountability('Strict');
+      onboardingNotifier.updateAboutYou(const AboutYouProfile(
+        bodyBasics: BodyBasics(ageRange: '20-30', wakeTime: '07:00', sleepTime: '23:00'),
+        sensitiveContext: SensitiveContext(medicalDisclaimerAcknowledged: true),
+      ));
+      onboardingNotifier.updateFixedSchedule([
+        {
+          'templateId': 'block_1',
+          'title': 'Morning Block',
+          'startTime': '09:00',
+          'endTime': '10:00',
+        }
+      ]);
 
       // Perform completion
       final success = await onboardingNotifier.completeOnboarding();
@@ -64,7 +81,7 @@ void main() {
       // Verify root user doc
       final rootDoc = await fakeFirestore.collection('users').doc(uid).get();
       expect(rootDoc.data()!['hasCompletedOnboarding'], isTrue);
-      expect(rootDoc.data()!['onboardingStep'], 10);
+      expect(rootDoc.data()!['onboardingStep'], kOnboardingFinalPage);
 
       // Verify onboarding state doc
       final stateDoc = await fakeFirestore
@@ -158,6 +175,27 @@ void main() {
       expect(eventsSnapAfter.docs.length, eventsSnap.docs.length);
     });
 
+    test('completeOnboarding fails and creates no tasks when required fields are missing', () async {
+      final uid = mockAuth.currentUser!.uid;
+
+      // Update with invalid state (empty)
+      onboardingNotifier.updateCategories([]);
+      onboardingNotifier.updateGoodHabits([]);
+      onboardingNotifier.updateBadHabits([]);
+      onboardingNotifier.updateGoals([]);
+      onboardingNotifier.updateFixedSchedule([]);
+
+      final success = await onboardingNotifier.completeOnboarding();
+      expect(success, isFalse);
+
+      final tasksSnap = await fakeFirestore
+          .collection('users')
+          .doc(uid)
+          .collection('tasks')
+          .get();
+      expect(tasksSnap.docs.isEmpty, isTrue);
+    });
+
     test(
         'completeOnboarding caps materialized writes below Firestore batch limit',
         () async {
@@ -183,6 +221,14 @@ void main() {
           },
         ),
       );
+      onboardingNotifier.updateCategories(['Fitness']);
+      onboardingNotifier.updateCoachStyle('Supportive');
+      onboardingNotifier.updateCoachName('AI Coach');
+      onboardingNotifier.updateAccountability('Strict');
+      onboardingNotifier.updateAboutYou(const AboutYouProfile(
+        bodyBasics: BodyBasics(ageRange: '20-30', wakeTime: '07:00', sleepTime: '23:00'),
+        sensitiveContext: SensitiveContext(medicalDisclaimerAcknowledged: true),
+      ));
 
       final success = await onboardingNotifier.completeOnboarding();
       expect(success, isTrue);
@@ -264,6 +310,18 @@ void main() {
           'endTime': '10:00',
         },
       ]);
+
+      onboardingNotifier.updateCategories(['Fitness']);
+      onboardingNotifier.updateGoodHabits(['Good Habit']);
+      onboardingNotifier.updateBadHabits(['Bad Habit']);
+      onboardingNotifier.updateGoals(['Goal 1']);
+      onboardingNotifier.updateCoachStyle('Supportive');
+      onboardingNotifier.updateCoachName('AI Coach');
+      onboardingNotifier.updateAccountability('Strict');
+      onboardingNotifier.updateAboutYou(const AboutYouProfile(
+        bodyBasics: BodyBasics(ageRange: '20-30', wakeTime: '07:00', sleepTime: '23:00'),
+        sensitiveContext: SensitiveContext(medicalDisclaimerAcknowledged: true),
+      ));
 
       final success = await onboardingNotifier.completeOnboarding();
       expect(success, isTrue);

@@ -29,7 +29,7 @@ void main() async {
   // through during the Firebase / plugin bootstrap sequence.
   GlobalErrorHandler.initialize();
 
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
 
   RemoteConfigService? remoteConfigService;
   var appRemoteConfig = AppRemoteConfig.defaults();

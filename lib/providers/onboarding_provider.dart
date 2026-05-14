@@ -9,6 +9,7 @@ import 'package:optivus2/core/providers.dart';
 import 'package:optivus2/models/fixed_schedule_validation.dart';
 import 'package:optivus2/models/user_model.dart';
 import 'package:optivus2/services/event_service.dart';
+import 'package:optivus2/core/constants/onboarding_constants.dart';
 
 List<Map<String, dynamic>> _normalizeFixedSchedule(Object? raw) {
   final items = raw is List ? raw : const [];
@@ -47,6 +48,8 @@ class OnboardingState {
   final String? completedAt;
   final bool isHydrated;
   final bool isLoading;
+  final bool hasSelectedCoachStyle;
+  final bool hasSelectedAccountabilityType;
 
   OnboardingState({
     this.selectedCategories = const [],
@@ -62,6 +65,8 @@ class OnboardingState {
     this.completedAt,
     this.isHydrated = false,
     this.isLoading = true,
+    this.hasSelectedCoachStyle = false,
+    this.hasSelectedAccountabilityType = false,
   });
 
   /// Convenience read of profile/main.sensitiveContext.eatingDisorderFlag.
@@ -84,6 +89,8 @@ class OnboardingState {
     bool clearCompletedAt = false,
     bool? isHydrated,
     bool? isLoading,
+    bool? hasSelectedCoachStyle,
+    bool? hasSelectedAccountabilityType,
   }) {
     return OnboardingState(
       selectedCategories: selectedCategories ?? this.selectedCategories,
@@ -99,7 +106,51 @@ class OnboardingState {
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
       isHydrated: isHydrated ?? this.isHydrated,
       isLoading: isLoading ?? this.isLoading,
+      hasSelectedCoachStyle: hasSelectedCoachStyle ?? this.hasSelectedCoachStyle,
+      hasSelectedAccountabilityType: hasSelectedAccountabilityType ?? this.hasSelectedAccountabilityType,
     );
+  }
+
+  String? validationErrorForPage(int pageIndex) {
+    if (pageIndex == 0) return null;
+    if (pageIndex == 1) return null;
+    if (pageIndex == 2 && selectedCategories.isEmpty) return 'Choose at least one focus area before continuing.';
+    if (pageIndex == 3 && badHabits.isEmpty) return 'Choose at least one bad habit to work on.';
+    if (pageIndex == 4 && goodHabits.isEmpty) return 'Choose at least one good habit to build.';
+    if (pageIndex == 5 && goals.isEmpty) return 'Choose at least one goal.';
+    if (pageIndex == 6) {
+      if ((aboutYou.bodyBasics.ageRange ?? '').isEmpty ||
+          (aboutYou.bodyBasics.wakeTime ?? '').isEmpty ||
+          (aboutYou.bodyBasics.sleepTime ?? '').isEmpty ||
+          (aboutYou.sensitiveContext.medicalDisclaimerAcknowledged != true)) {
+        return 'Complete the required About You fields and accept the disclaimer.';
+      }
+      final error = aboutYou.validate();
+      if (error != null) return error;
+    }
+    if (pageIndex == 7 && !hasSelectedCoachStyle) return 'Choose your coach style.';
+    if (pageIndex == 8 && coachName.trim().isEmpty) return 'Name your coach before continuing.';
+    if (pageIndex == 9 && !hasSelectedAccountabilityType) return 'Choose your accountability level.';
+    if (pageIndex == 10) {
+      if (fixedSchedule.isEmpty) return 'Add at least one fixed schedule block.';
+      bool hasValid = false;
+      for (final item in fixedSchedule) {
+        if ((item['title'] as String?)?.trim().isNotEmpty == true &&
+            (item['startTime'] as String?)?.trim().isNotEmpty == true &&
+            (item['endTime'] as String?)?.trim().isNotEmpty == true) {
+          hasValid = true;
+          break;
+        }
+      }
+      if (!hasValid) return 'Add at least one fixed schedule block with a title and valid times.';
+    }
+    if (pageIndex == 11) {
+      for (int i = 2; i <= 10; i++) {
+        final error = validationErrorForPage(i);
+        if (error != null) return error;
+      }
+    }
+    return null;
   }
 
   factory OnboardingState.fromMap(
@@ -127,6 +178,8 @@ class OnboardingState {
       completedAt: map['completedAt'] as String?,
       isHydrated: isHydrated,
       isLoading: isLoading,
+      hasSelectedCoachStyle: map['hasSelectedCoachStyle'] as bool? ?? false,
+      hasSelectedAccountabilityType: map['hasSelectedAccountabilityType'] as bool? ?? false,
     );
   }
 
@@ -143,6 +196,8 @@ class OnboardingState {
       'aboutYou': aboutYou.toMap(),
       'onboardingStep': currentStep,
       'completedAt': completedAt,
+      'hasSelectedCoachStyle': hasSelectedCoachStyle,
+      'hasSelectedAccountabilityType': hasSelectedAccountabilityType,
     };
   }
 }
@@ -185,10 +240,10 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       state = state.copyWith(goodHabits: habits);
   void updateGoals(List<String> goals) => state = state.copyWith(goals: goals);
   void updateCoachStyle(String style) =>
-      state = state.copyWith(coachStyle: style);
+      state = state.copyWith(coachStyle: style, hasSelectedCoachStyle: true);
   void updateCoachName(String name) => state = state.copyWith(coachName: name);
   void updateAccountability(String type) =>
-      state = state.copyWith(accountabilityType: type);
+      state = state.copyWith(accountabilityType: type, hasSelectedAccountabilityType: true);
   void updateFixedSchedule(List<Map<String, dynamic>> items) =>
       state = state.copyWith(fixedSchedule: _normalizeFixedSchedule(items));
   void updateCurrentStep(int step) => state = state.copyWith(currentStep: step);
@@ -276,14 +331,14 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
     }
 
     try {
-      final validationError = state.aboutYou.validate();
+      final validationError = state.validationErrorForPage(kOnboardingFinalPage);
       if (validationError != null) {
-        debugPrint('Invalid onboarding About You data: $validationError');
+        debugPrint('Invalid onboarding data: $validationError');
         return false;
       }
       final completedAt = DateTime.now().toIso8601String();
       state = state.copyWith(
-        currentStep: 10,
+        currentStep: kOnboardingFinalPage,
         completedAt: completedAt,
       );
       final batch = _firestore.batch();
@@ -311,7 +366,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
       source: 'onboarding',
       payload: {
         'hasCompletedOnboarding': true,
-        'onboardingStep': 10,
+        'onboardingStep': kOnboardingFinalPage,
         'completedAt': state.completedAt,
         'selectedCategories': state.selectedCategories,
         'badHabits': state.badHabits,

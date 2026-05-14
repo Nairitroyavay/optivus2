@@ -255,6 +255,40 @@ class AppFeatureFlags {
     );
   }
 
+  AppFeatureFlags copyWith({
+    bool? coachEnabled,
+    bool? aiFeaturesEnabled,
+    bool? aiCoachMessagesReady,
+    bool? aiRoutineSuggestionsReady,
+    bool? aiIdentitySummariesReady,
+    bool? fitnessAiFeedbackReady,
+    bool? routineImportWorkerReady,
+    bool? r2UploadsReady,
+    bool? profileImageUploadReady,
+    bool? imageRoutineImportReady,
+    bool? classTimetableImageImportReady,
+    bool? hostelMessImageImportReady,
+    bool? skinProductImageImportReady,
+    bool? mapboxMapsReady,
+  }) {
+    return AppFeatureFlags(
+      coachEnabled: coachEnabled ?? this.coachEnabled,
+      aiFeaturesEnabled: aiFeaturesEnabled ?? this.aiFeaturesEnabled,
+      aiCoachMessagesReady: aiCoachMessagesReady ?? this.aiCoachMessagesReady,
+      aiRoutineSuggestionsReady: aiRoutineSuggestionsReady ?? this.aiRoutineSuggestionsReady,
+      aiIdentitySummariesReady: aiIdentitySummariesReady ?? this.aiIdentitySummariesReady,
+      fitnessAiFeedbackReady: fitnessAiFeedbackReady ?? this.fitnessAiFeedbackReady,
+      routineImportWorkerReady: routineImportWorkerReady ?? this.routineImportWorkerReady,
+      r2UploadsReady: r2UploadsReady ?? this.r2UploadsReady,
+      profileImageUploadReady: profileImageUploadReady ?? this.profileImageUploadReady,
+      imageRoutineImportReady: imageRoutineImportReady ?? this.imageRoutineImportReady,
+      classTimetableImageImportReady: classTimetableImageImportReady ?? this.classTimetableImageImportReady,
+      hostelMessImageImportReady: hostelMessImageImportReady ?? this.hostelMessImageImportReady,
+      skinProductImageImportReady: skinProductImageImportReady ?? this.skinProductImageImportReady,
+      mapboxMapsReady: mapboxMapsReady ?? this.mapboxMapsReady,
+    );
+  }
+
   static AppFeatureFlags defaults() => AppFeatureFlags.fromConfig(
         build: AppBuildConfig.current,
         remote: AppRemoteConfig.defaults(),

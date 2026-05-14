@@ -26,7 +26,6 @@ test("returns authenticated preview-only coach reply", async () => {
   const response = await callWorker({
     uid: "coach_success_uid",
     body: {
-      userId: "coach_success_uid",
       threadId: "main",
       mode: "chat",
       text: "I missed my morning plan"
@@ -54,7 +53,7 @@ test("requires Firebase Authorization before Gemini call", async () => {
     new Request("https://coach-reply.test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: "coach_no_auth_uid", text: "hello" })
+      body: JSON.stringify({ text: "hello" })
     }),
     env()
   );
@@ -76,7 +75,7 @@ test("rejects invalid Firebase token before Gemini call", async () => {
         "Authorization": "Bearer invalid-token",
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ userId: "coach_invalid_uid", text: "hello" })
+      body: JSON.stringify({ text: "hello" })
     }),
     env()
   );
@@ -87,8 +86,8 @@ test("rejects invalid Firebase token before Gemini call", async () => {
   assert.equal(state.geminiCalls, 0);
 });
 
-test("rejects mismatched userId", async () => {
-  const state = mockFetchState("No call");
+test("ignores body userId and derives identity from Firebase token", async () => {
+  const state = mockFetchState("Token identity wins.");
   globalThis.fetch = createMockFetch(state);
 
   const response = await callWorker({
@@ -100,9 +99,11 @@ test("rejects mismatched userId", async () => {
   });
   const body = await response.json();
 
-  assert.equal(response.status, 403, JSON.stringify(body));
-  assertErrorShape(body, "AUTH_USER_MISMATCH", "userId does not match Firebase token", 403);
-  assert.equal(state.geminiCalls, 0);
+  assert.equal(response.status, 200, JSON.stringify(body));
+  assert.equal(body.ok, true);
+  assert.equal(body.reply, "Token identity wins.");
+  assert.equal(body.userId, "coach_token_uid");
+  assert.equal(state.geminiCalls, 1);
 });
 
 test("rate-limits before Gemini call", async () => {
@@ -111,7 +112,7 @@ test("rate-limits before Gemini call", async () => {
   const options = {
     uid: "coach_rate_uid",
     env: env({ COACH_REPLY_RATE_LIMIT_PER_MINUTE: "1", RATE_LIMIT_WINDOW_MS: "60000" }),
-    body: { userId: "coach_rate_uid", text: "hello" }
+    body: { text: "hello" }
   };
 
   const first = await callWorker(options);
@@ -132,7 +133,6 @@ test("routes crisis safety branch without Gemini call", async () => {
   const response = await callWorker({
     uid: "coach_crisis_uid",
     body: {
-      userId: "coach_crisis_uid",
       text: "I might kill myself"
     }
   });
@@ -154,7 +154,6 @@ test("labels recovery safety branch while still using Gemini", async () => {
   const response = await callWorker({
     uid: "coach_recovery_uid",
     body: {
-      userId: "coach_recovery_uid",
       text: "I had a smoking relapse"
     }
   });

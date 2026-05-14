@@ -456,7 +456,7 @@ void main() {
 
       final date = DateTime(2025, 6, 10);
       await h.notifier.materializeForDate(date);
-      const taskId = 'routine_2025-06-10_eating_lunch';
+      const taskId = 'routine_2025-06-10_eating_lunch_1300_1330';
       await h._tasks.doc(taskId).update({
         'state': FieldValue.delete(),
         'status': 'completed',
@@ -562,7 +562,7 @@ void main() {
 
       final date = DateTime(2025, 6, 10);
       await h.notifier.materializeForDate(date);
-      const taskId = 'routine_2025-06-10_supplements_vitamin_d';
+      const taskId = 'routine_2025-06-10_supplements_vitamin_d_0800_0805';
       await h._tasks.doc(taskId).update({
         'title': 'My edited vitamin',
         'emoji': '*',
@@ -656,7 +656,7 @@ void main() {
         () async {
       final h = await _Harness.create();
       final date = DateTime(2025, 6, 10);
-      const taskId = 'routine_2025-06-10_supplements_vitamin_d';
+      const taskId = 'routine_2025-06-10_supplements_vitamin_d_0800_0805';
       await h._tasks.doc(taskId).set({
         'taskId': taskId,
         'type': 'custom',
@@ -788,8 +788,8 @@ void main() {
       final date = DateTime(2025, 8, 15);
       await h.notifier.materializeForDate(date);
 
-      // The ID format: routine_YYYY-MM-DD_fixed_schedule_<templateId>
-      const expectedId = 'routine_2025-08-15_fixed_schedule_gym';
+      // The ID format: routine_YYYY-MM-DD_fixed_schedule_<templateId>_<HHmm>_<HHmm>
+      const expectedId = 'routine_2025-08-15_fixed_schedule_gym_0900_1000';
       final task = await h.taskById(expectedId);
       expect(task, isNotNull,
           reason: 'Task should exist under the deterministic ID $expectedId');
@@ -804,8 +804,8 @@ void main() {
       await h.notifier.materializeForDate(DateTime(2025, 8, 15));
       await h.notifier.materializeForDate(DateTime(2025, 8, 16));
 
-      const id1 = 'routine_2025-08-15_fixed_schedule_gym';
-      const id2 = 'routine_2025-08-16_fixed_schedule_gym';
+      const id1 = 'routine_2025-08-15_fixed_schedule_gym_0900_1000';
+      const id2 = 'routine_2025-08-16_fixed_schedule_gym_0900_1000';
 
       expect(await h.taskById(id1), isNotNull);
       expect(await h.taskById(id2), isNotNull);
@@ -847,6 +847,187 @@ void main() {
       final day15 = DateTime(2025, 6, 15);
       expect(await h.tasksForDate(day15), isEmpty,
           reason: 'No task should exist for day 15 (${_dateKey(day15)})');
+      h.dispose();
+    });
+  });
+
+  // ── 7. Fix A — Onboarding task ID alignment ───────────────────────────────────
+  //
+  // Verifies that materializeForDate() produces the canonical
+  //   routine_{date}_fixed_schedule_{slug(templateId)}
+  // ID format so onboarding writes and future materializations are idempotent.
+
+  group('Fix A — onboarding task ID aligns with routine materializer', () {
+    test('ID format is routine_YYYY-MM-DD_fixed_schedule_slug', () async {
+      final h = await _Harness.create();
+      h.notifier.setFixedScheduleTemplates([_tpl(id: 'sleep')]);
+      final date = DateTime(2025, 9, 1);
+      await h.notifier.materializeForDate(date);
+      const expectedId = 'routine_2025-09-01_fixed_schedule_sleep_0900_1000';
+      final task = await h.taskById(expectedId);
+      expect(task, isNotNull,
+          reason: 'Task must use the canonical routine_ prefix');
+      h.dispose();
+    });
+
+    test('calling materializeForDate three times produces exactly 1 task',
+        () async {
+      final h = await _Harness.create();
+      h.notifier.setFixedScheduleTemplates([_tpl(id: 'sleep')]);
+      final date = DateTime(2025, 9, 1);
+      for (int i = 0; i < 3; i++) {
+        await h.notifier.materializeForDate(date);
+      }
+      expect(await h.tasksForDate(date), hasLength(1),
+          reason: 'Three calls must produce exactly 1 task');
+      h.dispose();
+    });
+  });
+
+  // ── 8. Five-call idempotency ──────────────────────────────────────────────────
+
+  group('materializeForDate — 5x call idempotency', () {
+    test('five calls for same template + date produce exactly one task',
+        () async {
+      final h = await _Harness.create();
+      h.notifier.setFixedScheduleTemplates([_tpl(id: 'work', title: 'Work')]);
+      final date = DateTime(2025, 7, 1);
+      for (int i = 0; i < 5; i++) {
+        await h.notifier.materializeForDate(date);
+      }
+      expect(await h.tasksForDate(date), hasLength(1),
+          reason: '5 materializeForDate calls must produce exactly 1 task');
+      h.dispose();
+    });
+
+    test('five calls emit task_scheduled only once', () async {
+      final h = await _Harness.create();
+      h.notifier.setFixedScheduleTemplates([_tpl(id: 'work', title: 'Work')]);
+      final date = DateTime(2025, 7, 1);
+      for (int i = 0; i < 5; i++) {
+        await h.notifier.materializeForDate(date);
+      }
+      final eventsSnap = await h.fakeFirestore
+          .collection('users')
+          .doc(_Harness._uid)
+          .collection('events')
+          .where('eventName', isEqualTo: 'task_scheduled')
+          .get();
+      expect(eventsSnap.docs.length, equals(1),
+          reason: 'task_scheduled must be emitted only once');
+      h.dispose();
+    });
+  });
+
+  // ── 9. Two different templates at same time remain separate ──────────────────
+
+  group('materializeForDate — two distinct templates stay separate', () {
+    test('two templates at same slot but different IDs produce two tasks',
+        () async {
+      final h = await _Harness.create();
+      h.notifier.setFixedScheduleTemplates([
+        _tpl(id: 'sleep', title: 'Sleep', start: '22:00', end: '23:00'),
+        _tpl(id: 'read', title: 'Read', start: '22:00', end: '23:00'),
+      ]);
+      final date = DateTime(2025, 10, 5);
+      await h.notifier.materializeForDate(date);
+      await h.notifier.materializeForDate(date);
+      final tasks = await h.tasksForDate(date);
+      expect(tasks, hasLength(2),
+          reason: 'Two distinct templateIds at same slot must yield 2 tasks');
+      final ids = tasks.map((t) => t['__id'] as String).toSet();
+      expect(ids.length, equals(2));
+      h.dispose();
+    });
+  });
+
+  // ── 10. repairDuplicateRoutineTasksForDate ────────────────────────────────────
+
+  group('repairDuplicateRoutineTasksForDate', () {
+    test('removes scheduled duplicate while keeping canonical task', () async {
+      final h = await _Harness.create();
+      final date = DateTime(2025, 11, 1);
+      final dk = _dateKey(date);
+      final canonicalId = 'routine_${dk}_fixed_schedule_sleep';
+      final duplicateId = 'onboarding_${dk}_sleep';
+      final base = <String, dynamic>{
+        'type': 'fixed',
+        'title': 'Sleep',
+        'parentRoutine': 'sleep',
+        'plannedStart': Timestamp.fromDate(DateTime(2025, 11, 1, 22, 0)),
+        'plannedEnd': Timestamp.fromDate(DateTime(2025, 11, 1, 23, 0)),
+        'state': 'scheduled',
+        'status': 'scheduled',
+        'createdAt': Timestamp.fromDate(DateTime(2025, 11, 1, 0, 0)),
+        'updatedAt': Timestamp.fromDate(DateTime(2025, 11, 1, 0, 0)),
+        'schemaVersion': 1,
+      };
+      await h._tasks.doc(canonicalId).set(base);
+      await h._tasks.doc(duplicateId).set({
+        ...base,
+        'createdAt': Timestamp.fromDate(DateTime(2025, 11, 1, 1, 0)),
+      });
+      expect(await h.tasksForDate(date), hasLength(2));
+
+      final deleted = await h.notifier.repairDuplicateRoutineTasksForDate(date);
+      expect(deleted, equals(1));
+
+      final after = await h.tasksForDate(date);
+      expect(after, hasLength(1));
+      expect(after.first['__id'], equals(canonicalId),
+          reason: 'Older (canonical) task must survive');
+      h.dispose();
+    });
+
+    test('completed duplicate is preserved — only scheduled extras removed',
+        () async {
+      final h = await _Harness.create();
+      final date = DateTime(2025, 11, 2);
+      final dk = _dateKey(date);
+      final completedId = 'onboarding_${dk}_sleep';
+      final scheduledId = 'routine_${dk}_fixed_schedule_sleep';
+      final now = Timestamp.fromDate(DateTime(2025, 11, 2));
+      await h._tasks.doc(completedId).set({
+        'type': 'fixed',
+        'title': 'Sleep',
+        'parentRoutine': 'sleep',
+        'plannedStart': Timestamp.fromDate(DateTime(2025, 11, 2, 22, 0)),
+        'plannedEnd': Timestamp.fromDate(DateTime(2025, 11, 2, 23, 0)),
+        'state': 'completed',
+        'status': 'completed',
+        'createdAt': now,
+        'updatedAt': now,
+        'schemaVersion': 1,
+      });
+      await h._tasks.doc(scheduledId).set({
+        'type': 'fixed',
+        'title': 'Sleep',
+        'parentRoutine': 'sleep',
+        'plannedStart': Timestamp.fromDate(DateTime(2025, 11, 2, 22, 0)),
+        'plannedEnd': Timestamp.fromDate(DateTime(2025, 11, 2, 23, 0)),
+        'state': 'scheduled',
+        'status': 'scheduled',
+        'createdAt': now,
+        'updatedAt': now,
+        'schemaVersion': 1,
+      });
+      final deleted = await h.notifier.repairDuplicateRoutineTasksForDate(date);
+      expect(deleted, equals(1),
+          reason: 'Scheduled dup removed; completed preserved');
+      final after = await h.tasksForDate(date);
+      expect(after, hasLength(1));
+      expect(after.first['state'], equals('completed'));
+      h.dispose();
+    });
+
+    test('returns 0 and is a no-op when no duplicates exist', () async {
+      final h = await _Harness.create();
+      h.notifier.setFixedScheduleTemplates([_tpl()]);
+      final date = DateTime(2025, 12, 1);
+      await h.notifier.materializeForDate(date);
+      final deleted = await h.notifier.repairDuplicateRoutineTasksForDate(date);
+      expect(deleted, equals(0));
+      expect(await h.tasksForDate(date), hasLength(1));
       h.dispose();
     });
   });

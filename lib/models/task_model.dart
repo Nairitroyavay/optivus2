@@ -503,3 +503,44 @@ class TaskModel {
     return values.isEmpty ? const [5] : values;
   }
 }
+
+/// Generates a deterministic Firestore document ID for a materialized routine block.
+/// Example: routine_2026-05-13_fixed_schedule_tpl123_0900_1000
+String buildRoutineInstanceKey({
+  required String scheduledDate,
+  required String sourceRoutineType,
+  required String templateId,
+  required String title,
+  required DateTime plannedStart,
+  required DateTime plannedEnd,
+}) {
+  final slugType = sourceRoutineType
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  final cleanType = slugType.isEmpty ? 'task' : slugType;
+
+  final slugTitle = title
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  final cleanTemplateId = templateId
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+
+  // If templateId is missing/empty, fallback to normalized title.
+  final fallbackId = cleanTemplateId.isNotEmpty
+      ? cleanTemplateId
+      : (slugTitle.isNotEmpty ? slugTitle : 'template');
+
+  final startStr =
+      '${plannedStart.hour.toString().padLeft(2, '0')}${plannedStart.minute.toString().padLeft(2, '0')}';
+  final endStr =
+      '${plannedEnd.hour.toString().padLeft(2, '0')}${plannedEnd.minute.toString().padLeft(2, '0')}';
+
+  return 'routine_${scheduledDate}_${cleanType}_${fallbackId}_${startStr}_$endStr';
+}

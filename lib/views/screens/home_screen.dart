@@ -13,12 +13,12 @@ import 'package:optivus2/views/tabs/profile_tab.dart';
 
 // Per-tab gradient definitions
 const List<List<Color>> _tabGradients = [
-  [Color(0xFFFF6B6B), Color(0xFFFBE5E4)], // Home     – coral red
-  [Color(0xFFA3FF91), Color(0xFFEFFEEC)], // Routine  – mint green
-  [Color(0xFF78FDFF), Color(0xFFE8FEFE)], // Tracker  – cyan teal
-  [Color(0xFFC084FC), Color(0xFFF5EEFF)], // Coach    – soft violet
-  [Color(0xFFFF8CC2), Color(0xFFFCEDF3)], // Goals    – rose pink
-  [Color(0xFFFFB830), Color(0xFFFFF6E0)], // Profile  – amber gold
+  [Color(0xFFFFB3B3), Color(0xFFFCFFFD)], // Home
+  [Color(0xFFA3FF91), Color(0xFFEFFFEC)], // Routine
+  [Color(0xFF78EFFF), Color(0xFFE8FCFF)], // Tracker
+  [Color(0xFFDCCBFF), Color(0xFFFFFCFF)], // Coach
+  [Color(0xFFFFB6DC), Color(0xFFFFFFFC)], // Goals
+  [Color(0xFFFFC35C), Color(0xFFFFF4DD)], // Profile
 ];
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -72,7 +72,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: colors,
-            stops: const [0.0, 0.7],
+            stops: const [0.0, 0.80],
           ),
         ),
         child: SafeArea(

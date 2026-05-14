@@ -160,7 +160,7 @@ class _OnboardingPage6State extends ConsumerState<OnboardingPage6> {
                                 crossAxisCount: 2,
                                 mainAxisSpacing: 16,
                                 crossAxisSpacing: 16,
-                                childAspectRatio: 1.6,
+                                childAspectRatio: 1.5,
                               ),
                               itemBuilder: (context, index) {
                                 switch (index) {

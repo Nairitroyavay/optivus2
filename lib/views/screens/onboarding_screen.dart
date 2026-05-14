@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:optivus2/providers/onboarding_provider.dart';
 import 'package:optivus2/widgets/app_button.dart';
+import 'package:optivus2/core/constants/onboarding_constants.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_0.dart';
+import 'package:optivus2/views/onboarding/onboarding_patience_test_page.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_1.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_2.dart';
 import 'package:optivus2/views/onboarding/onboarding_page_3.dart';
@@ -35,12 +37,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   late final _PageOffsetNotifier _pageOffset;
   int _currentPage = 0;
   bool _hasHydratedPageController = false;
-
-  double _dragStartPage = 0.0;
-  double _dragStartX = 0.0;
-  bool _isDragging = false;
-  int _lastHapticPage = 0;
-  static const double _indicatorStep = 48.0;
+  bool _isAdvancing = false;
 
   // Save button state
   final GlobalKey<_OnboardingSaveButtonState> _saveButtonKey =
@@ -76,7 +73,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         await ref.read(onboardingProvider.notifier).loadFromFirestore();
     if (!mounted || _hasHydratedPageController) return;
 
-    final targetPage = savedStep.clamp(0, 10).toInt();
+    final targetPage = savedStep.clamp(0, kOnboardingFinalPage).toInt();
     _hasHydratedPageController = true;
     if (_pageController.hasClients) {
       _pageController.jumpToPage(targetPage);
@@ -91,53 +88,91 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   void _onNext() async {
-    // Pages 1-9: save first, then navigate
-    if (_currentPage >= 1 && _currentPage <= 9) {
-      final ok = await _saveCurrentPage();
-      if (!ok) {
+    if (_isAdvancing) return;
+    setState(() => _isAdvancing = true);
+
+    try {
+      final state = ref.read(onboardingProvider);
+      final error = state.validationErrorForPage(_currentPage);
+      if (error != null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text(
-                    'Failed to save. Please check your connection and try again.')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
         }
         return;
       }
-      if (!mounted) return;
-      // Small delay so user sees the checkmark before transitioning
-      await Future.delayed(const Duration(milliseconds: 350));
-      if (!mounted) return;
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOutCubic,
-      );
-    } else if (_currentPage < 10) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOutCubic,
-      );
-    } else {
-      final ok =
-          await ref.read(onboardingProvider.notifier).completeOnboarding();
-      if (!ok) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text(
-                    'Failed to save profile. Please check your connection and try again.')),
-          );
+
+      // Saveable pages are 2 through 10
+      if (_currentPage >= 2 && _currentPage < kOnboardingFinalPage) {
+        final ok = await _saveCurrentPage();
+        if (!ok) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                  content: Text(
+                      'Failed to save. Please check your connection and try again.')),
+            );
+          }
+          return;
         }
-        return;
+        if (!mounted) return;
+        // Small delay so user sees the checkmark before transitioning
+        await Future.delayed(const Duration(milliseconds: 350));
+        if (!mounted) return;
+        _pageController.nextPage(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOutCubic,
+        );
+      } else if (_currentPage < kOnboardingFinalPage) {
+        _pageController.nextPage(
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOutCubic,
+        );
+      } else {
+        final ok =
+            await ref.read(onboardingProvider.notifier).completeOnboarding();
+        if (!ok) {
+          if (mounted) {
+            final currentState = ref.read(onboardingProvider);
+            String? firstError;
+            int? errorPage;
+            for (int i = 2; i < kOnboardingFinalPage; i++) {
+              firstError = currentState.validationErrorForPage(i);
+              if (firstError != null) {
+                errorPage = i;
+                break;
+              }
+            }
+            if (firstError != null && errorPage != null) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(firstError)));
+              _pageController.animateToPage(
+                errorPage,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOutCubic,
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text(
+                        'Failed to save profile. Please check your connection and try again.')),
+              );
+            }
+          }
+          return;
+        }
+        if (!mounted) return;
+        context.go('/home');
       }
-      if (!mounted) return;
-      context.go('/home');
+    } finally {
+      if (mounted) {
+        setState(() => _isAdvancing = false);
+      }
     }
   }
 
   String get _buttonLabel {
     if (_currentPage == 0) return 'Get Started';
-    if (_currentPage == 10) return 'Start Today';
+    if (_currentPage == 1) return 'I accept the first test';
+    if (_currentPage == kOnboardingFinalPage) return 'Enter Optivus';
     return 'Next';
   }
 
@@ -178,7 +213,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 Positioned.fill(
                   child: PageView(
                     controller: _pageController,
-                    physics: const BouncingScrollPhysics(),
+                    physics: const NeverScrollableScrollPhysics(),
                     onPageChanged: (i) {
                       setState(() => _currentPage = i);
                       ref
@@ -190,6 +225,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     },
                     children: const [
                       OnboardingPage0(),
+                      OnboardingPatienceTestPage(),
                       OnboardingPage1(),
                       OnboardingPage2(),
                       OnboardingPage3(),
@@ -218,95 +254,42 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       children: [
                         // Left spacer to balance the save button on the right
                         const SizedBox(width: 60),
-                        // ── Centre: Indicator pill with drag ──
+                        // ── Centre: Indicator pill with drag disabled ──
                         Expanded(
                           child: Center(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onHorizontalDragStart: (d) {
-                                setState(() {
-                                  _isDragging = true;
-                                  _lastHapticPage = _pageOffset.value.round();
-                                });
-                                _dragStartPage = _pageOffset.value;
-                                _dragStartX = d.localPosition.dx;
-                                HapticFeedback.lightImpact();
-                              },
-                              onHorizontalDragUpdate: (d) {
-                                if (!_pageController.hasClients) return;
-                                final dx = d.localPosition.dx - _dragStartX;
-                                final pageDelta = dx / _indicatorStep;
-                                final newPage = (_dragStartPage + pageDelta)
-                                    .clamp(0.0, 10.0);
-                                final crossed = newPage.round();
-                                if (crossed != _lastHapticPage) {
-                                  HapticFeedback.selectionClick();
-                                  _lastHapticPage = crossed;
-                                }
-                                final vp =
-                                    _pageController.position.viewportDimension;
-                                _pageController.position.jumpTo(
-                                  (newPage * vp).clamp(
-                                    _pageController.position.minScrollExtent,
-                                    _pageController.position.maxScrollExtent,
-                                  ),
-                                );
-                              },
-                              onHorizontalDragEnd: (d) {
-                                HapticFeedback.mediumImpact();
-                                setState(() => _isDragging = false);
-                                if (!_pageController.hasClients) return;
-                                final vx = d.velocity.pixelsPerSecond.dx;
-                                int snap;
-                                if (vx.abs() > 400) {
-                                  snap = vx > 0
-                                      ? (_pageOffset.value + 0.5)
-                                          .ceil()
-                                          .clamp(0, 10)
-                                      : (_pageOffset.value - 0.5)
-                                          .floor()
-                                          .clamp(0, 10);
-                                } else {
-                                  snap = _pageOffset.value.round().clamp(0, 10);
-                                }
-                                _pageController.animateToPage(
-                                  snap,
-                                  duration: const Duration(milliseconds: 500),
-                                  curve: Curves.easeOutCubic,
-                                );
-                              },
-                              child: AnimatedScale(
-                                scale: _isDragging ? 0.94 : 1.0,
-                                duration: const Duration(milliseconds: 180),
-                                curve: Curves.easeOutCubic,
-                                child: ValueListenableBuilder<double>(
-                                  valueListenable: _pageOffset,
-                                  builder: (context, page, _) =>
-                                      _LiquidGlassIndicator(
-                                    page: page,
-                                    count: 11,
-                                    onDotTap: (i) =>
-                                        _pageController.animateToPage(
-                                      i,
-                                      duration:
-                                          const Duration(milliseconds: 420),
-                                      curve: Curves.easeInOutCubic,
-                                    ),
-                                  ),
+                            child: AnimatedScale(
+                              scale: 1.0,
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOutCubic,
+                              child: ValueListenableBuilder<double>(
+                                valueListenable: _pageOffset,
+                                builder: (context, page, _) =>
+                                    _LiquidGlassIndicator(
+                                  page: page,
+                                  count: kOnboardingPageCount,
+                                  onDotTap: (i) {
+                                    if (i <= _currentPage) {
+                                      _pageController.animateToPage(
+                                        i,
+                                        duration: const Duration(milliseconds: 420),
+                                        curve: Curves.easeInOutCubic,
+                                      );
+                                    }
+                                  },
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        // ── Right: Save button (only visible on pages 1–9) ──
+                        // ── Right: Save button (only visible on pages 2 to final-1) ──
                         SizedBox(
                           width: 60,
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 250),
-                            child: (_currentPage >= 1 && _currentPage <= 9)
+                            child: (_currentPage >= 2 && _currentPage < kOnboardingFinalPage)
                                 ? _OnboardingSaveButton(
-                                    key: ValueKey('save_$_currentPage'),
-                                    globalKey: _saveButtonKey,
+                                    key: _saveButtonKey,
+                                    pageIndex: _currentPage,
                                     onSave: () => ref
                                         .read(onboardingProvider.notifier)
                                         .saveToFirestore(step: _currentPage),
@@ -553,12 +536,12 @@ class _PageOffsetNotifier extends ValueNotifier<double> {
 enum _SaveButtonState { idle, loading, success }
 
 class _OnboardingSaveButton extends StatefulWidget {
-  final GlobalKey<_OnboardingSaveButtonState> globalKey;
+  final int pageIndex;
   final Future<bool> Function() onSave;
 
   const _OnboardingSaveButton({
     super.key,
-    required this.globalKey,
+    required this.pageIndex,
     required this.onSave,
   });
 
@@ -575,12 +558,6 @@ class _OnboardingSaveButtonState extends State<_OnboardingSaveButton>
   @override
   void initState() {
     super.initState();
-    // Register this state with the global key so the parent can call triggerSave().
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // The global key is passed into the widget so the parent screen can
-      // trigger saves programmatically (e.g. when the user taps Next instead
-      // of Save).
-    });
     _spinController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -589,6 +566,16 @@ class _OnboardingSaveButtonState extends State<_OnboardingSaveButton>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant _OnboardingSaveButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pageIndex != widget.pageIndex) {
+      _spinController.stop();
+      _checkController.reset();
+      _state = _SaveButtonState.idle;
+    }
   }
 
   @override
@@ -627,10 +614,6 @@ class _OnboardingSaveButtonState extends State<_OnboardingSaveButton>
 
   @override
   Widget build(BuildContext context) {
-    // Re-register the global key so the parent screen can always reach
-    // the *current* page's save-button state.
-    widget.globalKey.currentState; // no-op read, the key is set via constructor
-
     return GestureDetector(
       onTap: _state == _SaveButtonState.loading ? null : () => triggerSave(),
       child: ClipRRect(
