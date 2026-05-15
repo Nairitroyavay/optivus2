@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class CloudflareApiException implements Exception {
@@ -123,6 +124,7 @@ class CloudflareApiService {
     String? missingEndpointMessage,
   }) async {
     final normalizedEndpoint = endpoint.trim();
+    _debugLog('$endpointLabel effective endpoint="$normalizedEndpoint"');
     if (normalizedEndpoint.isEmpty) {
       throw CloudflareConfigException(
         endpointLabel: endpointLabel,
@@ -159,6 +161,10 @@ class CloudflareApiService {
       );
     }
 
+    _debugLog('$endpointLabel HTTP status=${response.statusCode}');
+    _debugLog(
+      '$endpointLabel response body keys=${_responseBodyKeys(response.body)}',
+    );
     _throwForStatus(endpointLabel, response);
     return _decodeJsonMap(endpointLabel, response);
   }
@@ -243,5 +249,23 @@ class CloudflareApiService {
       responseBody: response.body,
       message: message,
     );
+  }
+
+  static List<String> _responseBodyKeys(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map) {
+        return decoded.keys.map((key) => key.toString()).toList()..sort();
+      }
+    } catch (_) {
+      return const ['<invalid_json>'];
+    }
+    return const ['<non_object_json>'];
+  }
+
+  static void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint('[AICoachDebug][CloudflareApiService] $message');
+    }
   }
 }

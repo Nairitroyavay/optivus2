@@ -20,6 +20,7 @@
 //   coach_message_sent, coach_replied
 
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth_mocks/firebase_auth_mocks.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:optivus2/core/config/app_config.dart';
@@ -63,6 +64,7 @@ void main() {
       expect(messages.single['role'], 'coach');
       expect(messages.single['text'], CoachService.missingEndpointFallbackText);
       expect(messages.single['source'], 'local_missing_endpoint');
+      expect(messages.single['fallbackReason'], 'missing_endpoint');
       expect(messages.single['aiGenerated'], isFalse);
     });
 
@@ -92,6 +94,7 @@ void main() {
       final messages = await harness.messages();
       expect(messages, hasLength(1));
       expect(messages.single['source'], 'local_ai_disabled');
+      expect(messages.single['fallbackReason'], 'ai_disabled');
     });
 
     test('Worker error is surfaced for retry without assistant save', () async {
@@ -151,6 +154,150 @@ void main() {
       expect(messages.single['role'], 'coach');
       expect(messages.single['text'], 'Start with a 10 minute review block.');
       expect(messages.single['source'], 'cloudflare_coach_reply');
+    });
+
+    test(
+        'cloudflare assistant message parses as assistant with alternate text key',
+        () {
+      final message = CoachChatMessage.fromMap(
+        {
+          'messageId': 'assistant_cloudflare',
+          'role': 'coach',
+          'source': 'cloudflare_coach_reply',
+          'fallbackReason': 'none',
+          'aiGenerated': true,
+          'reply': 'Use one focused block, then reassess.',
+          'createdAt': Timestamp.fromDate(DateTime(2026, 5, 15, 8)),
+        },
+        fallbackId: 'assistant_cloudflare',
+      );
+
+      expect(message.id, 'assistant_cloudflare');
+      expect(message.isUser, isFalse);
+      expect(message.text, 'Use one focused block, then reassess.');
+      expect(message.createdAt, DateTime(2026, 5, 15, 8));
+    });
+
+    test('watchLatestMessages includes cloudflare assistant messages',
+        () async {
+      final harness = _CoachHarness(
+        featureFlags: _featureFlags(aiCoachMessagesReady: true),
+        replyClient: ({
+          required String threadId,
+          required String text,
+          required String mode,
+        }) async {
+          return const CoachReplyResult(text: 'unused');
+        },
+      );
+
+      await harness.writeMessage(
+        id: 'assistant_stream',
+        data: {
+          'messageId': 'assistant_stream',
+          'role': 'coach',
+          'isUser': false,
+          'source': 'cloudflare_coach_reply',
+          'fallbackReason': 'none',
+          'aiGenerated': true,
+          'text': 'This should appear in the Coach tab.',
+          'createdAt': Timestamp.fromDate(DateTime(2026, 5, 15, 8)),
+        },
+      );
+
+      final messages =
+          await harness.service.watchLatestMessages(limit: 10).first;
+
+      expect(messages, hasLength(1));
+      expect(messages.single.id, 'assistant_stream');
+      expect(messages.single.isUser, isFalse);
+      expect(messages.single.text, 'This should appear in the Coach tab.');
+    });
+
+    test('watchLatestMessages sorts ascending after service reversal',
+        () async {
+      final harness = _CoachHarness(
+        featureFlags: _featureFlags(aiCoachMessagesReady: true),
+        replyClient: ({
+          required String threadId,
+          required String text,
+          required String mode,
+        }) async {
+          return const CoachReplyResult(text: 'unused');
+        },
+      );
+
+      await harness.writeMessage(
+        id: 'newest',
+        data: _messageDoc(
+          id: 'newest',
+          text: 'Newest',
+          createdAt: DateTime(2026, 5, 15, 9, 2),
+        ),
+      );
+      await harness.writeMessage(
+        id: 'oldest',
+        data: _messageDoc(
+          id: 'oldest',
+          text: 'Oldest',
+          createdAt: DateTime(2026, 5, 15, 9),
+        ),
+      );
+      await harness.writeMessage(
+        id: 'middle',
+        data: _messageDoc(
+          id: 'middle',
+          text: 'Middle',
+          createdAt: DateTime(2026, 5, 15, 9, 1),
+        ),
+      );
+
+      final messages =
+          await harness.service.watchLatestMessages(limit: 10).first;
+
+      expect(messages.map((message) => message.id), [
+        'oldest',
+        'middle',
+        'newest',
+      ]);
+    });
+
+    test('Worker 200 with empty reply saves empty_response fallback', () async {
+      final harness = _CoachHarness(
+        featureFlags: _featureFlags(aiCoachMessagesReady: true),
+        replyClient: ({
+          required String threadId,
+          required String text,
+          required String mode,
+        }) async {
+          return const CoachReplyResult(text: '');
+        },
+      );
+
+      final reply = await harness.service.generateAndSaveAssistantReply(
+        userText: 'Say something',
+        mode: CoachTopicMode.askAnything,
+      );
+
+      expect(reply.text, CoachService.emptyResponseFallbackText);
+
+      final messages = await harness.messages();
+      expect(messages, hasLength(1));
+      expect(messages.single['source'], 'local_empty_response');
+      expect(messages.single['fallbackReason'], 'empty_response');
+      expect(messages.single['aiGenerated'], isFalse);
+    });
+
+    test('Worker response alternate text key is parsed correctly', () {
+      final result = CoachReplyResult.fromMap({
+        'message': 'Use one 15 minute focus block.',
+        'messageId': 'assistant_alt_key',
+        'safetyBranch': 'standard',
+      });
+
+      expect(result.text, 'Use one 15 minute focus block.');
+      expect(result.messageId, 'assistant_alt_key');
+      expect(result.safetyBranch, 'standard');
     });
 
     test('user and assistant messages are each saved once', () async {
@@ -452,6 +599,35 @@ class _CoachHarness {
         .get();
     return snap.docs.map((doc) => doc.data()).toList(growable: false);
   }
+
+  Future<void> writeMessage({
+    required String id,
+    required Map<String, dynamic> data,
+  }) {
+    return firestore
+        .collection('users')
+        .doc(uid)
+        .collection('coach_messages')
+        .doc(id)
+        .set(data);
+  }
+}
+
+Map<String, dynamic> _messageDoc({
+  required String id,
+  required String text,
+  required DateTime createdAt,
+}) {
+  return {
+    'messageId': id,
+    'role': 'coach',
+    'isUser': false,
+    'source': 'cloudflare_coach_reply',
+    'fallbackReason': 'none',
+    'aiGenerated': true,
+    'text': text,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
 }
 
 AppBuildConfig _buildConfig({String coachReplyEndpoint = ''}) {

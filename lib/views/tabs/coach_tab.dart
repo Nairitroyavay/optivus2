@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,6 +47,8 @@ class _CoachMessage {
     );
   }
 }
+
+enum _MessageUpsertResult { inserted, updated, unchanged }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared Constants & Geometry
@@ -1196,9 +1199,6 @@ class _CoachTabState extends ConsumerState<CoachTab> {
 
   final List<_CoachMessage> _messages = [];
 
-  /// IDs of messages already displayed — prevents stream/page duplicates.
-  final Set<String> _seenMessageIds = {};
-
   StreamSubscription<List<CoachChatMessage>>? _latestSub;
 
   @override
@@ -1232,7 +1232,6 @@ class _CoachTabState extends ConsumerState<CoachTab> {
       if (!mounted) return;
       setState(() {
         _messages.clear();
-        _seenMessageIds.clear();
         _oldestDocument = page.oldestDocument;
         _hasMore = page.hasMore;
         _loadError = null;
@@ -1314,7 +1313,6 @@ class _CoachTabState extends ConsumerState<CoachTab> {
 
   void _addWelcomeMessage() {
     const id = 'local_welcome';
-    _seenMessageIds.add(id);
     _messages.add(_CoachMessage(
       id: id,
       text:
@@ -1327,36 +1325,89 @@ class _CoachTabState extends ConsumerState<CoachTab> {
 
   bool _mergeMessages(List<CoachChatMessage> incoming) {
     var changed = false;
+    var shouldScroll = false;
     setState(() {
+      final previousNewestId = _newestMessage?.id;
+      final updatedAssistantIds = <String>{};
       for (final message in incoming) {
-        if (_seenMessageIds.contains(message.id)) continue;
-        _seenMessageIds.add(message.id);
-        _messages.add(_CoachMessage.fromDomain(message));
-        changed = true;
+        final result = _upsertDomainMessage(message);
+        changed = changed || result != _MessageUpsertResult.unchanged;
+        if (result == _MessageUpsertResult.updated && !message.isUser) {
+          updatedAssistantIds.add(message.id);
+        }
       }
-      if (changed) _sortMessages();
+      if (changed) {
+        _sortMessages();
+        final newest = _newestMessage;
+        shouldScroll = newest?.id != previousNewestId ||
+            (newest != null &&
+                !newest.isUser &&
+                updatedAssistantIds.contains(newest.id));
+      }
     });
-    return changed;
+    return shouldScroll;
   }
 
   void _appendDomainMessages(List<CoachChatMessage> messages) {
     for (final message in messages) {
-      if (_seenMessageIds.contains(message.id)) continue;
-      _seenMessageIds.add(message.id);
-      _messages.add(_CoachMessage.fromDomain(message));
+      _upsertDomainMessage(message);
     }
     _sortMessages();
   }
 
   void _prependDomainMessages(List<CoachChatMessage> messages) {
-    final older = <_CoachMessage>[];
     for (final message in messages) {
-      if (_seenMessageIds.contains(message.id)) continue;
-      _seenMessageIds.add(message.id);
-      older.add(_CoachMessage.fromDomain(message));
+      _upsertDomainMessage(message);
     }
-    _messages.insertAll(0, older);
     _sortMessages();
+  }
+
+  _MessageUpsertResult _upsertDomainMessage(CoachChatMessage message) {
+    final index = _messages.indexWhere((existing) => existing.id == message.id);
+    if (index == -1) {
+      _messages.add(_CoachMessage.fromDomain(message));
+      return _MessageUpsertResult.inserted;
+    }
+
+    final existing = _messages[index];
+    final incoming = _CoachMessage.fromDomain(message);
+    final merged = _mergeExistingMessage(existing, incoming);
+    if (_messagesEquivalent(existing, merged)) {
+      return _MessageUpsertResult.unchanged;
+    }
+
+    _messages[index] = merged;
+    return _MessageUpsertResult.updated;
+  }
+
+  _CoachMessage _mergeExistingMessage(
+    _CoachMessage existing,
+    _CoachMessage incoming,
+  ) {
+    return _CoachMessage(
+      id: existing.id,
+      text: incoming.text.isNotEmpty ? incoming.text : existing.text,
+      isUser: incoming.isUser,
+      createdAt: incoming.createdAt ?? existing.createdAt,
+      mode: incoming.mode,
+      safetyBranch: incoming.safetyBranch ?? existing.safetyBranch,
+      messageType: incoming.messageType ?? existing.messageType,
+    );
+  }
+
+  bool _messagesEquivalent(_CoachMessage a, _CoachMessage b) {
+    return a.id == b.id &&
+        a.text == b.text &&
+        a.isUser == b.isUser &&
+        a.createdAt == b.createdAt &&
+        a.mode == b.mode &&
+        a.safetyBranch == b.safetyBranch &&
+        a.messageType == b.messageType;
+  }
+
+  _CoachMessage? get _newestMessage {
+    if (_messages.isEmpty) return null;
+    return _messages.last;
   }
 
   void _sortMessages() {
@@ -1400,6 +1451,7 @@ class _CoachTabState extends ConsumerState<CoachTab> {
   }
 
   Future<void> _requestReply(String text, CoachTopicMode mode) async {
+    _debugCoachRequestConfig();
     try {
       final reply = await _coachService.generateAndSaveAssistantReply(
         userText: text,
@@ -1423,6 +1475,23 @@ class _CoachTabState extends ConsumerState<CoachTab> {
       debugPrint('[CoachTab] Coach reply failed: $e');
       _scrollToBottom();
     }
+  }
+
+  void _debugCoachRequestConfig() {
+    if (!kDebugMode) return;
+    final build = ref.read(appBuildConfigProvider);
+    final remote = ref.read(appRemoteConfigProvider);
+    debugPrint(
+      '[AICoachDebug][CoachTab] COACH_REPLY_ENDPOINT='
+      '"${build.cloudflare.normalizedCoachReplyEndpoint}"',
+    );
+    debugPrint(
+      '[AICoachDebug][CoachTab] flags '
+      'ENABLE_AI_COACH_WORKER=${build.features.enableAiCoachWorker} '
+      'coach_enabled=${remote.coachEnabled} '
+      'ai_features_enabled=${remote.aiFeaturesEnabled} '
+      'ai_coach_messages_enabled=${remote.aiCoachMessagesEnabled}',
+    );
   }
 
   Future<void> _retryLastReply() async {

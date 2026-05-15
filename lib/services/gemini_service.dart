@@ -37,12 +37,39 @@ class CoachReplyResult {
         .toList(growable: false);
 
     return CoachReplyResult(
-      text: (map['text'] as String? ?? map['reply'] as String? ?? '').trim(),
+      text: _firstString(
+        map,
+        const ['text', 'reply', 'message', 'body', 'assistantText', 'content'],
+      ).trim(),
       suggestedActions: actions,
       messageId: map['messageId'] as String?,
       safetyBranch: map['safetyBranch'] as String?,
     );
   }
+
+  static String _firstString(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value is String) return value;
+    }
+    return '';
+  }
+}
+
+class CoachReplyEmptyException implements Exception {
+  const CoachReplyEmptyException();
+
+  @override
+  String toString() => 'CoachReplyEmptyException: empty coach reply text';
+}
+
+class CoachReplyParseException implements Exception {
+  final Object error;
+
+  const CoachReplyParseException(this.error);
+
+  @override
+  String toString() => 'CoachReplyParseException: $error';
 }
 
 class GeminiService {
@@ -74,6 +101,9 @@ class GeminiService {
     required String text,
     required String mode,
   }) async {
+    _debugLog(
+      'COACH_REPLY_ENDPOINT="${_buildConfig.cloudflare.normalizedCoachReplyEndpoint}"',
+    );
     final decoded = await _postAuthenticatedJson(
       endpoint: _buildConfig.cloudflare.normalizedCoachReplyEndpoint,
       endpointLabel: 'Coach reply endpoint',
@@ -86,11 +116,17 @@ class GeminiService {
       },
     );
 
-    final result = CoachReplyResult.fromMap(
-      decoded,
-    );
+    final CoachReplyResult result;
+    try {
+      result = CoachReplyResult.fromMap(decoded);
+    } catch (error) {
+      _debugLog('fallback_reason=parse_error parse_error=$error');
+      throw CoachReplyParseException(error);
+    }
+    _debugLog('parsed assistant text length=${result.text.length}');
     if (result.text.isEmpty) {
-      throw Exception('Empty coach reply from endpoint');
+      _debugLog('fallback_reason=empty_response');
+      throw const CoachReplyEmptyException();
     }
     return result;
   }
@@ -195,6 +231,12 @@ class GeminiService {
       missingEndpointMessage: missingEndpointMessage,
       payload: payload,
     );
+  }
+
+  static void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint('[AICoachDebug][GeminiService] $message');
+    }
   }
 }
 

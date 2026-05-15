@@ -83,10 +83,7 @@ class CoachChatMessage {
     Map<String, dynamic> data, {
     required String fallbackId,
   }) {
-    final rawText = data['text'] as String? ??
-        data['message'] as String? ??
-        data['body'] as String? ??
-        '';
+    final rawText = _firstMessageText(data);
     final role = (data['role'] as String?)?.toLowerCase();
     final source = (data['source'] as String?)?.toLowerCase();
     final isUser = data['isUser'] == true || role == 'user' || source == 'user';
@@ -101,6 +98,22 @@ class CoachChatMessage {
       messageType: data['messageType'] as String?,
     );
   }
+}
+
+String _firstMessageText(Map<String, dynamic> data) {
+  const textKeys = [
+    'text',
+    'message',
+    'body',
+    'reply',
+    'assistantText',
+    'content'
+  ];
+  for (final key in textKeys) {
+    final value = data[key];
+    if (value is String && value.trim().isNotEmpty) return value;
+  }
+  return '';
 }
 
 class CoachMessagePage {
@@ -121,6 +134,10 @@ class CoachService {
       'AI coach replies are off right now, but your message is saved. Try one small next step you can do in the next few minutes.';
   static const String missingEndpointFallbackText =
       'AI coach is not connected in this build yet, but your message is saved. Try one small next step you can do in the next few minutes.';
+  static const String emptyResponseFallbackText =
+      'AI coach replied with an empty response, but your message is saved. Try one small next step you can do in the next few minutes.';
+  static const String parseErrorFallbackText =
+      'AI coach replied in an unexpected format, but your message is saved. Try one small next step you can do in the next few minutes.';
 
   final TaskService _taskService;
   final StreakService _streakService;
@@ -266,17 +283,22 @@ class CoachService {
     String threadId = mainThreadId,
   }) async {
     final uid = _uid;
+    _debugLog(
+      'request start endpoint="${_buildConfig.cloudflare.normalizedCoachReplyEndpoint}" '
+      'endpoint_configured=${_buildConfig.cloudflare.hasCoachReplyEndpoint} '
+      'ENABLE_AI_COACH_WORKER=${_buildConfig.features.enableAiCoachWorker} '
+      'aiCoachMessagesReady=${_featureFlags?.aiCoachMessagesReady ?? false}',
+    );
     if (!(_featureFlags?.aiCoachMessagesReady ?? false)) {
       final hasEndpoint = _buildConfig.cloudflare.hasCoachReplyEndpoint;
-      return _saveAssistantMessage(
+      return _saveFallbackAssistantMessage(
         uid: uid,
         text:
             hasEndpoint ? aiDisabledFallbackText : missingEndpointFallbackText,
         mode: mode,
         threadId: threadId,
         source: hasEndpoint ? 'local_ai_disabled' : 'local_missing_endpoint',
-        aiGenerated: false,
-        emitEvent: false,
+        fallbackReason: hasEndpoint ? 'ai_disabled' : 'missing_endpoint',
       );
     }
 
@@ -295,14 +317,49 @@ class CoachService {
               mode: mode.key,
             );
     } on CloudflareConfigException {
-      return _saveAssistantMessage(
+      return _saveFallbackAssistantMessage(
         uid: uid,
         text: missingEndpointFallbackText,
         mode: mode,
         threadId: threadId,
         source: 'local_missing_endpoint',
-        aiGenerated: false,
-        emitEvent: false,
+        fallbackReason: 'missing_endpoint',
+      );
+    } on CoachReplyEmptyException {
+      return _saveFallbackAssistantMessage(
+        uid: uid,
+        text: emptyResponseFallbackText,
+        mode: mode,
+        threadId: threadId,
+        source: 'local_empty_response',
+        fallbackReason: 'empty_response',
+      );
+    } on CoachReplyParseException {
+      return _saveFallbackAssistantMessage(
+        uid: uid,
+        text: parseErrorFallbackText,
+        mode: mode,
+        threadId: threadId,
+        source: 'local_parse_error',
+        fallbackReason: 'parse_error',
+      );
+    } on CloudflareApiException catch (error) {
+      _debugLog(
+        'fallback_reason=worker_error status=${error.statusCode ?? "none"} '
+        'error=${error.runtimeType}',
+      );
+      rethrow;
+    }
+
+    _debugLog('parsed assistant text length=${result.text.trim().length}');
+    if (result.text.trim().isEmpty) {
+      return _saveFallbackAssistantMessage(
+        uid: uid,
+        text: emptyResponseFallbackText,
+        mode: mode,
+        threadId: threadId,
+        source: 'local_empty_response',
+        fallbackReason: 'empty_response',
       );
     }
 
@@ -317,6 +374,27 @@ class CoachService {
     );
   }
 
+  Future<CoachChatMessage> _saveFallbackAssistantMessage({
+    required String uid,
+    required String text,
+    required CoachTopicMode mode,
+    required String threadId,
+    required String source,
+    required String fallbackReason,
+  }) {
+    _debugLog('fallback_reason=$fallbackReason');
+    return _saveAssistantMessage(
+      uid: uid,
+      text: text,
+      mode: mode,
+      threadId: threadId,
+      source: source,
+      aiGenerated: false,
+      emitEvent: false,
+      fallbackReason: fallbackReason,
+    );
+  }
+
   Future<CoachChatMessage> _saveAssistantMessage({
     required String uid,
     required String text,
@@ -328,6 +406,7 @@ class CoachService {
     String source = 'cloudflare_coach_reply',
     bool? aiGenerated,
     bool emitEvent = true,
+    String? fallbackReason,
   }) async {
     final now = DateTime.now();
     final resolvedMessageId = (messageId?.trim().isNotEmpty ?? false)
@@ -357,12 +436,18 @@ class CoachService {
       'aiGenerated': aiGenerated ?? !isCrisis,
       'suggestedActions': suggestedActions,
       'safetyBranch': safetyBranch,
+      if (fallbackReason != null) 'fallbackReason': fallbackReason,
       'schemaVersion': 1,
     };
 
     // TODO(server-trust): move this assistant write and coach_replied event
     // into the Cloudflare Worker once it has a trusted Firebase Admin path.
+    _debugLog(
+      'assistant save start messageId=$resolvedMessageId source=$source '
+      'fallbackReason=${fallbackReason ?? "none"}',
+    );
     await _messagesRef(uid).doc(resolvedMessageId).set(data);
+    _debugLog('assistant save finish messageId=$resolvedMessageId');
     if (emitEvent) {
       await _emitCoachEvent(
         EventNames.coachReplied,
@@ -408,6 +493,12 @@ class CoachService {
       }
     } catch (e) {
       debugPrint('[CoachService] $eventName event failed: $e');
+    }
+  }
+
+  static void _debugLog(String message) {
+    if (kDebugMode) {
+      debugPrint('[AICoachDebug][CoachService] $message');
     }
   }
 
